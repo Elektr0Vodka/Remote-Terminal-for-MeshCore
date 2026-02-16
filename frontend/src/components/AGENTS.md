@@ -1,20 +1,18 @@
-# PacketVisualizer Architecture
+# PacketVisualizer3D Architecture
 
-This document explains the architecture and design of the PacketVisualizer component, which renders a real-time force-directed graph visualization of mesh network packet traffic.
+This document explains the architecture and design of the `PacketVisualizer3D` component, which renders a real-time 3D force-directed graph visualization of mesh network packet traffic using Three.js and `d3-force-3d`.
 
 ## Overview
 
-The PacketVisualizer displays:
+The visualizer displays:
 
-- **Nodes**: Network participants (self, repeaters, clients)
+- **Nodes**: Network participants (self, repeaters, clients) as colored spheres
 - **Links**: Connections between nodes based on observed packet paths
-- **Particles**: Animated dots traveling along links representing packets in transit
+- **Particles**: Animated colored dots traveling along links representing packets in transit
 
-## Architecture: Data Layer vs Rendering Layer
+## Architecture
 
-The component is split into two distinct layers to enable future rendering engine swaps (e.g., WebGL, Three.js):
-
-### Data Layer (`useVisualizerData` hook)
+### Data Layer (`useVisualizerData3D` hook)
 
 The custom hook manages all graph state and simulation logic:
 
@@ -25,7 +23,7 @@ Packets → Parse → Aggregate by key → Observation window → Publish → An
 **Key responsibilities:**
 
 - Maintains node and link maps (`nodesRef`, `linksRef`)
-- Runs D3 force simulation for layout
+- Runs `d3-force-3d` simulation for 3D layout (`.numDimensions(3)`)
 - Processes incoming packets with deduplication
 - Aggregates packet repeats across multiple paths
 - Manages particle queue and animation timing
@@ -35,19 +33,32 @@ Packets → Parse → Aggregate by key → Observation window → Publish → An
 - `nodesRef`: Map of node ID → GraphNode
 - `linksRef`: Map of link key → GraphLink
 - `particlesRef`: Array of active Particle objects
-- `simulationRef`: D3 force simulation instance
+- `simulationRef`: d3-force-3d simulation instance
 - `pendingRef`: Packets in observation window awaiting animation
 - `timersRef`: Per-packet publish timers
 
-### Rendering Layer (canvas drawing functions)
+### Rendering Layer (Three.js)
 
-Separate pure functions handle all canvas rendering:
+- `THREE.WebGLRenderer` + `CSS2DRenderer` (text labels overlaid on 3D scene)
+- `OrbitControls` for camera interaction (orbit, pan, zoom)
+- `THREE.Mesh` with `SphereGeometry` per node + `CSS2DObject` labels
+- `THREE.LineSegments` for links (persistent geometries; position buffers updated in-place each frame)
+- `THREE.Points` with vertex colors for particles (persistent geometry + circular sprite texture)
+- `THREE.Raycaster` for hover/click detection on node spheres
 
-- `renderLinks()`: Draws connections between nodes
-- `renderParticles()`: Draws animated packets with labels
-- `renderNodes()`: Draws node circles with emojis/text
+### Shared Utilities (`utils/visualizerUtils.ts`)
 
-The main component orchestrates rendering via `requestAnimationFrame`.
+Types, constants, and pure functions shared across the codebase:
+
+- Types: `NodeType`, `PacketLabel`, `Particle`, `ObservedPath`, `PendingPacket`, `ParsedPacket`, `TrafficObservation`, `RepeaterTrafficData`, `RepeaterSplitAnalysis`
+- Constants: `COLORS`, `PARTICLE_COLOR_MAP`, `PARTICLE_SPEED`, `DEFAULT_OBSERVATION_WINDOW_SEC`, traffic thresholds, `PACKET_LEGEND_ITEMS`
+- Functions: `simpleHash`, `parsePacket`, `getPacketLabel`, `generatePacketKey`, `getLinkId`, `getNodeType`, `dedupeConsecutive`, `analyzeRepeaterTraffic`, `recordTrafficObservation`
+
+`GraphNode` and `GraphLink` are defined locally in the component — they extend `SimulationNodeDatum3D` and `SimulationLinkDatum` from `d3-force-3d`.
+
+### Type Declarations (`types/d3-force-3d.d.ts`)
+
+Minimal `.d.ts` file for `d3-force-3d` which has no bundled TypeScript types. Declares `SimulationNodeDatum3D` extending `SimulationNodeDatum` with `z`/`vz`/`fz` properties.
 
 ## Packet Processing Pipeline
 
@@ -70,12 +81,14 @@ packets.forEach((packet) => {
 
 Packets are grouped by a unique key to aggregate repeats:
 
-| Packet Type    | Key Format                                |
-| -------------- | ----------------------------------------- |
-| Advertisement  | `ad:{pubkey_prefix_12}`                   |
-| Group Text     | `gt:{channel}:{sender}:{content_hash}`    |
-| Direct Message | `dm:{src_hash}:{dst_hash}:{content_hash}` |
-| Other          | `other:{data_hash}`                       |
+| Packet Type    | Key Format                                             |
+| -------------- | ------------------------------------------------------ |
+| Advertisement  | `ad:{pubkey_prefix_12}`                                |
+| Group Text     | `gt:{channel}:{sender}:{message_hash_or_data_hash}`    |
+| Direct Message | `dm:{src_hash}:{dst_hash}:{message_hash_or_data_hash}` |
+| Other          | `other:{message_hash_or_data_hash}`                    |
+
+`parsePacket()` exposes decoder `messageHash` (path-insensitive). `generatePacketKey()` prefers that hash, falling back to a local data hash for malformed/unsupported packets.
 
 ### 3. Observation Window
 
@@ -86,7 +99,7 @@ if (existing && now < existing.expiresAt) {
   // Append path to existing entry
   existing.paths.push({ nodes: path, snr: packet.snr, timestamp: now });
 } else {
-  // Create new pending entry with 2-second observation window
+  // Create new pending entry with observation window
   pendingPacketsRef.current.set(key, {
     key,
     label,
@@ -120,25 +133,28 @@ function publishPacket(pending: PendingPacket) {
 
 **Key insight:** Particles start with negative progress. This creates smooth flow through multi-hop paths without pausing at intermediate nodes.
 
-## D3 Force Simulation
+## D3 Force Simulation (3D)
 
-The layout uses D3's force simulation with these forces:
+The layout uses `d3-force-3d` with `.numDimensions(3)`:
 
-| Force         | Purpose                                              |
-| ------------- | ---------------------------------------------------- |
-| `link`        | Pulls connected nodes together                       |
-| `charge`      | Repels nodes from each other (self node 6x stronger) |
-| `center`      | Gently pulls graph toward center                     |
-| `collide`     | Prevents node overlap                                |
-| `selfX/selfY` | Anchors self node near center                        |
+| Force               | Purpose                                        |
+| ------------------- | ---------------------------------------------- |
+| `link`              | Pulls connected nodes together (distance: 120) |
+| `charge`            | Repels nodes (self node 6x stronger, max: 800) |
+| `center`            | Gently pulls graph toward origin (0, 0, 0)     |
+| `selfX/selfY/selfZ` | Anchors self node near origin                  |
 
 ### Shuffle Layout
 
-The "Shuffle layout" button randomizes all node positions (except self, which stays centered) and reheats the simulation to alpha=1. This lets users try different random starting configurations to find a cleaner layout.
+The "Shuffle layout" button randomizes all node positions in a 3D sphere (radius 200, except self stays at origin) and reheats the simulation to alpha=1.
 
 ### Continuous Drift
 
-When "Let 'em drift" is enabled, `alphaTarget(0.05)` keeps the simulation running indefinitely, allowing the graph to continuously reorganize into better layouts.
+When "Let 'em drift" is enabled, `alphaTarget(0.05)` keeps the simulation running indefinitely, allowing the graph to continuously reorganize.
+
+### Expand/Contract ("Oooh Big Stretch!")
+
+Temporarily increases repulsion to push nodes apart, then relaxes back. Useful for untangling dense graphs.
 
 ## Node Resolution
 
@@ -147,7 +163,7 @@ Nodes are resolved from various sources:
 ```typescript
 function resolveNode(source, isRepeater, showAmbiguous): string | null {
   // source.type can be: 'pubkey', 'prefix', or 'name'
-  // Try to find matching contact
+  // Use precomputed contact indexes (by 12-char prefix, by name, by shorter prefixes)
   // If found: use full 12-char prefix as node ID
   // If not found and showAmbiguous: create "?prefix" node
   // Otherwise: return null (path terminates)
@@ -156,7 +172,7 @@ function resolveNode(source, isRepeater, showAmbiguous): string | null {
 
 ### Ambiguous Nodes
 
-When only a 1-byte prefix is known (from packet path bytes), the node is marked ambiguous and shown with a `?` prefix and gray styling.
+When only a 1-byte prefix is known (from packet path bytes), the node is marked ambiguous and shown with a `?` prefix and gray styling. However, if the node is identified as a repeater (via advert or path hop), it shows blue regardless of ambiguity.
 
 ### Traffic Pattern Splitting (Experimental)
 
@@ -198,19 +214,12 @@ Here source `ae` routes through `32` to BOTH `ba` and `60`. This proves `32` is 
    - Source sets are completely disjoint (no source appears in multiple groups)
    - Each group has at least 20 unique sources (conservative threshold)
 4. **Final repeaters** (no next hop, connects directly to self): Never split
-   - Rationale: The last repeater before you is clearly a single physical node
 
 **Node ID format:**
 
 - Without splitting (default): `?XX` (e.g., `?32`)
 - With splitting (after evidence threshold met): `?XX:>YY` (e.g., `?32:>ba`)
 - Final repeater: `?XX` (unchanged, no suffix)
-
-**Implementation Notes:**
-
-- Observations are stored with timestamps and pruned after 30 minutes
-- Maximum 200 observations per prefix to limit memory
-- Once split, nodes cannot be un-split (be conservative before splitting)
 
 ## Path Building
 
@@ -243,8 +252,6 @@ function buildPath(parsed, packet, myPrefix): string[] {
 
 ### Sender Extraction by Packet Type
 
-Different packet types provide different levels of sender identification:
-
 | Packet Type    | Sender Info Available          | Resolution                     |
 | -------------- | ------------------------------ | ------------------------------ |
 | Advertisement  | Full 32-byte public key        | Exact contact match            |
@@ -254,106 +261,85 @@ Different packet types provide different levels of sender identification:
 | Request        | 1-byte source hash             | Ambiguous                      |
 | Other          | None                           | Path bytes only                |
 
-**AnonRequest packets** are particularly useful because they include the sender's full public key (unlike regular Request packets which only have a 1-byte hash). This allows exact identification of who is making the request.
+## Node Colors
 
-## Canvas Rendering
-
-### Coordinate Transformation
-
-Pan and zoom are applied via transform matrix:
-
-```typescript
-ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (x + panX), dpr * (y + panY));
-```
-
-### Render Order
-
-1. Clear canvas with background
-2. Draw links (gray lines)
-3. Draw particles (colored dots with labels)
-4. Draw nodes (circles with emojis)
-5. Draw hover tooltip if applicable
+| Color   | Hex       | Meaning                                        |
+| ------- | --------- | ---------------------------------------------- |
+| Green   | `#22c55e` | Self node (larger sphere)                      |
+| Blue    | `#3b82f6` | Repeater                                       |
+| White   | `#ffffff` | Client                                         |
+| Gray    | `#9ca3af` | Unknown/ambiguous (not identified as repeater) |
+| Gold    | `#ffd700` | Active (hovered or pinned) node                |
+| Lt Gold | `#fff0b3` | Neighbors of active node                       |
 
 ## Mouse Interactions
 
-| Action                     | Behavior                                         |
-| -------------------------- | ------------------------------------------------ |
-| Click + drag on node       | Move node to new position (temporarily fixes it) |
-| Release dragged node       | Node returns to force-directed layout            |
-| Click + drag on empty area | Pan the canvas                                   |
-| Scroll wheel               | Zoom in/out                                      |
-| Hover over node            | Shows node details, cursor changes to pointer    |
+| Action                     | Behavior                                    |
+| -------------------------- | ------------------------------------------- |
+| Left-click on node         | Pin: highlight node + links + neighbors     |
+| Left-click pinned node     | Unpin: remove highlights                    |
+| Left-click empty space     | Unpin any pinned node                       |
+| Hover over node            | Shows tooltip with node details + neighbors |
+| Orbit (left-drag on space) | Rotate camera around scene                  |
+| Pan (right-drag)           | Pan the camera                              |
+| Scroll wheel               | Zoom in/out                                 |
 
-**Node Dragging Implementation:**
-
-- On mouse down over a node, sets `fx`/`fy` (D3 fixed position) to lock it
-- On mouse move, updates the fixed position to follow cursor
-- On mouse up, clears `fx`/`fy` so node rejoins the simulation
-- Simulation is slightly reheated during drag for responsive feedback
+**Click-to-pin:** When a node is pinned, hovering other nodes does not change the highlight. The tooltip shows "Traffic exchanged with:" listing all connected neighbors with their possible names.
 
 ## Configuration Options
 
 | Option                     | Default | Description                                               |
 | -------------------------- | ------- | --------------------------------------------------------- |
-| Ambiguous path repeaters   | On      | Show nodes when only partial prefix known                 |
+| Ambiguous repeaters        | On      | Show nodes when only partial prefix known                 |
 | Ambiguous sender/recipient | Off     | Show placeholder nodes for unknown senders                |
 | Split by traffic pattern   | Off     | Split ambiguous repeaters by next-hop routing (see above) |
-| Hide repeaters >48hrs      | Off     | Filter out old repeaters                                  |
 | Observation window         | 15 sec  | Wait time for duplicate packets before animating (1-60s)  |
 | Let 'em drift              | On      | Continuous layout optimization                            |
 | Repulsion                  | 200     | Force strength (50-2500)                                  |
 | Packet speed               | 2x      | Particle animation speed multiplier (1x-5x)               |
 | Shuffle layout             | -       | Button to randomize node positions and reheat sim         |
 | Oooh Big Stretch!          | -       | Button to temporarily increase repulsion then relax       |
+| Clear & Reset              | -       | Button to clear all nodes, links, and packets             |
 | Hide UI                    | Off     | Hide legends and most controls for cleaner view           |
 | Full screen                | Off     | Hide the packet feed panel (desktop only)                 |
 
 ## File Structure
 
 ```
-PacketVisualizer.tsx
-├── TYPES (GraphNode, GraphLink, Particle, etc.)
-├── CONSTANTS (colors, timing, legend items)
-├── UTILITY FUNCTIONS
-│   ├── simpleHash()
-│   ├── parsePacket()
-│   ├── getPacketLabel()
-│   ├── generatePacketKey()
-│   ├── findContactBy*()
-│   ├── dedupeConsecutive()
-│   ├── analyzeRepeaterTraffic()
-│   └── recordTrafficObservation()
-├── DATA LAYER HOOK (useVisualizerData)
-│   ├── Refs (nodes, links, particles, simulation, pending, timers, trafficPatterns)
-│   ├── Simulation initialization
+PacketVisualizer3D.tsx
+├── TYPES (GraphNode extends SimulationNodeDatum3D, GraphLink)
+├── CONSTANTS (NODE_COLORS, NODE_LEGEND_ITEMS)
+├── DATA LAYER HOOK (useVisualizerData3D)
+│   ├── Refs (nodes, links, particles, simulation, pending, timers, trafficPatterns, stretchRaf)
+│   ├── d3-force-3d simulation initialization (.numDimensions(3))
+│   ├── Contact indexing (byPrefix12 / byName / byPrefix)
 │   ├── Node/link management (addNode, addLink, syncSimulation)
 │   ├── Path building (resolveNode, buildPath)
 │   ├── Traffic pattern analysis (for repeater disambiguation)
 │   └── Packet processing & publishing
-├── RENDERING FUNCTIONS
-│   ├── renderLinks()
-│   ├── renderParticles()
-│   └── renderNodes()
-└── MAIN COMPONENT (PacketVisualizer)
-    ├── State (dimensions, options, transform, hover)
-    ├── Event handlers (mouse, wheel)
-    ├── Animation loop
-    └── JSX (canvas, legend, settings panel)
+└── MAIN COMPONENT (PacketVisualizer3D)
+    ├── Three.js scene setup (WebGLRenderer, CSS2DRenderer, OrbitControls)
+    ├── Node mesh management (SphereGeometry + CSS2DObject labels)
+    ├── Link rendering (persistent LineSegments + dynamic position buffer updates)
+    ├── Particle rendering (persistent Points + dynamic position/color buffer updates)
+    ├── Raycasting (hover detection, click-to-pin)
+    ├── State (options, pinned/hovered node, neighbors; change-detected UI updates)
+    └── JSX (container, legend overlay, options panel, tooltip)
+
+utils/visualizerUtils.ts
+├── Types (NodeType, PacketLabel, Particle, PendingPacket, ParsedPacket, etc.)
+├── Constants (COLORS, PARTICLE_COLOR_MAP, PARTICLE_SPEED, PACKET_LEGEND_ITEMS)
+└── Functions (parsePacket, generatePacketKey, analyzeRepeaterTraffic, etc.)
+
+types/d3-force-3d.d.ts
+└── Type declarations for d3-force-3d (SimulationNodeDatum3D, Simulation3D, forces)
 ```
 
 ## Performance Considerations
 
-- **Observation window**: 2 seconds balances latency vs. path aggregation
-- **Max links**: Capped at 100 to prevent graph explosion
+- **Observation window**: Configurable (default 15s) to balance latency vs. path aggregation
+- **Persistent geometries**: Links/highlights/particles are created once; buffers are updated per frame to reduce GC/GPU churn
 - **Particle culling**: Particles removed when progress > 1
-- **Node filtering**: Old repeaters can be hidden to reduce clutter
+- **Change-detected React updates**: Hover + neighbor UI state updates only when values change
 - **requestAnimationFrame**: Render loop tied to display refresh rate
-
-## Future Improvements
-
-The data/rendering split enables:
-
-- WebGL rendering for larger graphs
-- 3D visualization
-- Different layout algorithms
-- Export to other formats
+- **CSS2DRenderer z-index**: Set to 1 so UI overlays (z-10) render above node labels

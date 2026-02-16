@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Contact, RawPacket, RadioConfig } from '../types';
-import { PacketVisualizer } from './PacketVisualizer';
+import { PacketVisualizer3D } from './PacketVisualizer3D';
 import { RawPacketList } from './RawPacketList';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,7 @@ export function VisualizerView({ packets, contacts, config, onClearPackets }: Vi
             <TabsTrigger value="packets">Packet Feed</TabsTrigger>
           </TabsList>
           <TabsContent value="visualizer" className="flex-1 m-0 overflow-hidden">
-            <PacketVisualizer
+            <PacketVisualizer3D
               packets={packets}
               contacts={contacts}
               config={config}
@@ -52,7 +52,7 @@ export function VisualizerView({ packets, contacts, config, onClearPackets }: Vi
             fullScreen ? 'flex-1' : 'flex-1 border-r border-border'
           )}
         >
-          <PacketVisualizer
+          <PacketVisualizer3D
             packets={packets}
             contacts={contacts}
             config={config}

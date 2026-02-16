@@ -48,7 +48,7 @@ frontend/src/
 │   ├── RawPacketList.tsx
 │   ├── MapView.tsx
 │   ├── VisualizerView.tsx
-│   ├── PacketVisualizer.tsx
+│   ├── PacketVisualizer3D.tsx
 │   ├── PathModal.tsx
 │   ├── CrackerPanel.tsx
 │   ├── BotCodeEditor.tsx
@@ -97,6 +97,12 @@ Specialized logic is delegated to hooks:
 - Backend also emits WS `message` for outgoing sends so other clients stay in sync.
 - ACK/repeat updates arrive as `message_acked` events.
 - Outgoing channel messages show a 30-second resend control; resend calls `POST /api/messages/channel/{message_id}/resend`.
+
+### Visualizer behavior
+
+- `VisualizerView.tsx` hosts `PacketVisualizer3D.tsx` (desktop split-pane and mobile tabs).
+- `PacketVisualizer3D` uses persistent Three.js geometries for links/highlights/particles and updates typed-array buffers in-place per frame.
+- Packet repeat aggregation keys prefer decoder `messageHash` (path-insensitive), with hash fallback for malformed packets.
 
 ## WebSocket (`useWebSocket.ts`)
 
