@@ -892,7 +892,7 @@ export function PacketVisualizer3D({
   // Options
   const [showAmbiguousPaths, setShowAmbiguousPaths] = useState(true);
   const [showAmbiguousNodes, setShowAmbiguousNodes] = useState(false);
-  const [splitAmbiguousByTraffic, setSplitAmbiguousByTraffic] = useState(false);
+  const [splitAmbiguousByTraffic, setSplitAmbiguousByTraffic] = useState(true);
   const [chargeStrength, setChargeStrength] = useState(-200);
   const [observationWindowSec, setObservationWindowSec] = useState(DEFAULT_OBSERVATION_WINDOW_SEC);
   const [letEmDrift, setLetEmDrift] = useState(true);
