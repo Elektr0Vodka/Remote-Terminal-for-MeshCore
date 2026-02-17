@@ -50,14 +50,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from './components/ui/sh
 import { Toaster, toast } from './components/ui/sonner';
 import { getStateKey } from './utils/conversationState';
 import { cn } from '@/lib/utils';
-import type {
-  Contact,
-  Conversation,
-  HealthStatus,
-  Message,
-  MessagePath,
-  RawPacket,
-} from './types';
+import type { Contact, Conversation, HealthStatus, Message, MessagePath, RawPacket } from './types';
 
 const MAX_RAW_PACKETS = 500;
 
@@ -320,7 +313,18 @@ export function App() {
         messageCache.updateAck(messageId, ackCount, paths);
       },
     }),
-    [addMessageIfNew, trackNewMessage, incrementUnread, updateMessageAck, checkMention, prevHealthRef, setHealth, setConfig, activeConversationRef, setContacts]
+    [
+      addMessageIfNew,
+      trackNewMessage,
+      incrementUnread,
+      updateMessageAck,
+      checkMention,
+      prevHealthRef,
+      setHealth,
+      setConfig,
+      activeConversationRef,
+      setContacts,
+    ]
   );
 
   // Connect to WebSocket
@@ -343,7 +347,15 @@ export function App() {
         console.error(err);
         setContactsLoaded(true);
       });
-  }, [fetchConfig, fetchAppSettings, fetchUndecryptedCount, fetchAllContacts, setChannels, setContacts, setContactsLoaded]);
+  }, [
+    fetchConfig,
+    fetchAppSettings,
+    fetchUndecryptedCount,
+    fetchAllContacts,
+    setChannels,
+    setContacts,
+    setContactsLoaded,
+  ]);
 
   // Send message handler
   const handleSendMessage = useCallback(
