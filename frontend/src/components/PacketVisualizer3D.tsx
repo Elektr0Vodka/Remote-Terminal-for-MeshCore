@@ -1177,7 +1177,7 @@ export function PacketVisualizer3D({
         let nd = nodeMeshesRef.current.get(node.id);
         if (!nd) {
           const isSelf = node.type === 'self';
-          const radius = isSelf ? 8 : 4;
+          const radius = isSelf ? 12 : 6;
           const geometry = new THREE.SphereGeometry(radius, 16, 12);
           const material = new THREE.MeshBasicMaterial({ color: getBaseNodeColor(node) });
           const mesh = new THREE.Mesh(geometry, material);
