@@ -49,6 +49,7 @@ const CrackerPanel = lazy(() =>
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from './components/ui/sheet';
 import { Toaster, toast } from './components/ui/sonner';
 import { getStateKey } from './utils/conversationState';
+import { appendRawPacketUnique } from './utils/rawPacketIdentity';
 import { cn } from '@/lib/utils';
 import type { Contact, Conversation, HealthStatus, Message, MessagePath, RawPacket } from './types';
 
@@ -297,16 +298,7 @@ export function App() {
         });
       },
       onRawPacket: (packet: RawPacket) => {
-        setRawPackets((prev) => {
-          if (prev.some((p) => p.id === packet.id)) {
-            return prev;
-          }
-          const updated = [...prev, packet];
-          if (updated.length > MAX_RAW_PACKETS) {
-            return updated.slice(-MAX_RAW_PACKETS);
-          }
-          return updated;
-        });
+        setRawPackets((prev) => appendRawPacketUnique(prev, packet, MAX_RAW_PACKETS));
       },
       onMessageAcked: (messageId: number, ackCount: number, paths?: MessagePath[]) => {
         updateMessageAck(messageId, ackCount, paths);

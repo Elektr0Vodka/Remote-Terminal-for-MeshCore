@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { MeshCoreDecoder, PayloadType, Utils } from '@michaelhart/meshcore-decoder';
 import type { RawPacket } from '../types';
+import { getRawPacketObservationKey } from '../utils/rawPacketIdentity';
 import { cn } from '@/lib/utils';
 
 interface RawPacketListProps {
@@ -207,7 +208,10 @@ export function RawPacketList({ packets }: RawPacketListProps) {
   return (
     <div className="h-full overflow-y-auto p-4 flex flex-col gap-2" ref={listRef}>
       {sortedPackets.map(({ packet, decoded }) => (
-        <div key={packet.id} className="py-2 px-3 bg-card rounded-md border border-border/50">
+        <div
+          key={getRawPacketObservationKey(packet)}
+          className="py-2 px-3 bg-card rounded-md border border-border/50"
+        >
           <div className="flex items-center gap-2">
             {/* Route type badge */}
             <span

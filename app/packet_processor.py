@@ -15,6 +15,7 @@ are offloaded from the radio to the server.
 import asyncio
 import logging
 import time
+from itertools import count
 
 from app.decoder import (
     DecryptedDirectMessage,
@@ -37,6 +38,8 @@ from app.repository import (
 from app.websocket import broadcast_error, broadcast_event
 
 logger = logging.getLogger(__name__)
+
+_raw_observation_counter = count(1)
 
 
 async def _handle_duplicate_message(
@@ -476,6 +479,7 @@ async def process_raw_packet(
     since the original packet was already processed.
     """
     ts = timestamp or int(time.time())
+    observation_id = next(_raw_observation_counter)
 
     packet_id, is_new_packet = await RawPacketRepository.create(raw_bytes, ts)
     raw_hex = raw_bytes.hex()
@@ -531,6 +535,7 @@ async def process_raw_packet(
     # This enables the frontend cracker to see all incoming packets in real-time
     broadcast_payload = RawPacketBroadcast(
         id=packet_id,
+        observation_id=observation_id,
         timestamp=ts,
         data=raw_hex,
         payload_type=payload_type_name,

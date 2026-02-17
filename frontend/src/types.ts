@@ -98,6 +98,8 @@ export interface Conversation {
 
 export interface RawPacket {
   id: number;
+  /** Per-observation WS identity (unique per RF arrival, may be absent in older payloads) */
+  observation_id?: number;
   timestamp: number;
   data: string; // hex
   payload_type: string;

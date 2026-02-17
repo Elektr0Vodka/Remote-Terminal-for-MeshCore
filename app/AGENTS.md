@@ -81,8 +81,11 @@ app/
 
 ### Raw packet dedup policy
 
-- Path diversity is meaningful: same payload observed across different paths should be retained/represented.
-- Only truly identical packet observations should be dropped as duplicates.
+- Raw packet storage deduplicates by payload hash (`RawPacketRepository.create`), excluding routing/path bytes.
+- Stored packet `id` is therefore a payload identity, not a per-arrival identity.
+- Realtime raw-packet WS broadcasts include `observation_id` (unique per RF arrival) in addition to `id`.
+- Frontend packet-feed features should key/dedupe by `observation_id`; use `id` only as the storage reference.
+- Message-layer repeat handling (`_handle_duplicate_message` + `MessageRepository.add_path`) is separate from raw-packet storage dedup.
 
 ### Periodic advertisement
 

@@ -107,13 +107,17 @@ Specialized logic is delegated to hooks:
 - `VisualizerView.tsx` hosts `PacketVisualizer3D.tsx` (desktop split-pane and mobile tabs).
 - `PacketVisualizer3D` uses persistent Three.js geometries for links/highlights/particles and updates typed-array buffers in-place per frame.
 - Packet repeat aggregation keys prefer decoder `messageHash` (path-insensitive), with hash fallback for malformed packets.
-- Keep packet repeats that add distinct path observations; only drop truly identical duplicate observations.
+- Raw packet events carry both:
+  - `id`: backend storage row identity (payload-level dedup)
+  - `observation_id`: realtime per-arrival identity (session fidelity)
+- Packet feed/visualizer render keys and dedup logic should use `observation_id` (fallback to `id` only for older payloads).
 
 ## WebSocket (`useWebSocket.ts`)
 
 - Auto reconnect (3s) with cleanup guard on unmount.
 - Heartbeat ping every 30s.
 - Event handlers: `health`, `message`, `contact`, `raw_packet`, `message_acked`, `error`, `success`, `pong` (ignored).
+- For `raw_packet` events, use `observation_id` as event identity; `id` is a storage reference and may repeat.
 
 ## URL Hash Navigation (`utils/urlHash.ts`)
 

@@ -17,6 +17,7 @@ import {
 import type { SimulationLinkDatum } from 'd3-force';
 import { PayloadType } from '@michaelhart/meshcore-decoder';
 import { CONTACT_TYPE_REPEATER, type Contact, type RawPacket, type RadioConfig } from '../types';
+import { getRawPacketObservationKey } from '../utils/rawPacketIdentity';
 import { Checkbox } from './ui/checkbox';
 import {
   type NodeType,
@@ -145,7 +146,7 @@ function useVisualizerData3D({
   const linksRef = useRef<Map<string, GraphLink>>(new Map());
   const particlesRef = useRef<Particle[]>([]);
   const simulationRef = useRef<Simulation3D<GraphNode, GraphLink> | null>(null);
-  const processedRef = useRef<Set<number>>(new Set());
+  const processedRef = useRef<Set<string>>(new Set());
   const pendingRef = useRef<Map<string, PendingPacket>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const trafficPatternsRef = useRef<Map<string, RepeaterTrafficData>>(new Map());
@@ -592,8 +593,9 @@ function useVisualizerData3D({
     const myPrefix = config?.public_key?.slice(0, 12).toLowerCase() || null;
 
     for (const packet of packets) {
-      if (processedRef.current.has(packet.id)) continue;
-      processedRef.current.add(packet.id);
+      const observationKey = getRawPacketObservationKey(packet);
+      if (processedRef.current.has(observationKey)) continue;
+      processedRef.current.add(observationKey);
       newProcessed++;
 
       if (processedRef.current.size > 1000) {

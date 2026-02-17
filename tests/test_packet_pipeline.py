@@ -1638,6 +1638,43 @@ class TestProcessRawPacketIntegration:
         raw_broadcasts = [b for b in broadcasts if b["type"] == "raw_packet"]
         assert len(raw_broadcasts) == 1
         assert raw_broadcasts[0]["data"]["payload_type"] == "ACK"
+        assert isinstance(raw_broadcasts[0]["data"]["observation_id"], int)
+        assert raw_broadcasts[0]["data"]["observation_id"] > 0
+
+    @pytest.mark.asyncio
+    async def test_duplicate_payload_has_same_packet_id_but_unique_observation_ids(
+        self, test_db, captured_broadcasts
+    ):
+        """Path-diverse duplicates share storage id but retain unique observation ids."""
+        from app.packet_processor import process_raw_packet
+
+        broadcasts, mock_broadcast = captured_broadcasts
+
+        ack_info = PacketInfo(
+            route_type=1,
+            payload_type=PayloadType.ACK,
+            payload_version=0,
+            path_length=0,
+            path=b"",
+            payload=b"\x00" * 10,
+        )
+
+        # Same payload bytes, different path bytes in packet header/path region.
+        raw_1 = bytes([0x01, 0x01, 0xAA]) + b"PAYLOAD-1234"
+        raw_2 = bytes([0x01, 0x02, 0xBB, 0xCC]) + b"PAYLOAD-1234"
+
+        with patch("app.packet_processor.broadcast_event", mock_broadcast):
+            with patch("app.packet_processor.parse_packet", return_value=ack_info):
+                await process_raw_packet(raw_1, timestamp=5001)
+                await process_raw_packet(raw_2, timestamp=5002)
+
+        raw_broadcasts = [b for b in broadcasts if b["type"] == "raw_packet"]
+        assert len(raw_broadcasts) == 2
+
+        first = raw_broadcasts[0]["data"]
+        second = raw_broadcasts[1]["data"]
+        assert first["id"] == second["id"]  # Same DB packet row
+        assert first["observation_id"] != second["observation_id"]  # Distinct RF observations
 
     @pytest.mark.asyncio
     async def test_result_structure(self, test_db, captured_broadcasts):

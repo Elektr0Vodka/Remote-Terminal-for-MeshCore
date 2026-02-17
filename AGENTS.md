@@ -104,9 +104,11 @@ The following are **deliberate design choices**, not bugs. They are documented i
 
 ## Intentional Packet Handling Decision
 
-Raw packet deduplication is path-aware by design:
-- Keep repeats that represent the same payload arriving via different mesh paths (this path diversity is useful).
-- Drop packets that are truly identical observations (same payload and same effective pathing observation) to avoid redundant noise.
+Raw packet handling uses two identities by design:
+- **`id` (DB packet row ID)**: storage identity from payload-hash deduplication (path bytes are excluded), so repeated payloads share one stored raw-packet row.
+- **`observation_id` (WebSocket only)**: realtime observation identity, unique per RF arrival, so path-diverse repeats are still visible in-session.
+
+Frontend packet-feed consumers should treat `observation_id` as the dedup/render key, while `id` remains the storage reference.
 
 ## Data Flow
 
@@ -130,6 +132,8 @@ Raw packet deduplication is path-aware by design:
 **Direct messages**: Expected ACK code is tracked. When ACK event arrives, message marked as acked.
 
 **Channel messages**: Flood messages echo back through repeaters. Repeats are identified by the database UNIQUE constraint on `(type, conversation_key, text, sender_timestamp)` — when an INSERT hits a duplicate, `_handle_duplicate_message()` in `packet_processor.py` increments the ack count on the original and adds the new path. There is no timestamp-windowed matching; deduplication is exact-match only.
+
+This message-layer echo/path handling is independent of raw-packet storage deduplication.
 
 ## Directory Structure
 

@@ -118,6 +118,11 @@ class RawPacketBroadcast(BaseModel):
     """
 
     id: int
+    observation_id: int = Field(
+        description=(
+            "Monotonic per-process ID for this RF observation (distinct from the DB packet row ID)"
+        )
+    )
     timestamp: int
     data: str = Field(description="Hex-encoded packet data")
     payload_type: str = Field(description="Packet type name (e.g., GROUP_TEXT, ADVERT)")
