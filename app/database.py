@@ -41,12 +41,13 @@ CREATE TABLE IF NOT EXISTS messages (
     txt_type INTEGER DEFAULT 0,
     signature TEXT,
     outgoing INTEGER DEFAULT 0,
-    acked INTEGER DEFAULT 0,
+    acked INTEGER DEFAULT 0
     -- Deduplication: identical text + timestamp in the same conversation is treated as a
     -- mesh echo/repeat. Second-precision timestamps mean two intentional identical messages
     -- within the same second would collide, but this is not feasible in practice — LoRa
     -- transmission takes several seconds per message, and the UI clears the input on send.
-    UNIQUE(type, conversation_key, text, sender_timestamp)
+    -- Enforced via idx_messages_dedup_null_safe (unique index) rather than a table constraint
+    -- to avoid the storage overhead of SQLite's autoindex duplicating every message text.
 );
 
 CREATE TABLE IF NOT EXISTS raw_packets (
@@ -60,6 +61,8 @@ CREATE TABLE IF NOT EXISTS raw_packets (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(type, conversation_key);
 CREATE INDEX IF NOT EXISTS idx_messages_received ON messages(received_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_dedup_null_safe
+    ON messages(type, conversation_key, text, COALESCE(sender_timestamp, 0));
 CREATE INDEX IF NOT EXISTS idx_raw_packets_message_id ON raw_packets(message_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_packets_payload_hash ON raw_packets(payload_hash);
 CREATE INDEX IF NOT EXISTS idx_contacts_on_radio ON contacts(on_radio);

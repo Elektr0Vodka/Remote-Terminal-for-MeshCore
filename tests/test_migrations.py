@@ -100,8 +100,8 @@ class TestMigration001:
             # Run migrations
             applied = await run_migrations(conn)
 
-            assert applied == 17  # All 17 migrations run
-            assert await get_version(conn) == 17
+            assert applied == 19  # All 17 migrations run
+            assert await get_version(conn) == 19
 
             # Verify columns exist by inserting and selecting
             await conn.execute(
@@ -183,9 +183,9 @@ class TestMigration001:
             applied1 = await run_migrations(conn)
             applied2 = await run_migrations(conn)
 
-            assert applied1 == 17  # All 17 migrations run
+            assert applied1 == 19  # All 19 migrations run
             assert applied2 == 0  # No migrations on second run
-            assert await get_version(conn) == 17
+            assert await get_version(conn) == 19
         finally:
             await conn.close()
 
@@ -246,8 +246,8 @@ class TestMigration001:
             applied = await run_migrations(conn)
 
             # All 17 migrations applied (version incremented) but no error
-            assert applied == 17
-            assert await get_version(conn) == 17
+            assert applied == 19
+            assert await get_version(conn) == 19
         finally:
             await conn.close()
 
@@ -374,10 +374,10 @@ class TestMigration013:
             )
             await conn.commit()
 
-            # Run migration 13 (plus 14+15+16+17 which also run)
+            # Run migration 13 (plus 14-19 which also run)
             applied = await run_migrations(conn)
-            assert applied == 5
-            assert await get_version(conn) == 17
+            assert applied == 7
+            assert await get_version(conn) == 19
 
             # Verify bots array was created with migrated data
             cursor = await conn.execute("SELECT bots FROM app_settings WHERE id = 1")
@@ -429,5 +429,255 @@ class TestMigration013:
             bots = json.loads(row["bots"])
 
             assert bots == []
+        finally:
+            await conn.close()
+
+
+class TestMigration018:
+    """Test migration 018: drop UNIQUE(data) from raw_packets."""
+
+    @pytest.mark.asyncio
+    async def test_migration_drops_data_unique_constraint(self):
+        """Migration rebuilds raw_packets without UNIQUE(data), preserving data."""
+        conn = await aiosqlite.connect(":memory:")
+        conn.row_factory = aiosqlite.Row
+        try:
+            await set_version(conn, 17)
+
+            # Create raw_packets WITH UNIQUE(data) — simulates production schema
+            await conn.execute("""
+                CREATE TABLE raw_packets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    data BLOB NOT NULL UNIQUE,
+                    message_id INTEGER,
+                    payload_hash TEXT
+                )
+            """)
+            await conn.execute(
+                "CREATE UNIQUE INDEX idx_raw_packets_payload_hash ON raw_packets(payload_hash)"
+            )
+            await conn.execute("CREATE INDEX idx_raw_packets_message_id ON raw_packets(message_id)")
+
+            # Insert test data
+            await conn.execute(
+                "INSERT INTO raw_packets (timestamp, data, payload_hash) VALUES (?, ?, ?)",
+                (1000, b"\x01\x02\x03", "hash_a"),
+            )
+            await conn.execute(
+                "INSERT INTO raw_packets (timestamp, data, message_id, payload_hash) VALUES (?, ?, ?, ?)",
+                (2000, b"\x04\x05\x06", 42, "hash_b"),
+            )
+            # Create messages table stub (needed for migration 19)
+            await conn.execute("""
+                CREATE TABLE messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL,
+                    conversation_key TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    sender_timestamp INTEGER,
+                    received_at INTEGER NOT NULL,
+                    txt_type INTEGER DEFAULT 0,
+                    signature TEXT,
+                    outgoing INTEGER DEFAULT 0,
+                    acked INTEGER DEFAULT 0,
+                    paths TEXT
+                )
+            """)
+            await conn.execute(
+                """CREATE UNIQUE INDEX idx_messages_dedup_null_safe
+                   ON messages(type, conversation_key, text, COALESCE(sender_timestamp, 0))"""
+            )
+            await conn.commit()
+
+            # Verify autoindex exists before migration
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='sqlite_autoindex_raw_packets_1'"
+            )
+            assert await cursor.fetchone() is not None
+
+            await run_migrations(conn)
+            assert await get_version(conn) == 19
+
+            # Verify autoindex is gone
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='sqlite_autoindex_raw_packets_1'"
+            )
+            assert await cursor.fetchone() is None
+
+            # Verify data is preserved
+            cursor = await conn.execute("SELECT COUNT(*) FROM raw_packets")
+            assert (await cursor.fetchone())[0] == 2
+
+            cursor = await conn.execute(
+                "SELECT timestamp, data, message_id, payload_hash FROM raw_packets ORDER BY id"
+            )
+            rows = await cursor.fetchall()
+            assert rows[0]["timestamp"] == 1000
+            assert bytes(rows[0]["data"]) == b"\x01\x02\x03"
+            assert rows[0]["message_id"] is None
+            assert rows[0]["payload_hash"] == "hash_a"
+            assert rows[1]["message_id"] == 42
+
+            # Verify payload_hash unique index still works
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='idx_raw_packets_payload_hash'"
+            )
+            assert await cursor.fetchone() is not None
+        finally:
+            await conn.close()
+
+    @pytest.mark.asyncio
+    async def test_migration_skips_when_no_unique_constraint(self):
+        """Migration is a no-op when UNIQUE(data) is already absent."""
+        conn = await aiosqlite.connect(":memory:")
+        conn.row_factory = aiosqlite.Row
+        try:
+            await set_version(conn, 17)
+
+            # Create raw_packets WITHOUT UNIQUE(data) — fresh install schema
+            await conn.execute("""
+                CREATE TABLE raw_packets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    data BLOB NOT NULL,
+                    message_id INTEGER,
+                    payload_hash TEXT
+                )
+            """)
+            await conn.execute(
+                "CREATE UNIQUE INDEX idx_raw_packets_payload_hash ON raw_packets(payload_hash)"
+            )
+            # Messages stub for migration 19
+            await conn.execute("""
+                CREATE TABLE messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL,
+                    conversation_key TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    sender_timestamp INTEGER,
+                    received_at INTEGER NOT NULL,
+                    txt_type INTEGER DEFAULT 0,
+                    signature TEXT,
+                    outgoing INTEGER DEFAULT 0,
+                    acked INTEGER DEFAULT 0,
+                    paths TEXT
+                )
+            """)
+            await conn.execute(
+                """CREATE UNIQUE INDEX idx_messages_dedup_null_safe
+                   ON messages(type, conversation_key, text, COALESCE(sender_timestamp, 0))"""
+            )
+            await conn.commit()
+
+            applied = await run_migrations(conn)
+            assert applied == 2  # Migrations 18+19 run (but both skip internally)
+            assert await get_version(conn) == 19
+        finally:
+            await conn.close()
+
+
+class TestMigration019:
+    """Test migration 019: drop UNIQUE constraint from messages."""
+
+    @pytest.mark.asyncio
+    async def test_migration_drops_messages_unique_constraint(self):
+        """Migration rebuilds messages without UNIQUE, preserving data and dedup index."""
+        conn = await aiosqlite.connect(":memory:")
+        conn.row_factory = aiosqlite.Row
+        try:
+            await set_version(conn, 17)
+
+            # raw_packets stub (no UNIQUE on data, so migration 18 skips)
+            await conn.execute("""
+                CREATE TABLE raw_packets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    data BLOB NOT NULL,
+                    message_id INTEGER,
+                    payload_hash TEXT
+                )
+            """)
+            # Create messages WITH UNIQUE constraint — simulates production schema
+            await conn.execute("""
+                CREATE TABLE messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL,
+                    conversation_key TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    sender_timestamp INTEGER,
+                    received_at INTEGER NOT NULL,
+                    txt_type INTEGER DEFAULT 0,
+                    signature TEXT,
+                    outgoing INTEGER DEFAULT 0,
+                    acked INTEGER DEFAULT 0,
+                    paths TEXT,
+                    UNIQUE(type, conversation_key, text, sender_timestamp)
+                )
+            """)
+            await conn.execute(
+                "CREATE INDEX idx_messages_conversation ON messages(type, conversation_key)"
+            )
+            await conn.execute("CREATE INDEX idx_messages_received ON messages(received_at)")
+            await conn.execute(
+                """CREATE UNIQUE INDEX idx_messages_dedup_null_safe
+                   ON messages(type, conversation_key, text, COALESCE(sender_timestamp, 0))"""
+            )
+
+            # Insert test data
+            await conn.execute(
+                "INSERT INTO messages (type, conversation_key, text, sender_timestamp, received_at, paths) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("CHAN", "KEY1", "hello world", 1000, 1000, '[{"path":"ab","received_at":1000}]'),
+            )
+            await conn.execute(
+                "INSERT INTO messages (type, conversation_key, text, sender_timestamp, received_at, outgoing) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("PRIV", "abc123", "dm text", 2000, 2000, 1),
+            )
+            await conn.commit()
+
+            # Verify autoindex exists before migration
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='sqlite_autoindex_messages_1'"
+            )
+            assert await cursor.fetchone() is not None
+
+            await run_migrations(conn)
+            assert await get_version(conn) == 19
+
+            # Verify autoindex is gone
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='sqlite_autoindex_messages_1'"
+            )
+            assert await cursor.fetchone() is None
+
+            # Verify data is preserved
+            cursor = await conn.execute("SELECT COUNT(*) FROM messages")
+            assert (await cursor.fetchone())[0] == 2
+
+            cursor = await conn.execute(
+                "SELECT type, conversation_key, text, paths, outgoing FROM messages ORDER BY id"
+            )
+            rows = await cursor.fetchall()
+            assert rows[0]["type"] == "CHAN"
+            assert rows[0]["text"] == "hello world"
+            assert rows[0]["paths"] == '[{"path":"ab","received_at":1000}]'
+            assert rows[1]["type"] == "PRIV"
+            assert rows[1]["outgoing"] == 1
+
+            # Verify dedup index still works (INSERT OR IGNORE should ignore duplicates)
+            cursor = await conn.execute(
+                "INSERT OR IGNORE INTO messages (type, conversation_key, text, sender_timestamp, received_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("CHAN", "KEY1", "hello world", 1000, 9999),
+            )
+            assert cursor.rowcount == 0  # Duplicate ignored
+
+            # Verify dedup index exists
+            cursor = await conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='idx_messages_dedup_null_safe'"
+            )
+            assert await cursor.fetchone() is not None
         finally:
             await conn.close()

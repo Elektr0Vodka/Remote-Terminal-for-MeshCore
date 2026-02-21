@@ -156,10 +156,30 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 17)
         applied += 1
 
+    # Migration 18: Drop UNIQUE(data) constraint on raw_packets (redundant with payload_hash)
+    if version < 18:
+        logger.info("Applying migration 18: drop raw_packets UNIQUE(data) constraint")
+        await _migrate_018_drop_raw_packets_data_unique(conn)
+        await set_version(conn, 18)
+        applied += 1
+
+    # Migration 19: Drop UNIQUE constraint on messages (redundant with dedup_null_safe index)
+    if version < 19:
+        logger.info("Applying migration 19: drop messages UNIQUE constraint")
+        await _migrate_019_drop_messages_unique_constraint(conn)
+        await set_version(conn, 19)
+        applied += 1
+
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
         )
+
+        # Reclaim disk space after table-rebuild migrations
+        if version < 19:
+            logger.info("Running VACUUM to reclaim disk space (this may take a moment)...")
+            await conn.execute("VACUUM")
+            logger.info("VACUUM complete")
     else:
         logger.debug("Schema up to date at version %d", version)
 
@@ -1054,3 +1074,140 @@ async def _migrate_017_drop_experimental_channel_double_send(conn: aiosqlite.Con
             raise
 
     await conn.commit()
+
+
+async def _migrate_018_drop_raw_packets_data_unique(conn: aiosqlite.Connection) -> None:
+    """
+    Drop the UNIQUE constraint on raw_packets.data via table rebuild.
+
+    This constraint creates a large autoindex (~30 MB on a 340K-row database) that
+    stores a complete copy of every raw packet BLOB in a B-tree. Deduplication is
+    already handled by the unique index on payload_hash, making the data UNIQUE
+    constraint pure storage overhead.
+
+    Requires table recreation since SQLite doesn't support DROP CONSTRAINT.
+    """
+    # Check if the autoindex exists (indicates UNIQUE constraint on data)
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' "
+        "AND name='sqlite_autoindex_raw_packets_1'"
+    )
+    if not await cursor.fetchone():
+        logger.debug("raw_packets.data UNIQUE constraint already absent, skipping rebuild")
+        await conn.commit()
+        return
+
+    logger.info("Rebuilding raw_packets table to remove UNIQUE(data) constraint...")
+
+    # Get current columns from the existing table
+    cursor = await conn.execute("PRAGMA table_info(raw_packets)")
+    old_cols = {col[1] for col in await cursor.fetchall()}
+
+    # Target schema without UNIQUE on data
+    await conn.execute("""
+        CREATE TABLE raw_packets_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            data BLOB NOT NULL,
+            message_id INTEGER,
+            payload_hash TEXT,
+            FOREIGN KEY (message_id) REFERENCES messages(id)
+        )
+    """)
+
+    # Copy only columns that exist in both old and new tables
+    new_cols = {"id", "timestamp", "data", "message_id", "payload_hash"}
+    copy_cols = ", ".join(sorted(c for c in new_cols if c in old_cols))
+
+    await conn.execute(
+        f"INSERT INTO raw_packets_new ({copy_cols}) SELECT {copy_cols} FROM raw_packets"
+    )
+    await conn.execute("DROP TABLE raw_packets")
+    await conn.execute("ALTER TABLE raw_packets_new RENAME TO raw_packets")
+
+    # Recreate indexes
+    await conn.execute(
+        "CREATE UNIQUE INDEX idx_raw_packets_payload_hash ON raw_packets(payload_hash)"
+    )
+    await conn.execute("CREATE INDEX idx_raw_packets_message_id ON raw_packets(message_id)")
+
+    await conn.commit()
+    logger.info("raw_packets table rebuilt without UNIQUE(data) constraint")
+
+
+async def _migrate_019_drop_messages_unique_constraint(conn: aiosqlite.Connection) -> None:
+    """
+    Drop the UNIQUE(type, conversation_key, text, sender_timestamp) constraint on messages.
+
+    This constraint creates a large autoindex (~13 MB on a 112K-row database) that
+    stores the full message text in a B-tree. The idx_messages_dedup_null_safe unique
+    index already provides identical dedup protection — no rows have NULL
+    sender_timestamp since migration 15 backfilled them all.
+
+    INSERT OR IGNORE still works correctly because it checks all unique constraints,
+    including unique indexes like idx_messages_dedup_null_safe.
+
+    Requires table recreation since SQLite doesn't support DROP CONSTRAINT.
+    """
+    # Check if the autoindex exists (indicates UNIQUE constraint)
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='sqlite_autoindex_messages_1'"
+    )
+    if not await cursor.fetchone():
+        logger.debug("messages UNIQUE constraint already absent, skipping rebuild")
+        await conn.commit()
+        return
+
+    logger.info("Rebuilding messages table to remove UNIQUE constraint...")
+
+    # Get current columns from the existing table
+    cursor = await conn.execute("PRAGMA table_info(messages)")
+    old_cols = {col[1] for col in await cursor.fetchall()}
+
+    # Target schema without the UNIQUE table constraint
+    await conn.execute("""
+        CREATE TABLE messages_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            conversation_key TEXT NOT NULL,
+            text TEXT NOT NULL,
+            sender_timestamp INTEGER,
+            received_at INTEGER NOT NULL,
+            txt_type INTEGER DEFAULT 0,
+            signature TEXT,
+            outgoing INTEGER DEFAULT 0,
+            acked INTEGER DEFAULT 0,
+            paths TEXT
+        )
+    """)
+
+    # Copy only columns that exist in both old and new tables
+    new_cols = {
+        "id",
+        "type",
+        "conversation_key",
+        "text",
+        "sender_timestamp",
+        "received_at",
+        "txt_type",
+        "signature",
+        "outgoing",
+        "acked",
+        "paths",
+    }
+    copy_cols = ", ".join(sorted(c for c in new_cols if c in old_cols))
+
+    await conn.execute(f"INSERT INTO messages_new ({copy_cols}) SELECT {copy_cols} FROM messages")
+    await conn.execute("DROP TABLE messages")
+    await conn.execute("ALTER TABLE messages_new RENAME TO messages")
+
+    # Recreate indexes
+    await conn.execute("CREATE INDEX idx_messages_conversation ON messages(type, conversation_key)")
+    await conn.execute("CREATE INDEX idx_messages_received ON messages(received_at)")
+    await conn.execute(
+        """CREATE UNIQUE INDEX idx_messages_dedup_null_safe
+           ON messages(type, conversation_key, text, COALESCE(sender_timestamp, 0))"""
+    )
+
+    await conn.commit()
+    logger.info("messages table rebuilt without UNIQUE constraint")
