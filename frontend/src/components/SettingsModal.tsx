@@ -657,11 +657,11 @@ export function SettingsModal(props: SettingsModalProps) {
   const sectionWrapperClass = 'border border-input rounded-md overflow-hidden';
 
   const sectionContentClass = externalDesktopSidebarMode
-    ? 'space-y-4 p-4 h-full overflow-y-auto'
+    ? 'space-y-4 p-4'
     : 'space-y-4 p-4 border-t border-input';
 
   const settingsContainerClass = externalDesktopSidebarMode
-    ? 'w-full h-full'
+    ? 'w-full h-full overflow-y-auto'
     : 'w-full h-full overflow-y-auto space-y-3';
 
   const sectionButtonClasses =
