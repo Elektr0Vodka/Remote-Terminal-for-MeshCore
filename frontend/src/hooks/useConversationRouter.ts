@@ -5,6 +5,11 @@ import {
   resolveChannelFromHashToken,
   resolveContactFromHashToken,
 } from '../utils/urlHash';
+import {
+  getLastViewedConversation,
+  getReopenLastConversationEnabled,
+  saveLastViewedConversation,
+} from '../utils/lastViewedConversation';
 import { getContactDisplayName } from '../utils/pubkey';
 import type { Channel, Contact, Conversation } from '../types';
 
@@ -29,6 +34,16 @@ export function useConversationRouter({
 }: UseConversationRouterArgs) {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const activeConversationRef = useRef<Conversation | null>(null);
+
+  const getPublicChannelConversation = useCallback((): Conversation | null => {
+    const publicChannel = channels.find((c) => c.name === 'Public');
+    if (!publicChannel) return null;
+    return {
+      type: 'channel',
+      id: publicChannel.key,
+      name: publicChannel.name,
+    };
+  }, [channels]);
 
   // Phase 1: Set initial conversation from URL hash or default to Public channel
   // Only needs channels (fast path) - doesn't wait for contacts
@@ -73,17 +88,49 @@ export function useConversationRouter({
     // Contact hash — wait for phase 2
     if (hashConv?.type === 'contact') return;
 
+    // No hash: optionally restore last-viewed conversation if enabled on this device.
+    if (!hashConv && getReopenLastConversationEnabled()) {
+      const lastViewed = getLastViewedConversation();
+      if (lastViewed?.type === 'raw') {
+        setActiveConversation(lastViewed);
+        hasSetDefaultConversation.current = true;
+        return;
+      }
+      if (lastViewed?.type === 'map') {
+        setActiveConversation(lastViewed);
+        hasSetDefaultConversation.current = true;
+        return;
+      }
+      if (lastViewed?.type === 'visualizer') {
+        setActiveConversation(lastViewed);
+        hasSetDefaultConversation.current = true;
+        return;
+      }
+      if (lastViewed?.type === 'channel') {
+        const channel =
+          channels.find((c) => c.key.toLowerCase() === lastViewed.id.toLowerCase()) ||
+          resolveChannelFromHashToken(lastViewed.id, channels);
+        if (channel) {
+          setActiveConversation({
+            type: 'channel',
+            id: channel.key,
+            name: channel.name,
+          });
+          hasSetDefaultConversation.current = true;
+          return;
+        }
+      }
+      // Last-viewed contact resolution waits for contacts in phase 2.
+      if (lastViewed?.type === 'contact') return;
+    }
+
     // No hash or unresolvable — default to Public
-    const publicChannel = channels.find((c) => c.name === 'Public');
-    if (publicChannel) {
-      setActiveConversation({
-        type: 'channel',
-        id: publicChannel.key,
-        name: publicChannel.name,
-      });
+    const publicConversation = getPublicChannelConversation();
+    if (publicConversation) {
+      setActiveConversation(publicConversation);
       hasSetDefaultConversation.current = true;
     }
-  }, [channels, activeConversation]);
+  }, [channels, activeConversation, getPublicChannelConversation]);
 
   // Phase 2: Resolve contact hash (only if phase 1 didn't set a conversation)
   useEffect(() => {
@@ -105,25 +152,49 @@ export function useConversationRouter({
       }
 
       // Contact hash didn't match — fall back to Public if channels loaded.
-      if (channels.length > 0) {
-        const publicChannel = channels.find((c) => c.name === 'Public');
-        if (publicChannel) {
-          setActiveConversation({
-            type: 'channel',
-            id: publicChannel.key,
-            name: publicChannel.name,
-          });
-          hasSetDefaultConversation.current = true;
-        }
+      const publicConversation = getPublicChannelConversation();
+      if (publicConversation) {
+        setActiveConversation(publicConversation);
+        hasSetDefaultConversation.current = true;
+      }
+      return;
+    }
+
+    // No hash: optionally restore a last-viewed contact once contacts are loaded.
+    if (!hashConv && getReopenLastConversationEnabled()) {
+      const lastViewed = getLastViewedConversation();
+      if (lastViewed?.type !== 'contact') return;
+      if (!contactsLoaded) return;
+
+      const contact = contacts.find(
+        (item) => item.public_key.toLowerCase() === lastViewed.id.toLowerCase()
+      );
+      if (contact) {
+        setActiveConversation({
+          type: 'contact',
+          id: contact.public_key,
+          name: getContactDisplayName(contact.name, contact.public_key),
+        });
+        hasSetDefaultConversation.current = true;
+        return;
+      }
+
+      const publicConversation = getPublicChannelConversation();
+      if (publicConversation) {
+        setActiveConversation(publicConversation);
+        hasSetDefaultConversation.current = true;
       }
     }
-  }, [contacts, channels, activeConversation, contactsLoaded]);
+  }, [contacts, channels, activeConversation, contactsLoaded, getPublicChannelConversation]);
 
   // Keep ref in sync and update URL hash
   useEffect(() => {
     activeConversationRef.current = activeConversation;
     if (activeConversation) {
       updateUrlHash(activeConversation);
+      if (getReopenLastConversationEnabled()) {
+        saveLastViewedConversation(activeConversation);
+      }
     }
   }, [activeConversation]);
 

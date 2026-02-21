@@ -11,6 +11,10 @@ import type {
   StatisticsResponse,
 } from '../types';
 import type { SettingsSection } from '../components/SettingsModal';
+import {
+  LAST_VIEWED_CONVERSATION_KEY,
+  REOPEN_LAST_CONVERSATION_KEY,
+} from '../utils/lastViewedConversation';
 
 const baseConfig: RadioConfig = {
   public_key: 'aa'.repeat(32),
@@ -128,9 +132,16 @@ function openConnectivitySection() {
   fireEvent.click(connectivityToggle);
 }
 
+function openDatabaseSection() {
+  const databaseToggle = screen.getByRole('button', { name: /Database/i });
+  fireEvent.click(databaseToggle);
+}
+
 describe('SettingsModal', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    localStorage.clear();
+    window.location.hash = '';
   });
 
   it('refreshes app settings when opened', async () => {
@@ -289,6 +300,25 @@ describe('SettingsModal', () => {
       expect(onReboot).toHaveBeenCalledTimes(2);
     });
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('stores and clears reopen-last-conversation preference locally', () => {
+    window.location.hash = '#raw';
+    renderModal();
+    openDatabaseSection();
+
+    const checkbox = screen.getByLabelText('Reopen to last viewed channel/conversation');
+    expect(checkbox).not.toBeChecked();
+
+    fireEvent.click(checkbox);
+
+    expect(localStorage.getItem(REOPEN_LAST_CONVERSATION_KEY)).toBe('1');
+    expect(localStorage.getItem(LAST_VIEWED_CONVERSATION_KEY)).toContain('"type":"raw"');
+
+    fireEvent.click(checkbox);
+
+    expect(localStorage.getItem(REOPEN_LAST_CONVERSATION_KEY)).toBeNull();
+    expect(localStorage.getItem(LAST_VIEWED_CONVERSATION_KEY)).toBeNull();
   });
 
   it('renders statistics section with fetched data', async () => {

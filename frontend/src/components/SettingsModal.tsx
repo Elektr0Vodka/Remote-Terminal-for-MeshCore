@@ -19,6 +19,11 @@ import { Separator } from './ui/separator';
 import { toast } from './ui/sonner';
 import { api } from '../api';
 import { formatTime } from '../utils/messageParser';
+import {
+  captureLastViewedConversationFromHash,
+  getReopenLastConversationEnabled,
+  setReopenLastConversationEnabled,
+} from '../utils/lastViewedConversation';
 
 // Radio presets for common configurations
 interface RadioPreset {
@@ -141,6 +146,9 @@ export function SettingsModal(props: SettingsModalProps) {
   const [retentionDays, setRetentionDays] = useState('14');
   const [cleaning, setCleaning] = useState(false);
   const [autoDecryptOnAdvert, setAutoDecryptOnAdvert] = useState(false);
+  const [reopenLastConversation, setReopenLastConversation] = useState(
+    getReopenLastConversationEnabled
+  );
 
   // Advertisement interval state
   const [advertInterval, setAdvertInterval] = useState('0');
@@ -221,6 +229,12 @@ export function SettingsModal(props: SettingsModalProps) {
       onRefreshAppSettings();
     }
   }, [open, pageMode, onRefreshAppSettings]);
+
+  useEffect(() => {
+    if (open || pageMode) {
+      setReopenLastConversation(getReopenLastConversationEnabled());
+    }
+  }, [open, pageMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -526,6 +540,14 @@ export function SettingsModal(props: SettingsModalProps) {
       toast.error('Failed to save settings');
     } finally {
       setBusySection(null);
+    }
+  };
+
+  const handleToggleReopenLastConversation = (enabled: boolean) => {
+    setReopenLastConversation(enabled);
+    setReopenLastConversationEnabled(enabled);
+    if (enabled) {
+      captureLastViewedConversationFromHash();
     }
   };
 
@@ -1041,6 +1063,24 @@ export function SettingsModal(props: SettingsModalProps) {
                   When enabled, the server will automatically try to decrypt stored DM packets when
                   a new contact sends an advertisement. This may cause brief delays on large packet
                   backlogs.
+                </p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-3">
+                <Label>Interface</Label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reopenLastConversation}
+                    onChange={(e) => handleToggleReopenLastConversation(e.target.checked)}
+                    className="w-4 h-4 rounded border-input accent-primary"
+                  />
+                  <span className="text-sm">Reopen to last viewed channel/conversation</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  This applies only to this device/browser. It does not sync to server settings.
                 </p>
               </div>
 

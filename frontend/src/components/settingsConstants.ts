@@ -19,7 +19,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
   radio: '📻 Radio',
   identity: '🪪 Identity',
   connectivity: '📡 Connectivity',
-  database: '🗄️ Database',
+  database: '🗄️ Database & Interfacr',
   bot: '🤖 Bot',
   statistics: '📊 Statistics',
 };
