@@ -88,27 +88,49 @@ Access at http://localhost:8000
 
 > **Note:** WebGPU cracking requires HTTPS when not on localhost. See the HTTPS section under Additional Setup.
 
-## Docker
+## Docker Compose
 
 > **Warning:** Docker has intermittent issues with serial event subscriptions. The native method above is more reliable.
 
 > **Note:** BLE-in-docker is outside the scope of this README, but the env vars should all still work.
 
-```bash
-# Serial
-docker run -d \
-  --device=/dev/ttyUSB0 \
-  -v remoteterm-data:/app/data \
-  -p 8000:8000 \
-  jkingsman/remoteterm-meshcore:latest
+Edit `docker-compose.yaml` to uncomment your transport (Serial, TCP, or BLE). For serial connections, you'll also need to uncomment the `devices` section to pass through the USB device. Then:
 
-# TCP
-docker run -d \
-  -e MESHCORE_TCP_HOST=192.168.1.100 \
-  -e MESHCORE_TCP_PORT=4000 \
-  -v remoteterm-data:/app/data \
-  -p 8000:8000 \
-  jkingsman/remoteterm-meshcore:latest
+```bash
+docker compose up -d
+```
+
+The database is stored in `./data/` (bind-mounted), so the container shares the same database as the native app. To rebuild after pulling updates:
+
+```bash
+docker compose up -d --build
+```
+
+To use the prebuilt Docker Hub image instead of building locally, replace:
+
+```yaml
+build: .
+```
+
+with:
+
+```yaml
+image: jkingsman/remoteterm-meshcore:latest
+```
+
+Then run:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+The container runs as root by default for maximum serial passthrough compatibility across host setups. On Linux, if you switch between native and Docker runs, `./data` can end up root-owned. If you do not need that compatibility behavior, you can enable the optional `user: "${UID:-1000}:${GID:-1000}"` line in `docker-compose.yaml` to keep ownership aligned with your host user.
+
+To stop:
+
+```bash
+docker compose down
 ```
 
 ## Development
@@ -184,21 +206,21 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -node
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile=key.pem --ssl-certfile=cert.pem
 ```
 
-For Docker:
+For Docker Compose, generate the cert and add the volume mounts and command override to `docker-compose.yaml`:
 
 ```bash
 # generate TLS cert
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj '/CN=localhost'
+```
 
-# run with cert
-docker run -d \
-  --device=/dev/ttyUSB0 \
-  -v remoteterm-data:/app/data \
-  -v $(pwd)/cert.pem:/app/cert.pem:ro \
-  -v $(pwd)/key.pem:/app/key.pem:ro \
-  -p 8000:8000 \
-  jkingsman/remote-terminal-for-meshcore:latest \
-  uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile=/app/key.pem --ssl-certfile=/app/cert.pem
+Then add to the `remoteterm` service in `docker-compose.yaml` (keep your existing `./data:/app/data` mount):
+
+```yaml
+    volumes:
+      - ./data:/app/data
+      - ./cert.pem:/app/cert.pem:ro
+      - ./key.pem:/app/key.pem:ro
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile=/app/key.pem --ssl-certfile=/app/cert.pem
 ```
 
 Accept the browser warning, or use [mkcert](https://github.com/FiloSottile/mkcert) for locally-trusted certs.
