@@ -131,7 +131,7 @@ export function useConversationRouter({
       setActiveConversationState(publicConversation);
       hasSetDefaultConversation.current = true;
     }
-  }, [channels, activeConversation, getPublicChannelConversation]);
+  }, [channels, activeConversation, getPublicChannelConversation, hasSetDefaultConversation]);
 
   // Phase 2: Resolve contact hash (only if phase 1 didn't set a conversation)
   useEffect(() => {
@@ -186,7 +186,14 @@ export function useConversationRouter({
         hasSetDefaultConversation.current = true;
       }
     }
-  }, [contacts, channels, activeConversation, contactsLoaded, getPublicChannelConversation]);
+  }, [
+    contacts,
+    channels,
+    activeConversation,
+    contactsLoaded,
+    getPublicChannelConversation,
+    hasSetDefaultConversation,
+  ]);
 
   // Keep ref in sync and update URL hash
   useEffect(() => {
@@ -221,7 +228,7 @@ export function useConversationRouter({
       id: publicChannel.key,
       name: publicChannel.name,
     });
-  }, [activeConversation, channels]);
+  }, [activeConversation, channels, hasSetDefaultConversation, pendingDeleteFallbackRef]);
 
   // Handle conversation selection (closes sidebar on mobile)
   const handleSelectConversation = useCallback(

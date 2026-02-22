@@ -23,7 +23,7 @@ interface MessageListProps {
   hasOlderMessages?: boolean;
   onSenderClick?: (sender: string) => void;
   onLoadOlder?: () => void;
-  onResendChannelMessage?: (messageId: number) => void;
+  onResendChannelMessage?: (messageId: number, newTimestamp?: boolean) => void;
   radioName?: string;
   config?: RadioConfig | null;
 }
@@ -156,12 +156,11 @@ export function MessageList({
   const [selectedPath, setSelectedPath] = useState<{
     paths: MessagePath[];
     senderInfo: SenderInfo;
+    messageId?: number;
+    isOutgoingChan?: boolean;
   } | null>(null);
   const [resendableIds, setResendableIds] = useState<Set<number>>(new Set());
   const resendTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-  const activeBurstsRef = useRef<Map<number, ReturnType<typeof setTimeout>[]>>(new Map());
-  const onResendRef = useRef(onResendChannelMessage);
-  onResendRef.current = onResendChannelMessage;
 
   // Capture scroll state in the scroll handler BEFORE any state updates
   const scrollStateRef = useRef({
@@ -262,17 +261,6 @@ export function MessageList({
     };
   }, [messages, onResendChannelMessage]);
 
-  // Clean up burst timers on unmount
-  useEffect(() => {
-    const bursts = activeBurstsRef.current;
-    return () => {
-      for (const timers of bursts.values()) {
-        for (const t of timers) clearTimeout(t);
-      }
-      bursts.clear();
-    };
-  }, []);
-
   // Handle scroll - capture state and detect when user is near top/bottom
   const handleScroll = useCallback(() => {
     if (!listRef.current) return;
@@ -314,6 +302,21 @@ export function MessageList({
     () => [...messages].sort((a, b) => a.received_at - b.received_at),
     [messages]
   );
+
+  // Sender info for outgoing messages (used by path modal on own messages)
+  const selfSenderInfo = useMemo<SenderInfo>(
+    () => ({
+      name: config?.name || 'Unknown',
+      publicKeyOrPrefix: config?.public_key || '',
+      lat: config?.lat ?? null,
+      lon: config?.lon ?? null,
+    }),
+    [config?.name, config?.public_key, config?.lat, config?.lon]
+  );
+
+  // Derive live so the byte-perfect button disables if the 30s window expires while modal is open
+  const isSelectedMessageResendable =
+    selectedPath?.messageId !== undefined && resendableIds.has(selectedPath.messageId);
 
   // Look up contact by public key
   const getContact = (conversationKey: string | null): Contact | null => {
@@ -520,34 +523,6 @@ export function MessageList({
                       )}
                     </>
                   )}
-                  {msg.outgoing && onResendChannelMessage && resendableIds.has(msg.id) && (
-                    <button
-                      className="text-muted-foreground hover:text-primary ml-1 text-xs cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (e.altKey) {
-                          // Burst resend: 5 times, 2 seconds apart
-                          if (activeBurstsRef.current.has(msg.id)) return;
-                          onResendChannelMessage(msg.id); // first send (immediate)
-                          const msgId = msg.id;
-                          const timers: ReturnType<typeof setTimeout>[] = [];
-                          for (let i = 1; i <= 4; i++) {
-                            const timer = setTimeout(() => {
-                              onResendRef.current?.(msgId);
-                              if (i === 4) activeBurstsRef.current.delete(msgId);
-                            }, i * 3000);
-                            timers.push(timer);
-                          }
-                          activeBurstsRef.current.set(msgId, timers);
-                        } else {
-                          onResendChannelMessage(msg.id);
-                        }
-                      }}
-                      title="Resend message"
-                    >
-                      ↻
-                    </button>
-                  )}
                   {msg.outgoing &&
                     (msg.acked > 0 ? (
                       msg.paths && msg.paths.length > 0 ? (
@@ -557,12 +532,9 @@ export function MessageList({
                             e.stopPropagation();
                             setSelectedPath({
                               paths: msg.paths!,
-                              senderInfo: {
-                                name: config?.name || 'Unknown',
-                                publicKeyOrPrefix: config?.public_key || '',
-                                lat: config?.lat ?? null,
-                                lon: config?.lon ?? null,
-                              },
+                              senderInfo: selfSenderInfo,
+                              messageId: msg.id,
+                              isOutgoingChan: msg.type === 'CHAN' && !!onResendChannelMessage,
                             });
                           }}
                           title="View echo paths"
@@ -570,6 +542,23 @@ export function MessageList({
                       ) : (
                         <span className="text-muted-foreground">{` ✓${msg.acked > 1 ? msg.acked : ''}`}</span>
                       )
+                    ) : onResendChannelMessage && msg.type === 'CHAN' ? (
+                      <span
+                        className="text-muted-foreground cursor-pointer hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPath({
+                            paths: [],
+                            senderInfo: selfSenderInfo,
+                            messageId: msg.id,
+                            isOutgoingChan: true,
+                          });
+                        }}
+                        title="Message status"
+                      >
+                        {' '}
+                        ?
+                      </span>
                     ) : (
                       <span className="text-muted-foreground" title="No repeats heard yet">
                         {' '}
@@ -616,6 +605,10 @@ export function MessageList({
           senderInfo={selectedPath.senderInfo}
           contacts={contacts}
           config={config ?? null}
+          messageId={selectedPath.messageId}
+          isOutgoingChan={selectedPath.isOutgoingChan}
+          isResendable={isSelectedMessageResendable}
+          onResend={onResendChannelMessage}
         />
       )}
     </div>

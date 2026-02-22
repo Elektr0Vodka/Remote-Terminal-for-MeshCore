@@ -283,7 +283,7 @@ class TestResendChannelMessage:
         assert msg_id is not None
 
         with patch("app.routers.messages.require_connected", return_value=mc):
-            result = await resend_channel_message(msg_id)
+            result = await resend_channel_message(msg_id, new_timestamp=False)
 
         assert result["status"] == "ok"
         assert result["message_id"] == msg_id
@@ -316,10 +316,41 @@ class TestResendChannelMessage:
             patch("app.routers.messages.require_connected", return_value=mc),
             pytest.raises(HTTPException) as exc_info,
         ):
-            await resend_channel_message(msg_id)
+            await resend_channel_message(msg_id, new_timestamp=False)
 
         assert exc_info.value.status_code == 400
         assert "expired" in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_resend_new_timestamp_collision_returns_original_id(self, test_db):
+        """When new-timestamp resend collides (same second), return original ID gracefully."""
+        mc = _make_mc(name="MyNode")
+        chan_key = "dd" * 16
+        await ChannelRepository.upsert(key=chan_key, name="#collision")
+
+        now = int(time.time())
+        msg_id = await MessageRepository.create(
+            msg_type="CHAN",
+            text="MyNode: duplicate",
+            conversation_key=chan_key.upper(),
+            sender_timestamp=now,
+            received_at=now,
+            outgoing=True,
+        )
+        assert msg_id is not None
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch("app.routers.messages.broadcast_event"),
+            patch("app.routers.messages.time") as mock_time,
+        ):
+            # Force the same second so MessageRepository.create returns None (duplicate)
+            mock_time.time.return_value = float(now)
+            result = await resend_channel_message(msg_id, new_timestamp=True)
+
+        # Should succeed gracefully, returning the original message ID
+        assert result["status"] == "ok"
+        assert result["message_id"] == msg_id
 
     @pytest.mark.asyncio
     async def test_resend_non_outgoing_returns_400(self, test_db):
@@ -343,7 +374,7 @@ class TestResendChannelMessage:
             patch("app.routers.messages.require_connected", return_value=mc),
             pytest.raises(HTTPException) as exc_info,
         ):
-            await resend_channel_message(msg_id)
+            await resend_channel_message(msg_id, new_timestamp=False)
 
         assert exc_info.value.status_code == 400
         assert "outgoing" in exc_info.value.detail.lower()
@@ -369,7 +400,7 @@ class TestResendChannelMessage:
             patch("app.routers.messages.require_connected", return_value=mc),
             pytest.raises(HTTPException) as exc_info,
         ):
-            await resend_channel_message(msg_id)
+            await resend_channel_message(msg_id, new_timestamp=False)
 
         assert exc_info.value.status_code == 400
         assert "channel" in exc_info.value.detail.lower()
@@ -383,7 +414,7 @@ class TestResendChannelMessage:
             patch("app.routers.messages.require_connected", return_value=mc),
             pytest.raises(HTTPException) as exc_info,
         ):
-            await resend_channel_message(999999)
+            await resend_channel_message(999999, new_timestamp=False)
 
         assert exc_info.value.status_code == 404
 
@@ -406,7 +437,126 @@ class TestResendChannelMessage:
         assert msg_id is not None
 
         with patch("app.routers.messages.require_connected", return_value=mc):
-            await resend_channel_message(msg_id)
+            await resend_channel_message(msg_id, new_timestamp=False)
 
         call_kwargs = mc.commands.send_chan_msg.await_args.kwargs
         assert call_kwargs["msg"] == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_resend_new_timestamp_skips_window(self, test_db):
+        """new_timestamp=True succeeds even when the 30s window has expired."""
+        mc = _make_mc(name="MyNode")
+        chan_key = "dd" * 16
+        await ChannelRepository.upsert(key=chan_key, name="#old")
+
+        old_ts = int(time.time()) - 60  # 60 seconds ago — outside byte-perfect window
+        msg_id = await MessageRepository.create(
+            msg_type="CHAN",
+            text="MyNode: old message",
+            conversation_key=chan_key.upper(),
+            sender_timestamp=old_ts,
+            received_at=old_ts,
+            outgoing=True,
+        )
+        assert msg_id is not None
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch("app.routers.messages.broadcast_event"),
+        ):
+            result = await resend_channel_message(msg_id, new_timestamp=True)
+
+        assert result["status"] == "ok"
+        # Should return a NEW message id, not the original
+        assert result["message_id"] != msg_id
+
+    @pytest.mark.asyncio
+    async def test_resend_new_timestamp_creates_new_message(self, test_db):
+        """new_timestamp=True creates a new DB row with a different sender_timestamp."""
+        mc = _make_mc(name="MyNode")
+        chan_key = "dd" * 16
+        await ChannelRepository.upsert(key=chan_key, name="#new")
+
+        old_ts = int(time.time()) - 10
+        msg_id = await MessageRepository.create(
+            msg_type="CHAN",
+            text="MyNode: test",
+            conversation_key=chan_key.upper(),
+            sender_timestamp=old_ts,
+            received_at=old_ts,
+            outgoing=True,
+        )
+        assert msg_id is not None
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch("app.routers.messages.broadcast_event"),
+        ):
+            result = await resend_channel_message(msg_id, new_timestamp=True)
+
+        new_msg_id = result["message_id"]
+        new_msg = await MessageRepository.get_by_id(new_msg_id)
+        original_msg = await MessageRepository.get_by_id(msg_id)
+
+        assert new_msg is not None
+        assert original_msg is not None
+        assert new_msg.sender_timestamp != original_msg.sender_timestamp
+        assert new_msg.text == original_msg.text
+        assert new_msg.outgoing is True
+
+    @pytest.mark.asyncio
+    async def test_resend_new_timestamp_broadcasts_message(self, test_db):
+        """new_timestamp=True broadcasts the new message via WebSocket."""
+        mc = _make_mc(name="MyNode")
+        chan_key = "dd" * 16
+        await ChannelRepository.upsert(key=chan_key, name="#broadcast")
+
+        old_ts = int(time.time()) - 5
+        msg_id = await MessageRepository.create(
+            msg_type="CHAN",
+            text="MyNode: broadcast test",
+            conversation_key=chan_key.upper(),
+            sender_timestamp=old_ts,
+            received_at=old_ts,
+            outgoing=True,
+        )
+        assert msg_id is not None
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch("app.routers.messages.broadcast_event") as mock_broadcast,
+        ):
+            result = await resend_channel_message(msg_id, new_timestamp=True)
+
+        mock_broadcast.assert_called_once()
+        event_type, event_data = mock_broadcast.call_args.args
+        assert event_type == "message"
+        assert event_data["id"] == result["message_id"]
+        assert event_data["outgoing"] is True
+
+    @pytest.mark.asyncio
+    async def test_resend_byte_perfect_still_enforces_window(self, test_db):
+        """Default (byte-perfect) resend still enforces the 30s window."""
+        mc = _make_mc(name="MyNode")
+        chan_key = "dd" * 16
+        await ChannelRepository.upsert(key=chan_key, name="#window")
+
+        old_ts = int(time.time()) - 60
+        msg_id = await MessageRepository.create(
+            msg_type="CHAN",
+            text="MyNode: expired",
+            conversation_key=chan_key.upper(),
+            sender_timestamp=old_ts,
+            received_at=old_ts,
+            outgoing=True,
+        )
+        assert msg_id is not None
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await resend_channel_message(msg_id, new_timestamp=False)
+
+        assert exc_info.value.status_code == 400
+        assert "expired" in exc_info.value.detail.lower()

@@ -167,10 +167,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ channel_key: channelKey, text }),
     }),
-  resendChannelMessage: (messageId: number) =>
-    fetchJson<{ status: string; message_id: number }>(`/messages/channel/${messageId}/resend`, {
-      method: 'POST',
-    }),
+  resendChannelMessage: (messageId: number, newTimestamp?: boolean) =>
+    fetchJson<{ status: string; message_id: number }>(
+      `/messages/channel/${messageId}/resend${newTimestamp ? '?new_timestamp=true' : ''}`,
+      { method: 'POST' }
+    ),
 
   // Packets
   getUndecryptedPacketCount: () => fetchJson<{ count: number }>('/packets/undecrypted/count'),

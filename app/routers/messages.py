@@ -306,10 +306,17 @@ RESEND_WINDOW_SECONDS = 30
 
 
 @router.post("/channel/{message_id}/resend")
-async def resend_channel_message(message_id: int) -> dict:
-    """Resend a channel message within 30 seconds of original send.
+async def resend_channel_message(
+    message_id: int,
+    new_timestamp: bool = Query(default=False),
+) -> dict:
+    """Resend a channel message.
 
-    Performs a byte-perfect resend using the same timestamp bytes as the original.
+    When new_timestamp=False (default): byte-perfect resend using the original timestamp.
+    Only allowed within 30 seconds of the original send.
+
+    When new_timestamp=True: resend with a fresh timestamp so repeaters treat it as a
+    new packet. Creates a new message row in the database. No time window restriction.
     """
     mc = require_connected()
 
@@ -328,16 +335,22 @@ async def resend_channel_message(message_id: int) -> dict:
     if msg.sender_timestamp is None:
         raise HTTPException(status_code=400, detail="Message has no timestamp")
 
-    elapsed = int(time.time()) - msg.sender_timestamp
-    if elapsed > RESEND_WINDOW_SECONDS:
-        raise HTTPException(status_code=400, detail="Resend window has expired (30 seconds)")
+    # Byte-perfect resend enforces the 30s window; new-timestamp resend does not
+    if not new_timestamp:
+        elapsed = int(time.time()) - msg.sender_timestamp
+        if elapsed > RESEND_WINDOW_SECONDS:
+            raise HTTPException(status_code=400, detail="Resend window has expired (30 seconds)")
 
     db_channel = await ChannelRepository.get_by_key(msg.conversation_key)
     if not db_channel:
         raise HTTPException(status_code=404, detail=f"Channel {msg.conversation_key} not found")
 
-    # Reconstruct timestamp bytes
-    timestamp_bytes = msg.sender_timestamp.to_bytes(4, "little")
+    # Choose timestamp: original for byte-perfect, fresh for new-timestamp
+    if new_timestamp:
+        now = int(time.time())
+        timestamp_bytes = now.to_bytes(4, "little")
+    else:
+        timestamp_bytes = msg.sender_timestamp.to_bytes(4, "little")
 
     # Strip sender prefix: DB stores "RadioName: message" but radio needs "message"
     radio_name = mc.self_info.get("name", "") if mc.self_info else ""
@@ -373,6 +386,48 @@ async def resend_channel_message(message_id: int) -> dict:
             raise HTTPException(
                 status_code=500, detail=f"Failed to resend message: {result.payload}"
             )
+
+    # For new-timestamp resend, create a new message row and broadcast it
+    if new_timestamp:
+        new_msg_id = await MessageRepository.create(
+            msg_type="CHAN",
+            text=msg.text,
+            conversation_key=msg.conversation_key,
+            sender_timestamp=now,
+            received_at=now,
+            outgoing=True,
+        )
+        if new_msg_id is None:
+            # Timestamp-second collision (same text+channel within the same second).
+            # The radio already transmitted, so log and return the original ID rather
+            # than surfacing a 500 for a message that was successfully sent over the air.
+            logger.warning(
+                "Duplicate timestamp collision resending message %d — radio sent but DB row not created",
+                message_id,
+            )
+            return {"status": "ok", "message_id": message_id}
+
+        broadcast_event(
+            "message",
+            Message(
+                id=new_msg_id,
+                type="CHAN",
+                conversation_key=msg.conversation_key,
+                text=msg.text,
+                sender_timestamp=now,
+                received_at=now,
+                outgoing=True,
+                acked=0,
+            ).model_dump(),
+        )
+
+        logger.info(
+            "Resent channel message %d as new message %d to %s",
+            message_id,
+            new_msg_id,
+            db_channel.name,
+        )
+        return {"status": "ok", "message_id": new_msg_id}
 
     logger.info("Resent channel message %d to %s", message_id, db_channel.name)
     return {"status": "ok", "message_id": message_id}

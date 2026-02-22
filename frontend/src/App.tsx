@@ -371,16 +371,21 @@ export function App() {
   );
 
   // Handle resend channel message
-  const handleResendChannelMessage = useCallback(async (messageId: number) => {
-    try {
-      await api.resendChannelMessage(messageId);
-      toast.success('Message resent');
-    } catch (err) {
-      toast.error('Failed to resend', {
-        description: err instanceof Error ? err.message : 'Unknown error',
-      });
-    }
-  }, []);
+  const handleResendChannelMessage = useCallback(
+    async (messageId: number, newTimestamp?: boolean) => {
+      try {
+        // New-timestamp resend creates a new message; the backend broadcast_event
+        // will add it to the conversation via WebSocket.
+        await api.resendChannelMessage(messageId, newTimestamp);
+        toast.success(newTimestamp ? 'Message resent with new timestamp' : 'Message resent');
+      } catch (err) {
+        toast.error('Failed to resend', {
+          description: err instanceof Error ? err.message : 'Unknown error',
+        });
+      }
+    },
+    []
+  );
 
   // Handle sender click to add mention
   const handleSenderClick = useCallback((sender: string) => {
