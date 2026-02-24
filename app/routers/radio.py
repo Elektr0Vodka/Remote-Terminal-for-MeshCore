@@ -128,9 +128,27 @@ async def set_private_key(update: PrivateKeyUpdate) -> dict:
     async with radio_manager.radio_operation("import_private_key") as mc:
         result = await mc.commands.import_private_key(key_bytes)
 
-    if result.type == EventType.ERROR:
+        if result.type == EventType.ERROR:
+            raise HTTPException(
+                status_code=500, detail=f"Failed to import private key: {result.payload}"
+            )
+
+        # Re-export from radio so the server-side keystore uses the new key
+        # for DM decryption immediately, rather than waiting for reconnect.
+        from app.keystore import export_and_store_private_key
+
+        keystore_refreshed = await export_and_store_private_key(mc)
+        if not keystore_refreshed:
+            logger.warning("Keystore refresh failed after import, retrying once")
+            keystore_refreshed = await export_and_store_private_key(mc)
+
+    if not keystore_refreshed:
         raise HTTPException(
-            status_code=500, detail=f"Failed to import private key: {result.payload}"
+            status_code=500,
+            detail=(
+                "Private key imported on radio, but server-side keystore "
+                "refresh failed. Reconnect to apply the new key for DM decryption."
+            ),
         )
 
     return {"status": "ok"}

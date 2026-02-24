@@ -157,6 +157,63 @@ class TestPrivateKeyImport:
 
         assert exc.value.status_code == 500
 
+    @pytest.mark.asyncio
+    async def test_successful_import_refreshes_keystore(self):
+        mc = _mock_meshcore_with_info()
+        mc.commands.import_private_key = AsyncMock(return_value=_radio_result())
+        with (
+            patch("app.routers.radio.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+            patch(
+                "app.keystore.export_and_store_private_key",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_export,
+        ):
+            result = await set_private_key(PrivateKeyUpdate(private_key="aa" * 64))
+
+        assert result == {"status": "ok"}
+        mock_export.assert_awaited_once_with(mc)
+
+    @pytest.mark.asyncio
+    async def test_import_ok_but_keystore_refresh_fails_returns_500(self):
+        mc = _mock_meshcore_with_info()
+        mc.commands.import_private_key = AsyncMock(return_value=_radio_result())
+        with (
+            patch("app.routers.radio.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+            patch(
+                "app.keystore.export_and_store_private_key",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as mock_export,
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await set_private_key(PrivateKeyUpdate(private_key="aa" * 64))
+
+        assert exc.value.status_code == 500
+        assert "keystore" in exc.value.detail.lower()
+        # Called twice: initial attempt + one retry
+        assert mock_export.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_keystore_refresh_succeeds_on_retry(self):
+        mc = _mock_meshcore_with_info()
+        mc.commands.import_private_key = AsyncMock(return_value=_radio_result())
+        with (
+            patch("app.routers.radio.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+            patch(
+                "app.keystore.export_and_store_private_key",
+                new_callable=AsyncMock,
+                side_effect=[False, True],
+            ) as mock_export,
+        ):
+            result = await set_private_key(PrivateKeyUpdate(private_key="aa" * 64))
+
+        assert result == {"status": "ok"}
+        assert mock_export.await_count == 2
+
 
 class TestAdvertise:
     @pytest.mark.asyncio
