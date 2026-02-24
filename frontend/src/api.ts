@@ -21,10 +21,11 @@ import type {
 const API_BASE = '/api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const hasBody = options?.body !== undefined;
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(hasBody && { 'Content-Type': 'application/json' }),
       ...options?.headers,
     },
   });
@@ -148,8 +149,8 @@ export const api = {
     signal?: AbortSignal
   ) => {
     const searchParams = new URLSearchParams();
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
-    if (params?.offset) searchParams.set('offset', params.offset.toString());
+    if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
     if (params?.type) searchParams.set('type', params.type);
     if (params?.conversation_key) searchParams.set('conversation_key', params.conversation_key);
     if (params?.before !== undefined) searchParams.set('before', params.before.toString());

@@ -159,7 +159,7 @@ describe('fetchJson (via api methods)', () => {
   });
 
   describe('Content-Type header', () => {
-    it('always sends Content-Type: application/json on GET requests', async () => {
+    it('omits Content-Type on GET requests (no body)', async () => {
       installMockFetch();
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -169,12 +169,10 @@ describe('fetchJson (via api methods)', () => {
       await api.getHealth();
 
       const [, options] = mockFetch.mock.calls[0];
-      expect(options.headers).toEqual(
-        expect.objectContaining({ 'Content-Type': 'application/json' })
-      );
+      expect(options.headers).not.toHaveProperty('Content-Type');
     });
 
-    it('always sends Content-Type: application/json on POST requests', async () => {
+    it('sends Content-Type: application/json on POST requests with body', async () => {
       installMockFetch();
       mockFetch.mockResolvedValueOnce({
         ok: true,
