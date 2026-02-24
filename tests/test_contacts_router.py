@@ -14,6 +14,7 @@ import pytest
 from meshcore import EventType
 
 from app.database import Database
+from app.radio import radio_manager
 from app.repository import ContactRepository, MessageRepository
 
 # Sample 64-char hex public keys for testing
@@ -22,9 +23,24 @@ KEY_B = "bb" * 32  # bbbb...bb
 KEY_C = "cc" * 32  # cccc...cc
 
 
-@asynccontextmanager
-async def _noop_radio_operation(*_args, **_kwargs):
+def _noop_radio_operation(mc=None):
+    """Factory for a no-op radio_operation context manager that yields mc."""
+
+    @asynccontextmanager
+    async def _ctx(*_args, **_kwargs):
+        yield mc
+
+    return _ctx
+
+
+@pytest.fixture(autouse=True)
+def _reset_radio_state():
+    """Save/restore radio_manager state so tests don't leak."""
+    prev = radio_manager._meshcore
+    prev_lock = radio_manager._operation_lock
     yield
+    radio_manager._meshcore = prev
+    radio_manager._operation_lock = prev_lock
 
 
 @pytest.fixture
@@ -225,7 +241,7 @@ class TestDeleteContact:
         with patch("app.routers.contacts.radio_manager") as mock_rm:
             mock_rm.is_connected = False
             mock_rm.meshcore = None
-            mock_rm.radio_operation = _noop_radio_operation
+            mock_rm.radio_operation = _noop_radio_operation()
 
             response = await client.delete(f"/api/contacts/{KEY_A}")
 
@@ -255,7 +271,7 @@ class TestDeleteContact:
         with patch("app.routers.contacts.radio_manager") as mock_rm:
             mock_rm.is_connected = True
             mock_rm.meshcore = mock_mc
-            mock_rm.radio_operation = _noop_radio_operation
+            mock_rm.radio_operation = _noop_radio_operation(mock_mc)
 
             response = await client.delete(f"/api/contacts/{KEY_A}")
 
@@ -277,6 +293,7 @@ class TestSyncContacts:
         }
         mock_mc.commands.get_contacts = AsyncMock(return_value=mock_result)
 
+        radio_manager._meshcore = mock_mc
         with patch("app.dependencies.radio_manager") as mock_dep_rm:
             mock_dep_rm.is_connected = True
             mock_dep_rm.meshcore = mock_mc
@@ -318,6 +335,7 @@ class TestSyncContacts:
         mock_result.payload = {KEY_A: {"adv_name": "Alice", "type": 1, "flags": 0}}
         mock_mc.commands.get_contacts = AsyncMock(return_value=mock_result)
 
+        radio_manager._meshcore = mock_mc
         with patch("app.dependencies.radio_manager") as mock_dep_rm:
             mock_dep_rm.is_connected = True
             mock_dep_rm.meshcore = mock_mc
@@ -345,6 +363,7 @@ class TestAddRemoveRadio:
         mock_result.type = EventType.OK
         mock_mc.commands.add_contact = AsyncMock(return_value=mock_result)
 
+        radio_manager._meshcore = mock_mc
         with patch("app.dependencies.radio_manager") as mock_dep_rm:
             mock_dep_rm.is_connected = True
             mock_dep_rm.meshcore = mock_mc
@@ -366,6 +385,7 @@ class TestAddRemoveRadio:
         mock_mc = MagicMock()
         mock_mc.get_contact_by_key_prefix = MagicMock(return_value=MagicMock())  # On radio
 
+        radio_manager._meshcore = mock_mc
         with patch("app.dependencies.radio_manager") as mock_dep_rm:
             mock_dep_rm.is_connected = True
             mock_dep_rm.meshcore = mock_mc
@@ -386,6 +406,7 @@ class TestAddRemoveRadio:
         mock_result.type = EventType.OK
         mock_mc.commands.remove_contact = AsyncMock(return_value=mock_result)
 
+        radio_manager._meshcore = mock_mc
         with patch("app.dependencies.radio_manager") as mock_dep_rm:
             mock_dep_rm.is_connected = True
             mock_dep_rm.meshcore = mock_mc

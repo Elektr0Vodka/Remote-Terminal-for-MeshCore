@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.radio import RadioOperationBusyError, radio_manager
+from app.radio import RadioDisconnectedError, RadioOperationBusyError, radio_manager
 from app.radio_sync import is_polling_paused
 
 
@@ -14,7 +14,9 @@ def reset_radio_operation_state():
     """Reset shared radio operation lock state before/after each test."""
     prev_meshcore = radio_manager._meshcore
     radio_manager._operation_lock = None
-    radio_manager._meshcore = None
+    # Default to a non-None MagicMock so radio_operation() doesn't raise
+    # RadioDisconnectedError for tests that only exercise locking.
+    radio_manager._meshcore = MagicMock()
 
     import app.radio_sync as radio_sync
 
@@ -123,3 +125,47 @@ class TestRadioOperationLock:
             assert is_polling_paused()
 
         assert not is_polling_paused()
+
+
+class TestRadioOperationYield:
+    """Validate that radio_operation() yields the current meshcore instance."""
+
+    @pytest.mark.asyncio
+    async def test_radio_operation_yields_current_meshcore(self):
+        """The yielded value is the current _meshcore at lock-acquisition time."""
+        mc = MagicMock()
+        radio_manager._meshcore = mc
+
+        async with radio_manager.radio_operation("test_yield") as yielded:
+            assert yielded is mc
+
+    @pytest.mark.asyncio
+    async def test_radio_operation_raises_when_disconnected_after_lock(self):
+        """RadioDisconnectedError is raised when _meshcore is None after acquiring the lock."""
+        radio_manager._meshcore = None
+
+        with pytest.raises(RadioDisconnectedError):
+            async with radio_manager.radio_operation("test_disconnected"):
+                pass  # pragma: no cover
+
+        # Lock must be released even after the error
+        radio_manager._meshcore = MagicMock()
+        async with radio_manager.radio_operation("after_error", blocking=False):
+            pass
+
+    @pytest.mark.asyncio
+    async def test_radio_operation_yields_fresh_reference_after_swap(self):
+        """If _meshcore is swapped between pre-check and lock acquisition,
+        the yielded value is the new (current) instance, not the old one."""
+        old_mc = MagicMock(name="old")
+        new_mc = MagicMock(name="new")
+
+        # Start with old_mc
+        radio_manager._meshcore = old_mc
+
+        # Simulate a reconnect swapping _meshcore before the caller enters the block
+        radio_manager._meshcore = new_mc
+
+        async with radio_manager.radio_operation("test_swap") as yielded:
+            assert yielded is new_mc
+            assert yielded is not old_mc

@@ -85,12 +85,12 @@ async def create_channel(request: CreateChannelRequest) -> Channel:
 @router.post("/sync")
 async def sync_channels_from_radio(max_channels: int = Query(default=40, ge=1, le=40)) -> dict:
     """Sync channels from the radio to the database."""
-    mc = require_connected()
+    require_connected()
 
     logger.info("Syncing channels from radio (checking %d slots)", max_channels)
     count = 0
 
-    async with radio_manager.radio_operation("sync_channels_from_radio"):
+    async with radio_manager.radio_operation("sync_channels_from_radio") as mc:
         for idx in range(max_channels):
             result = await mc.commands.get_channel(idx)
 

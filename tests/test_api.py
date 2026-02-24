@@ -12,12 +12,23 @@ import httpx
 import pytest
 
 from app.database import Database
+from app.radio import radio_manager
 from app.repository import (
     ChannelRepository,
     ContactRepository,
     MessageRepository,
     RawPacketRepository,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_radio_state():
+    """Save/restore radio_manager state so tests don't leak."""
+    prev = radio_manager._meshcore
+    prev_lock = radio_manager._operation_lock
+    yield
+    radio_manager._meshcore = prev
+    radio_manager._operation_lock = prev_lock
 
 
 @pytest.fixture
@@ -109,6 +120,29 @@ class TestHealthEndpoint:
             assert data["connection_info"] is None
 
 
+class TestRadioDisconnectedHandler:
+    """Test that RadioDisconnectedError maps to 503."""
+
+    @pytest.mark.asyncio
+    async def test_disconnect_race_returns_503(self, test_db, client):
+        """If radio disconnects between require_connected() and lock acquisition, return 503."""
+        pub_key = "ab" * 32
+        await _insert_contact(pub_key, "Alice")
+
+        # require_connected() passes, but _meshcore is None when radio_operation() checks
+        radio_manager._meshcore = None
+        with patch("app.dependencies.radio_manager") as mock_rm:
+            mock_rm.is_connected = True
+            mock_rm.meshcore = MagicMock()
+
+            response = await client.post(
+                "/api/messages/direct", json={"destination": pub_key, "text": "Hi"}
+            )
+
+        assert response.status_code == 503
+        assert "not connected" in response.json()["detail"].lower()
+
+
 class TestMessagesEndpoint:
     """Test message-related endpoints."""
 
@@ -161,6 +195,7 @@ class TestMessagesEndpoint:
             coro.close()
             return MagicMock()
 
+        radio_manager._meshcore = mock_mc
         with (
             patch("app.dependencies.radio_manager") as mock_rm,
             patch("app.bot.run_bot_for_message", new=AsyncMock()),
@@ -204,6 +239,7 @@ class TestMessagesEndpoint:
             coro.close()
             return MagicMock()
 
+        radio_manager._meshcore = mock_mc
         with (
             patch("app.dependencies.radio_manager") as mock_rm,
             patch("app.decoder.calculate_channel_hash", return_value="abcd"),
@@ -260,6 +296,7 @@ class TestMessagesEndpoint:
             return_value=MagicMock(type=MagicMock(name="OK"), payload={"expected_ack": b"\x00\x01"})
         )
 
+        radio_manager._meshcore = mock_mc
         with (
             patch("app.dependencies.radio_manager") as mock_rm,
             patch("app.routers.messages.MessageRepository") as mock_msg_repo,
@@ -296,6 +333,7 @@ class TestMessagesEndpoint:
             return_value=MagicMock(type=MagicMock(name="OK"), payload={})
         )
 
+        radio_manager._meshcore = mock_mc
         with (
             patch("app.dependencies.radio_manager") as mock_rm,
             patch("app.routers.messages.MessageRepository") as mock_msg_repo,
@@ -355,6 +393,7 @@ class TestMessagesEndpoint:
             return_value=MagicMock(type=EventType.MSG_SENT, payload={})
         )
 
+        radio_manager._meshcore = mock_mc
         with patch("app.dependencies.radio_manager") as mock_rm:
             mock_rm.is_connected = True
             mock_rm.meshcore = mock_mc

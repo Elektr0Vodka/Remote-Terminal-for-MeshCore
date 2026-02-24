@@ -13,6 +13,7 @@ from app.models import (
     SendChannelMessageRequest,
     SendDirectMessageRequest,
 )
+from app.radio import radio_manager
 from app.repository import (
     ChannelRepository,
     ContactRepository,
@@ -23,6 +24,16 @@ from app.routers.messages import (
     send_channel_message,
     send_direct_message,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_radio_state():
+    """Save/restore radio_manager state so tests don't leak."""
+    prev = radio_manager._meshcore
+    prev_lock = radio_manager._operation_lock
+    yield
+    radio_manager._meshcore = prev
+    radio_manager._operation_lock = prev_lock
 
 
 @pytest.fixture
@@ -96,6 +107,7 @@ class TestOutgoingDMBotTrigger:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.bot.run_bot_for_message", new=AsyncMock()) as mock_bot,
         ):
             request = SendDirectMessageRequest(destination=pub_key, text="!lasttime Alice")
@@ -127,6 +139,7 @@ class TestOutgoingDMBotTrigger:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.bot.run_bot_for_message", new=slow_bot),
         ):
             request = SendDirectMessageRequest(destination=pub_key, text="Hello")
@@ -144,6 +157,7 @@ class TestOutgoingDMBotTrigger:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.bot.run_bot_for_message", new=AsyncMock()) as mock_bot,
         ):
             request = SendDirectMessageRequest(destination=pub_key, text="test")
@@ -184,6 +198,7 @@ class TestOutgoingChannelBotTrigger:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.decoder.calculate_channel_hash", return_value="abcd"),
             patch("app.bot.run_bot_for_message", new=AsyncMock()) as mock_bot,
         ):
@@ -210,6 +225,7 @@ class TestOutgoingChannelBotTrigger:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.decoder.calculate_channel_hash", return_value="abcd"),
             patch("app.bot.run_bot_for_message", new=AsyncMock()) as mock_bot,
         ):
@@ -234,6 +250,7 @@ class TestOutgoingChannelBotTrigger:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.decoder.calculate_channel_hash", return_value="abcd"),
             patch("app.bot.run_bot_for_message", new=slow_bot),
         ):
@@ -250,6 +267,7 @@ class TestOutgoingChannelBotTrigger:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.decoder.calculate_channel_hash", return_value="abcd"),
             patch("app.bot.run_bot_for_message", new=AsyncMock()),
         ):
@@ -282,7 +300,10 @@ class TestResendChannelMessage:
         )
         assert msg_id is not None
 
-        with patch("app.routers.messages.require_connected", return_value=mc):
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+        ):
             result = await resend_channel_message(msg_id, new_timestamp=False)
 
         assert result["status"] == "ok"
@@ -341,6 +362,7 @@ class TestResendChannelMessage:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.routers.messages.broadcast_event"),
             patch("app.routers.messages.time") as mock_time,
         ):
@@ -436,7 +458,10 @@ class TestResendChannelMessage:
         )
         assert msg_id is not None
 
-        with patch("app.routers.messages.require_connected", return_value=mc):
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+        ):
             await resend_channel_message(msg_id, new_timestamp=False)
 
         call_kwargs = mc.commands.send_chan_msg.await_args.kwargs
@@ -462,6 +487,7 @@ class TestResendChannelMessage:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.routers.messages.broadcast_event"),
         ):
             result = await resend_channel_message(msg_id, new_timestamp=True)
@@ -490,6 +516,7 @@ class TestResendChannelMessage:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.routers.messages.broadcast_event"),
         ):
             result = await resend_channel_message(msg_id, new_timestamp=True)
@@ -524,6 +551,7 @@ class TestResendChannelMessage:
 
         with (
             patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
             patch("app.routers.messages.broadcast_event") as mock_broadcast,
         ):
             result = await resend_channel_message(msg_id, new_timestamp=True)

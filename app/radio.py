@@ -20,6 +20,10 @@ class RadioOperationBusyError(RadioOperationError):
     """Raised when a non-blocking radio operation cannot acquire the lock."""
 
 
+class RadioDisconnectedError(RadioOperationError):
+    """Raised when the radio disconnects between pre-check and lock acquisition."""
+
+
 @asynccontextmanager
 async def _noop_context():
     """No-op async context manager for optional nesting."""
@@ -166,18 +170,30 @@ class RadioManager:
         pause_polling: bool = False,
         suspend_auto_fetch: bool = False,
         blocking: bool = True,
-        meshcore: MeshCore | None = None,
     ):
         """Acquire shared radio lock and optionally pause polling / auto-fetch.
+
+        After acquiring the lock, resolves the current MeshCore instance and
+        yields it.  Callers get a fresh reference via ``async with ... as mc:``,
+        avoiding stale-reference bugs when a reconnect swaps ``_meshcore``
+        between the pre-check and the lock acquisition.
 
         Args:
             name: Human-readable operation name for logs/errors.
             pause_polling: Pause fallback message polling while held.
             suspend_auto_fetch: Stop MeshCore auto message fetching while held.
             blocking: If False, fail immediately when lock is held.
-            meshcore: Optional explicit MeshCore instance for auto-fetch control.
+
+        Raises:
+            RadioDisconnectedError: If the radio disconnected before the lock
+                was acquired (``_meshcore`` is ``None``).
         """
         await self._acquire_operation_lock(name, blocking=blocking)
+
+        mc = self._meshcore
+        if mc is None:
+            self._release_operation_lock(name)
+            raise RadioDisconnectedError("Radio disconnected")
 
         poll_context = _noop_context()
         if pause_polling:
@@ -185,18 +201,17 @@ class RadioManager:
 
             poll_context = pause_polling_context()
 
-        mc = meshcore or self._meshcore
         auto_fetch_paused = False
 
         try:
             async with poll_context:
-                if suspend_auto_fetch and mc is not None:
+                if suspend_auto_fetch:
                     await mc.stop_auto_message_fetching()
                     auto_fetch_paused = True
-                yield
+                yield mc
         finally:
             try:
-                if auto_fetch_paused and mc is not None:
+                if auto_fetch_paused:
                     try:
                         await mc.start_auto_message_fetching()
                     except Exception as e:

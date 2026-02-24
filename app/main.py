@@ -2,13 +2,14 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import setup_logging
 from app.database import db
 from app.frontend_static import register_frontend_static_routes
-from app.radio import radio_manager
+from app.radio import RadioDisconnectedError, radio_manager
 from app.radio_sync import (
     stop_message_polling,
     stop_periodic_advert,
@@ -74,6 +75,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RadioDisconnectedError)
+async def radio_disconnected_handler(request: Request, exc: RadioDisconnectedError):
+    """Return 503 when a radio disconnect race occurs during an operation."""
+    return JSONResponse(status_code=503, content={"detail": "Radio not connected"})
+
 
 # API routes - all prefixed with /api for production compatibility
 app.include_router(health.router, prefix="/api")

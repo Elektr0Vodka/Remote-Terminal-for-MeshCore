@@ -43,7 +43,7 @@ async def list_messages(
 @router.post("/direct", response_model=Message)
 async def send_direct_message(request: SendDirectMessageRequest) -> Message:
     """Send a direct message to a contact."""
-    mc = require_connected()
+    require_connected()
 
     # First check our database for the contact
     from app.repository import ContactRepository
@@ -69,7 +69,7 @@ async def send_direct_message(request: SendDirectMessageRequest) -> Message:
     # so we can't rely on it to know if the firmware has the contact.
     # add_contact is idempotent - updates if exists, adds if not.
     contact_data = db_contact.to_radio_dict()
-    async with radio_manager.radio_operation("send_direct_message"):
+    async with radio_manager.radio_operation("send_direct_message") as mc:
         logger.debug("Ensuring contact %s is on radio before sending", db_contact.public_key[:12])
         add_result = await mc.commands.add_contact(contact_data)
         if add_result.type == EventType.ERROR:
@@ -163,7 +163,7 @@ TEMP_RADIO_SLOT = 0
 @router.post("/channel", response_model=Message)
 async def send_channel_message(request: SendChannelMessageRequest) -> Message:
     """Send a message to a channel."""
-    mc = require_connected()
+    require_connected()
 
     # Get channel info from our database
     from app.decoder import calculate_channel_hash
@@ -192,12 +192,14 @@ async def send_channel_message(request: SendChannelMessageRequest) -> Message:
         expected_hash,
     )
     channel_key_upper = request.channel_key.upper()
-    radio_name = mc.self_info.get("name", "") if mc.self_info else ""
-    text_with_sender = f"{radio_name}: {request.text}" if radio_name else request.text
     message_id: int | None = None
     now: int | None = None
+    radio_name: str = ""
+    text_with_sender: str = request.text
 
-    async with radio_manager.radio_operation("send_channel_message"):
+    async with radio_manager.radio_operation("send_channel_message") as mc:
+        radio_name = mc.self_info.get("name", "") if mc.self_info else ""
+        text_with_sender = f"{radio_name}: {request.text}" if radio_name else request.text
         # Load the channel to a temporary radio slot before sending
         set_result = await mc.commands.set_channel(
             channel_idx=TEMP_RADIO_SLOT,
@@ -318,7 +320,7 @@ async def resend_channel_message(
     When new_timestamp=True: resend with a fresh timestamp so repeaters treat it as a
     new packet. Creates a new message row in the database. No time window restriction.
     """
-    mc = require_connected()
+    require_connected()
 
     from app.repository import ChannelRepository
 
@@ -352,12 +354,6 @@ async def resend_channel_message(
     else:
         timestamp_bytes = msg.sender_timestamp.to_bytes(4, "little")
 
-    # Strip sender prefix: DB stores "RadioName: message" but radio needs "message"
-    radio_name = mc.self_info.get("name", "") if mc.self_info else ""
-    text_to_send = msg.text
-    if radio_name and text_to_send.startswith(f"{radio_name}: "):
-        text_to_send = text_to_send[len(f"{radio_name}: ") :]
-
     try:
         key_bytes = bytes.fromhex(msg.conversation_key)
     except ValueError:
@@ -365,7 +361,13 @@ async def resend_channel_message(
             status_code=400, detail=f"Invalid channel key format: {msg.conversation_key}"
         ) from None
 
-    async with radio_manager.radio_operation("resend_channel_message"):
+    async with radio_manager.radio_operation("resend_channel_message") as mc:
+        # Strip sender prefix: DB stores "RadioName: message" but radio needs "message"
+        radio_name = mc.self_info.get("name", "") if mc.self_info else ""
+        text_to_send = msg.text
+        if radio_name and text_to_send.startswith(f"{radio_name}: "):
+            text_to_send = text_to_send[len(f"{radio_name}: ") :]
+
         set_result = await mc.commands.set_channel(
             channel_idx=TEMP_RADIO_SLOT,
             channel_name=db_channel.name,

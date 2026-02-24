@@ -264,11 +264,11 @@ async def get_contact(public_key: str) -> Contact:
 @router.post("/sync")
 async def sync_contacts_from_radio() -> dict:
     """Sync contacts from the radio to the database."""
-    mc = require_connected()
+    require_connected()
 
     logger.info("Syncing contacts from radio")
 
-    async with radio_manager.radio_operation("sync_contacts_from_radio", meshcore=mc):
+    async with radio_manager.radio_operation("sync_contacts_from_radio") as mc:
         result = await mc.commands.get_contacts()
 
     if result.type == EventType.ERROR:
@@ -294,11 +294,11 @@ async def sync_contacts_from_radio() -> dict:
 @router.post("/{public_key}/remove-from-radio")
 async def remove_contact_from_radio(public_key: str) -> dict:
     """Remove a contact from the radio (keeps it in database)."""
-    mc = require_connected()
+    require_connected()
 
     contact = await _resolve_contact_or_404(public_key)
 
-    async with radio_manager.radio_operation("remove_contact_from_radio", meshcore=mc):
+    async with radio_manager.radio_operation("remove_contact_from_radio") as mc:
         # Get the contact from radio
         radio_contact = mc.get_contact_by_key_prefix(contact.public_key[:12])
         if not radio_contact:
@@ -322,11 +322,11 @@ async def remove_contact_from_radio(public_key: str) -> dict:
 @router.post("/{public_key}/add-to-radio")
 async def add_contact_to_radio(public_key: str) -> dict:
     """Add a contact from the database to the radio."""
-    mc = require_connected()
+    require_connected()
 
     contact = await _resolve_contact_or_404(public_key, "Contact not found in database")
 
-    async with radio_manager.radio_operation("add_contact_to_radio", meshcore=mc):
+    async with radio_manager.radio_operation("add_contact_to_radio") as mc:
         # Check if already on radio
         radio_contact = mc.get_contact_by_key_prefix(contact.public_key[:12])
         if radio_contact:
@@ -361,9 +361,8 @@ async def delete_contact(public_key: str) -> dict:
     contact = await _resolve_contact_or_404(public_key)
 
     # Remove from radio if connected and contact is on radio
-    if radio_manager.is_connected and radio_manager.meshcore:
-        mc = radio_manager.meshcore
-        async with radio_manager.radio_operation("delete_contact_from_radio", meshcore=mc):
+    if radio_manager.is_connected:
+        async with radio_manager.radio_operation("delete_contact_from_radio") as mc:
             radio_contact = mc.get_contact_by_key_prefix(contact.public_key[:12])
             if radio_contact:
                 logger.info(
@@ -385,7 +384,7 @@ async def request_telemetry(public_key: str, request: TelemetryRequest) -> Telem
     The contact must be a repeater (type=2). If not on the radio, it will be added.
     Uses login + status request with retry logic.
     """
-    mc = require_connected()
+    require_connected()
 
     # Get contact from database
     contact = await _resolve_contact_or_404(public_key)
@@ -399,10 +398,9 @@ async def request_telemetry(public_key: str, request: TelemetryRequest) -> Telem
 
     async with radio_manager.radio_operation(
         "request_telemetry",
-        meshcore=mc,
         pause_polling=True,
         suspend_auto_fetch=True,
-    ):
+    ) as mc:
         # Prepare connection (add/remove dance + login)
         await prepare_repeater_connection(mc, contact, request.password)
 
@@ -552,7 +550,7 @@ async def send_repeater_command(public_key: str, request: CommandRequest) -> Com
     - reboot
     - ver
     """
-    mc = require_connected()
+    require_connected()
 
     # Get contact from database
     contact = await _resolve_contact_or_404(public_key)
@@ -566,10 +564,9 @@ async def send_repeater_command(public_key: str, request: CommandRequest) -> Com
 
     async with radio_manager.radio_operation(
         "send_repeater_command",
-        meshcore=mc,
         pause_polling=True,
         suspend_auto_fetch=True,
-    ):
+    ) as mc:
         # Add contact to radio with path from DB
         logger.info("Adding repeater %s to radio", contact.public_key[:12])
         await mc.commands.add_contact(contact.to_radio_dict())
@@ -621,7 +618,7 @@ async def request_trace(public_key: str) -> TraceResponse:
     (no intermediate repeaters). The radio firmware requires at least one
     node in the path.
     """
-    mc = require_connected()
+    require_connected()
 
     contact = await _resolve_contact_or_404(public_key)
 
@@ -631,7 +628,7 @@ async def request_trace(public_key: str) -> TraceResponse:
 
     # Trace does not need auto-fetch suspension: response arrives as TRACE_DATA
     # from the reader loop, not via get_msg().
-    async with radio_manager.radio_operation("request_trace", pause_polling=True):
+    async with radio_manager.radio_operation("request_trace", pause_polling=True) as mc:
         # Ensure contact is on radio so the trace can reach them
         await mc.commands.add_contact(contact.to_radio_dict())
 

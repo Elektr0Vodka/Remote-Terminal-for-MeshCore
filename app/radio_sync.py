@@ -573,13 +573,11 @@ async def sync_recent_contacts_to_radio(force: bool = False) -> dict:
         logger.debug("Cannot sync contacts to radio: not connected")
         return {"loaded": 0, "error": "Radio not connected"}
 
-    mc = radio_manager.meshcore
-
     try:
         async with radio_manager.radio_operation(
             "sync_recent_contacts_to_radio",
             blocking=False,
-        ):
+        ) as mc:
             _last_contact_sync = now
 
             # Build prioritized contact list:

@@ -70,9 +70,9 @@ async def get_radio_config() -> RadioConfigResponse:
 @router.patch("/config", response_model=RadioConfigResponse)
 async def update_radio_config(update: RadioConfigUpdate) -> RadioConfigResponse:
     """Update radio configuration. Only provided fields will be updated."""
-    mc = require_connected()
+    require_connected()
 
-    async with radio_manager.radio_operation("update_radio_config"):
+    async with radio_manager.radio_operation("update_radio_config") as mc:
         if update.name is not None:
             logger.info("Setting radio name to %s", update.name)
             await mc.commands.set_name(update.name)
@@ -117,7 +117,7 @@ async def update_radio_config(update: RadioConfigUpdate) -> RadioConfigResponse:
 @router.put("/private-key")
 async def set_private_key(update: PrivateKeyUpdate) -> dict:
     """Set the radio's private key. This is write-only."""
-    mc = require_connected()
+    require_connected()
 
     try:
         key_bytes = bytes.fromhex(update.private_key)
@@ -125,7 +125,7 @@ async def set_private_key(update: PrivateKeyUpdate) -> dict:
         raise HTTPException(status_code=400, detail="Invalid hex string for private key") from None
 
     logger.info("Importing private key")
-    async with radio_manager.radio_operation("import_private_key", meshcore=mc):
+    async with radio_manager.radio_operation("import_private_key") as mc:
         result = await mc.commands.import_private_key(key_bytes)
 
     if result.type == EventType.ERROR:
@@ -167,13 +167,10 @@ async def reboot_radio() -> dict:
     If not connected: attempts to reconnect (same as /reconnect endpoint).
     """
     # If connected, send reboot command
-    if radio_manager.is_connected and radio_manager.meshcore:
+    if radio_manager.is_connected:
         logger.info("Rebooting radio")
-        async with radio_manager.radio_operation(
-            "reboot_radio",
-            meshcore=radio_manager.meshcore,
-        ):
-            await radio_manager.meshcore.commands.reboot()
+        async with radio_manager.radio_operation("reboot_radio") as mc:
+            await mc.commands.reboot()
         return {
             "status": "ok",
             "message": "Reboot command sent. Radio will reconnect automatically.",

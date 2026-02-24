@@ -11,6 +11,7 @@ from meshcore import EventType
 
 from app.database import Database
 from app.models import Favorite
+from app.radio import radio_manager
 from app.radio_sync import (
     is_polling_paused,
     pause_polling,
@@ -45,14 +46,19 @@ async def test_db():
 
 @pytest.fixture(autouse=True)
 def reset_sync_state():
-    """Reset polling pause state and sync timestamp before and after each test."""
+    """Reset polling pause state, sync timestamp, and radio_manager before/after each test."""
     import app.radio_sync as radio_sync
+
+    prev_mc = radio_manager._meshcore
+    prev_lock = radio_manager._operation_lock
 
     radio_sync._polling_pause_count = 0
     radio_sync._last_contact_sync = 0.0
     yield
     radio_sync._polling_pause_count = 0
     radio_sync._last_contact_sync = 0.0
+    radio_manager._meshcore = prev_mc
+    radio_manager._operation_lock = prev_lock
 
 
 KEY_A = "aa" * 32
@@ -236,11 +242,8 @@ class TestSyncRecentContactsToRadio:
         mock_result.type = EventType.OK
         mock_mc.commands.add_contact = AsyncMock(return_value=mock_result)
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
-
-            result = await sync_recent_contacts_to_radio()
+        radio_manager._meshcore = mock_mc
+        result = await sync_recent_contacts_to_radio()
 
         assert result["loaded"] == 2
         # Verify contacts are now marked as on_radio in DB
@@ -268,11 +271,8 @@ class TestSyncRecentContactsToRadio:
         mock_result.type = EventType.OK
         mock_mc.commands.add_contact = AsyncMock(return_value=mock_result)
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
-
-            result = await sync_recent_contacts_to_radio()
+        radio_manager._meshcore = mock_mc
+        result = await sync_recent_contacts_to_radio()
 
         assert result["loaded"] == 2
         # KEY_A (favorite) should be loaded first, then KEY_B (most recent)
@@ -298,11 +298,8 @@ class TestSyncRecentContactsToRadio:
         mock_result.type = EventType.OK
         mock_mc.commands.add_contact = AsyncMock(return_value=mock_result)
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
-
-            result = await sync_recent_contacts_to_radio()
+        radio_manager._meshcore = mock_mc
+        result = await sync_recent_contacts_to_radio()
 
         assert result["loaded"] == 2
         loaded_keys = [
@@ -319,11 +316,8 @@ class TestSyncRecentContactsToRadio:
         mock_mc.get_contact_by_key_prefix = MagicMock(return_value=MagicMock())  # Found
         mock_mc.commands.add_contact = AsyncMock()
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
-
-            result = await sync_recent_contacts_to_radio()
+        radio_manager._meshcore = mock_mc
+        result = await sync_recent_contacts_to_radio()
 
         assert result["loaded"] == 0
         assert result["already_on_radio"] == 1
@@ -335,34 +329,30 @@ class TestSyncRecentContactsToRadio:
         mock_mc = MagicMock()
         mock_mc.get_contact_by_key_prefix = MagicMock(return_value=None)
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
+        radio_manager._meshcore = mock_mc
 
-            # First call succeeds
-            result1 = await sync_recent_contacts_to_radio()
-            assert "throttled" not in result1
+        # First call succeeds
+        result1 = await sync_recent_contacts_to_radio()
+        assert "throttled" not in result1
 
-            # Second call is throttled
-            result2 = await sync_recent_contacts_to_radio()
-            assert result2["throttled"] is True
-            assert result2["loaded"] == 0
+        # Second call is throttled
+        result2 = await sync_recent_contacts_to_radio()
+        assert result2["throttled"] is True
+        assert result2["loaded"] == 0
 
     @pytest.mark.asyncio
     async def test_force_bypasses_throttle(self, test_db):
         """force=True bypasses the throttle window."""
         mock_mc = MagicMock()
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
+        radio_manager._meshcore = mock_mc
 
-            # First call
-            await sync_recent_contacts_to_radio()
+        # First call
+        await sync_recent_contacts_to_radio()
 
-            # Forced second call is not throttled
-            result = await sync_recent_contacts_to_radio(force=True)
-            assert "throttled" not in result
+        # Forced second call is not throttled
+        result = await sync_recent_contacts_to_radio(force=True)
+        assert "throttled" not in result
 
     @pytest.mark.asyncio
     async def test_not_connected_returns_error(self):
@@ -384,11 +374,8 @@ class TestSyncRecentContactsToRadio:
         mock_mc = MagicMock()
         mock_mc.get_contact_by_key_prefix = MagicMock(return_value=MagicMock())  # Found
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
-
-            result = await sync_recent_contacts_to_radio()
+        radio_manager._meshcore = mock_mc
+        result = await sync_recent_contacts_to_radio()
 
         assert result["already_on_radio"] == 1
         # Should update the flag since contact.on_radio was False
@@ -407,14 +394,36 @@ class TestSyncRecentContactsToRadio:
         mock_result.payload = {"error": "Radio full"}
         mock_mc.commands.add_contact = AsyncMock(return_value=mock_result)
 
-        with patch("app.radio_sync.radio_manager") as mock_rm:
-            mock_rm.is_connected = True
-            mock_rm.meshcore = mock_mc
-
-            result = await sync_recent_contacts_to_radio()
+        radio_manager._meshcore = mock_mc
+        result = await sync_recent_contacts_to_radio()
 
         assert result["loaded"] == 0
         assert result["failed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_uses_post_lock_meshcore_after_swap(self, test_db):
+        """If _meshcore is swapped between pre-check and lock acquisition,
+        the function uses the new (post-lock) instance, not the stale one."""
+        await _insert_contact(KEY_A, "Alice", last_contacted=2000)
+
+        old_mc = MagicMock(name="old_mc")
+        new_mc = MagicMock(name="new_mc")
+        new_mc.get_contact_by_key_prefix = MagicMock(return_value=None)
+        mock_result = MagicMock()
+        mock_result.type = EventType.OK
+        new_mc.commands.add_contact = AsyncMock(return_value=mock_result)
+
+        # Pre-check sees old_mc (truthy, passes is_connected guard)
+        radio_manager._meshcore = old_mc
+        # Simulate reconnect swapping _meshcore before lock acquisition
+        radio_manager._meshcore = new_mc
+
+        result = await sync_recent_contacts_to_radio()
+
+        assert result["loaded"] == 1
+        # new_mc was used, not old_mc
+        new_mc.commands.add_contact.assert_called_once()
+        old_mc.commands.add_contact.assert_not_called()
 
 
 class TestSyncAndOffloadContacts:
