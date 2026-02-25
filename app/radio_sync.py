@@ -177,7 +177,7 @@ async def sync_and_offload_channels(mc: MeshCore) -> dict:
             secret = payload.get("channel_secret", b"")
 
             # Skip empty channels
-            if not name or name == "\x00" * len(name) or all(b == 0 for b in secret):
+            if not name or name == "\x00" * len(name):
                 continue
 
             is_hashtag = name.startswith("#")
