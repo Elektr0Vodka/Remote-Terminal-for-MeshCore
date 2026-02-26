@@ -25,6 +25,7 @@ import {
   setReopenLastConversationEnabled,
 } from '../utils/lastViewedConversation';
 import { RADIO_PRESETS } from '../utils/radioPresets';
+import { getLocalLabel, setLocalLabel, type LocalLabel } from '../utils/localLabel';
 
 import { SETTINGS_SECTION_LABELS, type SettingsSection } from './settingsConstants';
 
@@ -42,6 +43,7 @@ interface SettingsModalBaseProps {
   onAdvertise: () => Promise<void>;
   onHealthRefresh: () => Promise<void>;
   onRefreshAppSettings: () => Promise<void>;
+  onLocalLabelChange?: (label: LocalLabel) => void;
 }
 
 type SettingsModalProps = SettingsModalBaseProps &
@@ -65,6 +67,7 @@ export function SettingsModal(props: SettingsModalProps) {
     onAdvertise,
     onHealthRefresh,
     onRefreshAppSettings,
+    onLocalLabelChange,
   } = props;
   const externalSidebarNav = props.externalSidebarNav === true;
   const desktopSection = props.externalSidebarNav ? props.desktopSection : undefined;
@@ -118,6 +121,8 @@ export function SettingsModal(props: SettingsModalProps) {
   const [reopenLastConversation, setReopenLastConversation] = useState(
     getReopenLastConversationEnabled
   );
+  const [localLabelText, setLocalLabelText] = useState(() => getLocalLabel().text);
+  const [localLabelColor, setLocalLabelColor] = useState(() => getLocalLabel().color);
 
   // Advertisement interval state (displayed in hours, stored as seconds in DB)
   const [advertIntervalHours, setAdvertIntervalHours] = useState('0');
@@ -1101,6 +1106,40 @@ export function SettingsModal(props: SettingsModalProps) {
                 </label>
                 <p className="text-xs text-muted-foreground">
                   This applies only to this device/browser. It does not sync to server settings.
+                </p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-3">
+                <Label>Local Label</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={localLabelText}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      setLocalLabelText(text);
+                      setLocalLabel(text, localLabelColor);
+                      onLocalLabelChange?.({ text, color: localLabelColor });
+                    }}
+                    placeholder="e.g. Home Base, Field Radio 2"
+                    className="flex-1"
+                  />
+                  <input
+                    type="color"
+                    value={localLabelColor}
+                    onChange={(e) => {
+                      const color = e.target.value;
+                      setLocalLabelColor(color);
+                      setLocalLabel(localLabelText, color);
+                      onLocalLabelChange?.({ text: localLabelText, color });
+                    }}
+                    className="w-10 h-9 rounded border border-input cursor-pointer bg-transparent p-0.5"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Display a colored banner at the top of the page to identify this instance. This
+                  applies only to this device/browser.
                 </p>
               </div>
 

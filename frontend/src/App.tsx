@@ -52,6 +52,7 @@ import { getStateKey } from './utils/conversationState';
 import { appendRawPacketUnique } from './utils/rawPacketIdentity';
 import { messageContainsMention } from './utils/messageParser';
 import { mergeContactIntoList } from './utils/contactMerge';
+import { getLocalLabel, getContrastTextColor } from './utils/localLabel';
 import { cn } from '@/lib/utils';
 import type { Contact, Conversation, HealthStatus, Message, MessagePath, RawPacket } from './types';
 
@@ -66,6 +67,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showCracker, setShowCracker] = useState(false);
   const [crackerRunning, setCrackerRunning] = useState(false);
+  const [localLabel, setLocalLabel] = useState(getLocalLabel);
 
   // Defer CrackerPanel mount until first opened (lazy-loaded, but keep mounted after for state)
   const crackerMounted = useRef(false);
@@ -467,6 +469,17 @@ export function App() {
 
   return (
     <div className="flex flex-col h-full">
+      {localLabel.text && (
+        <div
+          style={{
+            backgroundColor: localLabel.color,
+            color: getContrastTextColor(localLabel.color),
+          }}
+          className="px-4 py-1 text-center text-sm font-medium"
+        >
+          {localLabel.text}
+        </div>
+      )}
       <StatusBar
         health={health}
         config={config}
@@ -621,6 +634,7 @@ export function App() {
                     onAdvertise={handleAdvertise}
                     onHealthRefresh={handleHealthRefresh}
                     onRefreshAppSettings={fetchAppSettings}
+                    onLocalLabelChange={setLocalLabel}
                   />
                 </Suspense>
               </div>
