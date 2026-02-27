@@ -280,8 +280,6 @@ class TestFetchRepeaterResponse:
         assert mc.commands.get_msg.await_count == 21
 
 
-
-
 class TestRepeaterCommandRoute:
     @pytest.mark.asyncio
     async def test_send_cmd_error_raises_and_restores_auto_fetch(self, test_db):

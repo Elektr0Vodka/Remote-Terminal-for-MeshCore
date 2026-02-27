@@ -43,7 +43,6 @@ from app.repository import (
     ContactRepository,
     MessageRepository,
 )
-from app.websocket import broadcast_error
 
 if TYPE_CHECKING:
     from meshcore.events import Event
