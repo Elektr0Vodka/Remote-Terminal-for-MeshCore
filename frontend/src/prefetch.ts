@@ -8,21 +8,21 @@
 import type { AppSettings, Channel, Contact, RadioConfig, UnreadCounts } from './types';
 
 interface PrefetchMap {
-  config?: Promise<RadioConfig>;
-  settings?: Promise<AppSettings>;
-  channels?: Promise<Channel[]>;
-  contacts?: Promise<Contact[]>;
-  unreads?: Promise<UnreadCounts>;
-  undecryptedCount?: Promise<{ count: number }>;
+  config: Promise<RadioConfig>;
+  settings: Promise<AppSettings>;
+  channels: Promise<Channel[]>;
+  contacts: Promise<Contact[]>;
+  unreads: Promise<UnreadCounts>;
+  undecryptedCount: Promise<{ count: number }>;
 }
 
-const store: PrefetchMap = (window as unknown as { __prefetch?: PrefetchMap }).__prefetch ?? {};
+const store: Partial<PrefetchMap> =
+  (window as unknown as { __prefetch?: Partial<PrefetchMap> }).__prefetch ?? {};
 
-type PrefetchResolved<K extends keyof PrefetchMap> =
-  PrefetchMap[K] extends Promise<infer T> ? T : never;
+type PrefetchResolved<K extends keyof PrefetchMap> = Awaited<PrefetchMap[K]>;
 
 /** Take a prefetched promise (consumed once, then gone). */
-export function takePrefetch<K extends keyof PrefetchMap>(key: K): PrefetchMap[K] {
+export function takePrefetch<K extends keyof PrefetchMap>(key: K): PrefetchMap[K] | undefined {
   const p = store[key];
   delete store[key];
   return p;
@@ -42,7 +42,7 @@ export async function takePrefetchOrFetch<K extends keyof PrefetchMap>(
   }
 
   try {
-    return await prefetched;
+    return (await prefetched) as PrefetchResolved<K>;
   } catch (err) {
     console.warn(`Prefetch for "${String(key)}" failed, falling back to live fetch.`, err);
     return fallback();
