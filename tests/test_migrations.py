@@ -100,8 +100,8 @@ class TestMigration001:
             # Run migrations
             applied = await run_migrations(conn)
 
-            assert applied == 29  # All migrations run
-            assert await get_version(conn) == 29
+            assert applied == 30  # All migrations run
+            assert await get_version(conn) == 30
 
             # Verify columns exist by inserting and selecting
             await conn.execute(
@@ -183,9 +183,9 @@ class TestMigration001:
             applied1 = await run_migrations(conn)
             applied2 = await run_migrations(conn)
 
-            assert applied1 == 29  # All migrations run
+            assert applied1 == 30  # All migrations run
             assert applied2 == 0  # No migrations on second run
-            assert await get_version(conn) == 29
+            assert await get_version(conn) == 30
         finally:
             await conn.close()
 
@@ -246,8 +246,8 @@ class TestMigration001:
             applied = await run_migrations(conn)
 
             # All migrations applied (version incremented) but no error
-            assert applied == 29
-            assert await get_version(conn) == 29
+            assert applied == 30
+            assert await get_version(conn) == 30
         finally:
             await conn.close()
 
@@ -376,8 +376,8 @@ class TestMigration013:
 
             # Run migration 13 (plus 14-27 which also run)
             applied = await run_migrations(conn)
-            assert applied == 17
-            assert await get_version(conn) == 29
+            assert applied == 18
+            assert await get_version(conn) == 30
 
             # Verify bots array was created with migrated data
             cursor = await conn.execute("SELECT bots FROM app_settings WHERE id = 1")
@@ -497,7 +497,7 @@ class TestMigration018:
             assert await cursor.fetchone() is not None
 
             await run_migrations(conn)
-            assert await get_version(conn) == 29
+            assert await get_version(conn) == 30
 
             # Verify autoindex is gone
             cursor = await conn.execute(
@@ -575,8 +575,8 @@ class TestMigration018:
             await conn.commit()
 
             applied = await run_migrations(conn)
-            assert applied == 12  # Migrations 18-29 run (18+19 skip internally)
-            assert await get_version(conn) == 29
+            assert applied == 13  # Migrations 18-30 run (18+19 skip internally)
+            assert await get_version(conn) == 30
         finally:
             await conn.close()
 
@@ -648,7 +648,7 @@ class TestMigration019:
             assert await cursor.fetchone() is not None
 
             await run_migrations(conn)
-            assert await get_version(conn) == 29
+            assert await get_version(conn) == 30
 
             # Verify autoindex is gone
             cursor = await conn.execute(
@@ -714,8 +714,8 @@ class TestMigration020:
             assert (await cursor.fetchone())[0] == "delete"
 
             applied = await run_migrations(conn)
-            assert applied == 10  # Migrations 20-29
-            assert await get_version(conn) == 29
+            assert applied == 11  # Migrations 20-30
+            assert await get_version(conn) == 30
 
             # Verify WAL mode
             cursor = await conn.execute("PRAGMA journal_mode")
@@ -745,7 +745,7 @@ class TestMigration020:
             await set_version(conn, 20)
 
             applied = await run_migrations(conn)
-            assert applied == 9  # Migrations 21-29 still run
+            assert applied == 10  # Migrations 21-30 still run
 
             # Still WAL + INCREMENTAL
             cursor = await conn.execute("PRAGMA journal_mode")
@@ -803,8 +803,8 @@ class TestMigration028:
             await conn.commit()
 
             applied = await run_migrations(conn)
-            assert applied == 2
-            assert await get_version(conn) == 29
+            assert applied == 3
+            assert await get_version(conn) == 30
 
             # Verify payload_hash column is now BLOB
             cursor = await conn.execute("PRAGMA table_info(raw_packets)")
@@ -873,8 +873,8 @@ class TestMigration028:
             await conn.commit()
 
             applied = await run_migrations(conn)
-            assert applied == 2  # Version still bumped
-            assert await get_version(conn) == 29
+            assert applied == 3  # Version still bumped
+            assert await get_version(conn) == 30
 
             # Verify data unchanged
             cursor = await conn.execute("SELECT payload_hash FROM raw_packets")

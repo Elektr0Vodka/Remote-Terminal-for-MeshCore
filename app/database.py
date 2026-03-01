@@ -84,7 +84,6 @@ CREATE TABLE IF NOT EXISTS contact_name_history (
     FOREIGN KEY (public_key) REFERENCES contacts(public_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(type, conversation_key);
 CREATE INDEX IF NOT EXISTS idx_messages_received ON messages(received_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_dedup_null_safe
     ON messages(type, conversation_key, text, COALESCE(sender_timestamp, 0));
