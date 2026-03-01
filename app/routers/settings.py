@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -97,6 +98,22 @@ class AppSettingsUpdate(BaseModel):
         default=None,
         description="Whether to publish raw packets to MQTT",
     )
+    community_mqtt_enabled: bool | None = Field(
+        default=None,
+        description="Whether to publish raw packets to the community MQTT broker",
+    )
+    community_mqtt_iata: str | None = Field(
+        default=None,
+        description="IATA region code for community MQTT topic routing (3 alpha chars)",
+    )
+    community_mqtt_broker: str | None = Field(
+        default=None,
+        description="Community MQTT broker hostname",
+    )
+    community_mqtt_email: str | None = Field(
+        default=None,
+        description="Email address for node claiming on the community aggregator",
+    )
 
 
 class FavoriteRequest(BaseModel):
@@ -181,6 +198,43 @@ async def update_settings(update: AppSettingsUpdate) -> AppSettings:
             kwargs[field] = value
             mqtt_changed = True
 
+    # Community MQTT fields
+    community_mqtt_changed = False
+    if update.community_mqtt_enabled is not None:
+        kwargs["community_mqtt_enabled"] = update.community_mqtt_enabled
+        community_mqtt_changed = True
+
+    if update.community_mqtt_iata is not None:
+        iata = update.community_mqtt_iata.upper().strip()
+        if iata and not re.fullmatch(r"[A-Z]{3}", iata):
+            raise HTTPException(
+                status_code=400,
+                detail="IATA code must be exactly 3 uppercase alphabetic characters",
+            )
+        kwargs["community_mqtt_iata"] = iata
+        community_mqtt_changed = True
+
+    if update.community_mqtt_broker is not None:
+        kwargs["community_mqtt_broker"] = update.community_mqtt_broker
+        community_mqtt_changed = True
+
+    if update.community_mqtt_email is not None:
+        kwargs["community_mqtt_email"] = update.community_mqtt_email
+        community_mqtt_changed = True
+
+    # Require IATA when enabling community MQTT
+    if kwargs.get("community_mqtt_enabled", False):
+        # Check the IATA value being set, or fall back to current settings
+        iata_value = kwargs.get("community_mqtt_iata")
+        if iata_value is None:
+            current = await AppSettingsRepository.get()
+            iata_value = current.community_mqtt_iata
+        if not iata_value or not re.fullmatch(r"[A-Z]{3}", iata_value):
+            raise HTTPException(
+                status_code=400,
+                detail="A valid IATA region code is required to enable community sharing",
+            )
+
     if kwargs:
         result = await AppSettingsRepository.update(**kwargs)
 
@@ -189,6 +243,12 @@ async def update_settings(update: AppSettingsUpdate) -> AppSettings:
             from app.mqtt import mqtt_publisher
 
             await mqtt_publisher.restart(result)
+
+        # Restart community MQTT publisher if any community settings changed
+        if community_mqtt_changed:
+            from app.community_mqtt import community_publisher
+
+            await community_publisher.restart(result)
 
         return result
 

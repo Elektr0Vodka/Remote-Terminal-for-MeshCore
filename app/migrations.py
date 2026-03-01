@@ -254,6 +254,13 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 31)
         applied += 1
 
+    # Migration 32: Add community MQTT columns to app_settings
+    if version < 32:
+        logger.info("Applying migration 32: add community MQTT columns to app_settings")
+        await _migrate_032_add_community_mqtt_columns(conn)
+        await set_version(conn, 32)
+        applied += 1
+
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -1884,6 +1891,33 @@ async def _migrate_031_add_mqtt_columns(conn: aiosqlite.Connection) -> None:
         ("mqtt_topic_prefix", "TEXT DEFAULT 'meshcore'"),
         ("mqtt_publish_messages", "INTEGER DEFAULT 0"),
         ("mqtt_publish_raw_packets", "INTEGER DEFAULT 0"),
+    ]
+
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            await conn.execute(f"ALTER TABLE app_settings ADD COLUMN {col_name} {col_def}")
+
+    await conn.commit()
+
+
+async def _migrate_032_add_community_mqtt_columns(conn: aiosqlite.Connection) -> None:
+    """Add community MQTT configuration columns to app_settings."""
+    # Guard: app_settings may not exist in partial-schema test setups
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'"
+    )
+    if not await cursor.fetchone():
+        await conn.commit()
+        return
+
+    cursor = await conn.execute("PRAGMA table_info(app_settings)")
+    columns = {row[1] for row in await cursor.fetchall()}
+
+    new_columns = [
+        ("community_mqtt_enabled", "INTEGER DEFAULT 0"),
+        ("community_mqtt_iata", "TEXT DEFAULT ''"),
+        ("community_mqtt_broker", "TEXT DEFAULT 'mqtt-us-v1.letsmesh.net'"),
+        ("community_mqtt_email", "TEXT DEFAULT ''"),
     ]
 
     for col_name, col_def in new_columns:

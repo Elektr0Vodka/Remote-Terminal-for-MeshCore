@@ -28,6 +28,7 @@ app/
 ├── event_handlers.py    # MeshCore event subscriptions and ACK tracking
 ├── websocket.py         # WS manager + broadcast helpers
 ├── mqtt.py              # Optional MQTT publisher (fire-and-forget forwarding)
+├── community_mqtt.py    # Community MQTT publisher (raw packet sharing)
 ├── bot.py               # Bot execution and outbound bot sends
 ├── dependencies.py      # Shared FastAPI dependency providers
 ├── keystore.py          # Ephemeral private/public key storage for DM decryption
@@ -113,6 +114,20 @@ app/
 - Health endpoint includes `mqtt_status` field (`connected`, `disconnected`, `disabled`).
 - Settings changes trigger `mqtt_publisher.restart()` — no server restart needed.
 - Topics: `{prefix}/dm:{key}`, `{prefix}/gm:{key}`, `{prefix}/raw/dm:{key}`, `{prefix}/raw/gm:{key}`, `{prefix}/raw/unrouted`.
+
+### Community MQTT
+
+- Separate publisher (`app/community_mqtt.py`) for sharing raw packets with the MeshCore community aggregator.
+- Independent from the private `MqttPublisher` — different broker, authentication, and topic structure.
+- Connects to the community broker (default `mqtt-us-v1.letsmesh.net:443`) via WebSockets over TLS.
+- Authentication: Ed25519 JWT tokens signed with the radio's expanded "orlp" private key. Tokens expire after 24 hours; proactive renewal at 23 hours.
+- Broker address supports `host:port` format; defaults to port 443 if omitted.
+- JWT claims include `publicKey`, `owner` (radio pubkey), `client` (app identifier), and optional `email` (for node claiming on the community aggregator).
+- Topic: `meshcore/{IATA}/{pubkey}/packets` — IATA is a 3-letter region code (required to enable; no default).
+- Only raw packets are published — never decrypted messages.
+- Publishes are fire-and-forget. The connection loop detects publish failures via `connected` flag and reconnects within 60 seconds.
+- Health endpoint includes `community_mqtt_status` field.
+- Settings: `community_mqtt_enabled`, `community_mqtt_iata`, `community_mqtt_broker`, `community_mqtt_email`.
 
 ## API Surface (all under `/api`)
 
@@ -222,6 +237,7 @@ Main tables:
 - `bots`
 - `mqtt_broker_host`, `mqtt_broker_port`, `mqtt_username`, `mqtt_password`
 - `mqtt_use_tls`, `mqtt_tls_insecure`, `mqtt_topic_prefix`, `mqtt_publish_messages`, `mqtt_publish_raw_packets`
+- `community_mqtt_enabled`, `community_mqtt_iata`, `community_mqtt_broker`, `community_mqtt_email`
 
 ## Security Posture (intentional)
 
@@ -260,6 +276,7 @@ tests/
 ├── test_message_pagination.py  # Cursor-based message pagination
 ├── test_message_prefix_claim.py # Message prefix claim logic
 ├── test_migrations.py          # Schema migration system
+├── test_community_mqtt.py      # Community MQTT publisher (JWT, packet format, hash, broadcast)
 ├── test_mqtt.py                # MQTT publisher topic routing and lifecycle
 ├── test_packet_pipeline.py     # End-to-end packet processing
 ├── test_packets_router.py      # Packets router endpoints (decrypt, maintenance)

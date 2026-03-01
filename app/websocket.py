@@ -104,6 +104,10 @@ def broadcast_event(event_type: str, data: dict) -> None:
 
     mqtt_broadcast(event_type, data)
 
+    from app.community_mqtt import community_mqtt_broadcast
+
+    community_mqtt_broadcast(event_type, data)
+
 
 def broadcast_error(message: str, details: str | None = None) -> None:
     """Broadcast an error notification to all connected clients.

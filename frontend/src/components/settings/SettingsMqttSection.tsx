@@ -27,6 +27,12 @@ export function SettingsMqttSection({
   const [mqttPublishMessages, setMqttPublishMessages] = useState(false);
   const [mqttPublishRawPackets, setMqttPublishRawPackets] = useState(false);
 
+  // Community MQTT state
+  const [communityMqttEnabled, setCommunityMqttEnabled] = useState(false);
+  const [communityMqttIata, setCommunityMqttIata] = useState('');
+  const [communityMqttBroker, setCommunityMqttBroker] = useState('mqtt-us-v1.letsmesh.net');
+  const [communityMqttEmail, setCommunityMqttEmail] = useState('');
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +46,10 @@ export function SettingsMqttSection({
     setMqttTopicPrefix(appSettings.mqtt_topic_prefix ?? 'meshcore');
     setMqttPublishMessages(appSettings.mqtt_publish_messages ?? false);
     setMqttPublishRawPackets(appSettings.mqtt_publish_raw_packets ?? false);
+    setCommunityMqttEnabled(appSettings.community_mqtt_enabled ?? false);
+    setCommunityMqttIata(appSettings.community_mqtt_iata ?? '');
+    setCommunityMqttBroker(appSettings.community_mqtt_broker ?? 'mqtt-us-v1.letsmesh.net');
+    setCommunityMqttEmail(appSettings.community_mqtt_email ?? '');
   }, [appSettings]);
 
   const handleSave = async () => {
@@ -57,6 +67,10 @@ export function SettingsMqttSection({
         mqtt_topic_prefix: mqttTopicPrefix || 'meshcore',
         mqtt_publish_messages: mqttPublishMessages,
         mqtt_publish_raw_packets: mqttPublishRawPackets,
+        community_mqtt_enabled: communityMqttEnabled,
+        community_mqtt_iata: communityMqttIata,
+        community_mqtt_broker: communityMqttBroker || 'mqtt-us-v1.letsmesh.net',
+        community_mqtt_email: communityMqttEmail,
       };
       await onSaveAppSettings(update);
       toast.success('MQTT settings saved');
@@ -69,6 +83,14 @@ export function SettingsMqttSection({
 
   return (
     <div className={className}>
+      <div className="space-y-1">
+        <h4 className="text-sm font-medium">Private MQTT Broker</h4>
+        <p className="text-xs text-muted-foreground">
+          Forward all mesh data to your own MQTT broker for home automation, logging, or alerting.
+          Publishes both decrypted messages and raw packets to your broker.
+        </p>
+      </div>
+
       <div className="space-y-2">
         <Label>Status</Label>
         {health?.mqtt_status === 'connected' ? (
@@ -217,6 +239,95 @@ export function SettingsMqttSection({
         <span className="text-sm">Publish Raw Packets</span>
       </label>
       <p className="text-xs text-muted-foreground ml-7">Forward all RF packets</p>
+
+      <Separator />
+
+      <div className="space-y-3">
+        <h4 className="text-sm font-medium">Community Analytics</h4>
+        <p className="text-xs text-muted-foreground">
+          Share raw packet data with the MeshCore community for coverage mapping and network
+          analysis. Only raw RF packets are shared — never decrypted messages.
+        </p>
+        <div className="flex items-center gap-2 mb-2">
+          {health?.community_mqtt_status === 'connected' ? (
+            <>
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-sm text-green-400">Connected</span>
+            </>
+          ) : health?.community_mqtt_status === 'disconnected' ? (
+            <>
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              <span className="text-sm text-red-400">Disconnected</span>
+            </>
+          ) : (
+            <>
+              <div className="w-2 h-2 rounded-full bg-gray-500" />
+              <span className="text-sm text-muted-foreground">Disabled</span>
+            </>
+          )}
+        </div>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={communityMqttEnabled}
+            onChange={(e) => setCommunityMqttEnabled(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          <span className="text-sm">Enable Community Analytics</span>
+        </label>
+
+        {communityMqttEnabled && (
+          <div className="space-y-2">
+            <Label htmlFor="community-broker">Broker Address</Label>
+            <Input
+              id="community-broker"
+              type="text"
+              placeholder="mqtt-us-v1.letsmesh.net:443"
+              value={communityMqttBroker}
+              onChange={(e) => setCommunityMqttBroker(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">host or host:port (default port 443)</p>
+            <Label htmlFor="community-iata">Region Code (IATA)</Label>
+            <Input
+              id="community-iata"
+              type="text"
+              maxLength={3}
+              placeholder="e.g. DEN, LAX, NYC"
+              value={communityMqttIata}
+              onChange={(e) => setCommunityMqttIata(e.target.value.toUpperCase())}
+              className="w-32"
+            />
+            <p className="text-xs text-muted-foreground">
+              Your nearest airport&apos;s{' '}
+              <a
+                href="https://en.wikipedia.org/wiki/List_of_airports_by_IATA_airport_code:_A"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                IATA code
+              </a>{' '}
+              (required)
+            </p>
+            {communityMqttIata && (
+              <p className="text-xs text-muted-foreground">
+                Topic: meshcore/{communityMqttIata}/&lt;pubkey&gt;/packets
+              </p>
+            )}
+            <Label htmlFor="community-email">Owner Email (optional)</Label>
+            <Input
+              id="community-email"
+              type="email"
+              placeholder="you@example.com"
+              value={communityMqttEmail}
+              onChange={(e) => setCommunityMqttEmail(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Used to claim your node on the community aggregator
+            </p>
+          </div>
+        )}
+      </div>
 
       <Button onClick={handleSave} disabled={busy} className="w-full">
         {busy ? 'Saving...' : 'Save MQTT Settings'}

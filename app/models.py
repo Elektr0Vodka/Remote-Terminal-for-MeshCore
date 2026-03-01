@@ -463,6 +463,22 @@ class AppSettings(BaseModel):
         default=False,
         description="Whether to publish raw packets to MQTT",
     )
+    community_mqtt_enabled: bool = Field(
+        default=False,
+        description="Whether to publish raw packets to the community MQTT broker (letsmesh.net)",
+    )
+    community_mqtt_iata: str = Field(
+        default="",
+        description="IATA region code for community MQTT topic routing (3 alpha chars)",
+    )
+    community_mqtt_broker: str = Field(
+        default="mqtt-us-v1.letsmesh.net",
+        description="Community MQTT broker hostname",
+    )
+    community_mqtt_email: str = Field(
+        default="",
+        description="Email address for node claiming on the community aggregator (optional)",
+    )
 
 
 class BusyChannel(BaseModel):

@@ -152,7 +152,8 @@ This message-layer echo/path handling is independent of raw-packet storage dedup
 │   ├── event_handlers.py   # Radio events
 │   ├── decoder.py          # Packet decryption
 │   ├── websocket.py        # Real-time broadcasts
-│   └── mqtt.py             # Optional MQTT publisher
+│   ├── mqtt.py             # Optional MQTT publisher
+│   └── community_mqtt.py   # Community MQTT publisher (raw packet sharing)
 ├── frontend/               # React frontend
 │   ├── AGENTS.md           # Frontend documentation
 │   ├── src/
@@ -233,6 +234,7 @@ Key test files:
 - `tests/test_rx_log_data.py` - on_rx_log_data event handler integration
 - `tests/test_ack_tracking_wiring.py` - DM ACK tracking extraction and wiring
 - `tests/test_health_mqtt_status.py` - Health endpoint MQTT status field
+- `tests/test_community_mqtt.py` - Community MQTT publisher (JWT, packet format, hash, broadcast)
 
 ### Frontend (Vitest)
 
@@ -361,6 +363,17 @@ Optional MQTT integration forwards mesh events to an external broker for home au
 
 **Security**: MQTT password stored in plaintext in SQLite, consistent with the project's trusted-network design.
 
+### Community MQTT Sharing
+
+Separate from private MQTT, the community publisher (`app/community_mqtt.py`) shares raw packets with the MeshCore community aggregator for coverage mapping and analysis. Only raw packets are shared — never decrypted messages.
+
+- Connects to community broker (default `mqtt-us-v1.letsmesh.net:443`) via WebSockets over TLS.
+- Authentication via Ed25519 JWT signed with the radio's private key. Tokens auto-renew before 24h expiry.
+- Broker address field supports `host:port` format (default port 443 if omitted).
+- Topic: `meshcore/{IATA}/{pubkey}/packets` — IATA is a 3-letter region code.
+- JWT `email` claim enables node claiming on the community aggregator.
+- Config: `community_mqtt_enabled`, `community_mqtt_iata`, `community_mqtt_broker`, `community_mqtt_email` in `app_settings`.
+
 ### Server-Side Decryption
 
 The server can decrypt packets using stored keys, both in real-time and for historical packets.
@@ -402,7 +415,7 @@ mc.subscribe(EventType.ACK, handler)
 | `MESHCORE_LOG_LEVEL` | `INFO` | Logging level (`DEBUG`/`INFO`/`WARNING`/`ERROR`) |
 | `MESHCORE_DATABASE_PATH` | `data/meshcore.db` | SQLite database location |
 
-**Note:** Runtime app settings are stored in the database (`app_settings` table), not environment variables. These include `max_radio_contacts`, `auto_decrypt_dm_on_advert`, `sidebar_sort_order`, `advert_interval`, `last_advert_time`, `favorites`, `last_message_times`, `bots`, and all MQTT configuration (`mqtt_broker_host`, `mqtt_broker_port`, `mqtt_username`, `mqtt_password`, `mqtt_use_tls`, `mqtt_tls_insecure`, `mqtt_topic_prefix`, `mqtt_publish_messages`, `mqtt_publish_raw_packets`). They are configured via `GET/PATCH /api/settings` (and related settings endpoints).
+**Note:** Runtime app settings are stored in the database (`app_settings` table), not environment variables. These include `max_radio_contacts`, `auto_decrypt_dm_on_advert`, `sidebar_sort_order`, `advert_interval`, `last_advert_time`, `favorites`, `last_message_times`, `bots`, all MQTT configuration (`mqtt_broker_host`, `mqtt_broker_port`, `mqtt_username`, `mqtt_password`, `mqtt_use_tls`, `mqtt_tls_insecure`, `mqtt_topic_prefix`, `mqtt_publish_messages`, `mqtt_publish_raw_packets`), and community MQTT configuration (`community_mqtt_enabled`, `community_mqtt_iata`, `community_mqtt_broker`, `community_mqtt_email`). They are configured via `GET/PATCH /api/settings` (and related settings endpoints).
 
 Byte-perfect channel retries are user-triggered via `POST /api/messages/channel/{message_id}/resend` and are allowed for 30 seconds after the original send.
 

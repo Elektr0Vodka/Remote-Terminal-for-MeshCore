@@ -39,6 +39,7 @@ const baseHealth: HealthStatus = {
   database_size_mb: 1.2,
   oldest_undecrypted_timestamp: null,
   mqtt_status: null,
+  community_mqtt_status: null,
 };
 
 const baseSettings: AppSettings = {
@@ -60,6 +61,10 @@ const baseSettings: AppSettings = {
   mqtt_topic_prefix: 'meshcore',
   mqtt_publish_messages: false,
   mqtt_publish_raw_packets: false,
+  community_mqtt_enabled: false,
+  community_mqtt_iata: '',
+  community_mqtt_broker: 'mqtt-us-v1.letsmesh.net',
+  community_mqtt_email: '',
 };
 
 function renderModal(overrides?: {
@@ -446,7 +451,9 @@ describe('SettingsModal', () => {
     });
     openMqttSection();
 
-    expect(screen.getByText('Disabled')).toBeInTheDocument();
+    // Both MQTT and community MQTT show "Disabled" when null status
+    const disabledElements = screen.getAllByText('Disabled');
+    expect(disabledElements.length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows MQTT connected status badge', () => {
@@ -463,6 +470,73 @@ describe('SettingsModal', () => {
     openMqttSection();
 
     expect(screen.getByText('Connected')).toBeInTheDocument();
+  });
+
+  it('renders community sharing section in MQTT tab', () => {
+    renderModal();
+    openMqttSection();
+
+    expect(screen.getByText('Community Analytics')).toBeInTheDocument();
+    expect(screen.getByText('Enable Community Analytics')).toBeInTheDocument();
+  });
+
+  it('shows IATA input only when community sharing is enabled', () => {
+    renderModal({
+      appSettings: {
+        ...baseSettings,
+        community_mqtt_enabled: false,
+      },
+    });
+    openMqttSection();
+
+    expect(screen.queryByLabelText('Region Code (IATA)')).not.toBeInTheDocument();
+
+    // Enable community sharing
+    fireEvent.click(screen.getByText('Enable Community Analytics'));
+    expect(screen.getByLabelText('Region Code (IATA)')).toBeInTheDocument();
+  });
+
+  it('includes community MQTT fields in save payload', async () => {
+    const { onSaveAppSettings } = renderModal({
+      appSettings: {
+        ...baseSettings,
+        community_mqtt_enabled: true,
+        community_mqtt_iata: 'DEN',
+      },
+    });
+    openMqttSection();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save MQTT Settings' }));
+
+    await waitFor(() => {
+      expect(onSaveAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          community_mqtt_enabled: true,
+          community_mqtt_iata: 'DEN',
+        })
+      );
+    });
+  });
+
+  it('shows community MQTT connected status badge', () => {
+    renderModal({
+      appSettings: {
+        ...baseSettings,
+        community_mqtt_enabled: true,
+      },
+      health: {
+        ...baseHealth,
+        community_mqtt_status: 'connected',
+      },
+    });
+    openMqttSection();
+
+    // Community Analytics sub-section should show Connected
+    const communitySection = screen.getByText('Community Analytics').closest('div');
+    expect(communitySection).not.toBeNull();
+    // Both MQTT and community could show "Connected" — check count
+    const connectedElements = screen.getAllByText('Connected');
+    expect(connectedElements.length).toBeGreaterThanOrEqual(1);
   });
 
   it('fetches statistics when expanded in mobile external-nav mode', async () => {
