@@ -722,7 +722,7 @@ SOFTWARE.
 
 </details>
 
-### @uiw/react-codemirror (4.25.5) — MIT
+### @uiw/react-codemirror (4.25.4) — MIT
 
 *License file not found in package.*
 
@@ -1380,7 +1380,7 @@ SOFTWARE.
 
 </details>
 
-### tailwind-merge (3.5.0) — MIT
+### tailwind-merge (3.4.0) — MIT
 
 <details>
 <summary>Full license text</summary>

@@ -17,6 +17,7 @@ class HealthResponse(BaseModel):
     database_size_mb: float
     oldest_undecrypted_timestamp: int | None
     mqtt_status: str | None = None
+    community_mqtt_status: str | None = None
 
 
 async def build_health_data(radio_connected: bool, connection_info: str | None) -> dict:
@@ -39,10 +40,22 @@ async def build_health_data(radio_connected: bool, connection_info: str | None) 
     try:
         from app.mqtt import mqtt_publisher
 
-        if mqtt_publisher._mqtt_configured():
+        if mqtt_publisher._is_configured():
             mqtt_status = "connected" if mqtt_publisher.connected else "disconnected"
         else:
             mqtt_status = "disabled"
+    except Exception:
+        pass
+
+    # Community MQTT status
+    community_mqtt_status: str | None = None
+    try:
+        from app.community_mqtt import community_publisher
+
+        if community_publisher._is_configured():
+            community_mqtt_status = "connected" if community_publisher.connected else "disconnected"
+        else:
+            community_mqtt_status = "disabled"
     except Exception:
         pass
 
@@ -53,6 +66,7 @@ async def build_health_data(radio_connected: bool, connection_info: str | None) 
         "database_size_mb": db_size_mb,
         "oldest_undecrypted_timestamp": oldest_ts,
         "mqtt_status": mqtt_status,
+        "community_mqtt_status": community_mqtt_status,
     }
 
 

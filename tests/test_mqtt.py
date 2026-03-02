@@ -81,12 +81,12 @@ class TestMqttPublisher:
     def test_not_configured_when_host_empty(self):
         pub = MqttPublisher()
         pub._settings = _make_settings(mqtt_broker_host="")
-        assert pub._mqtt_configured() is False
+        assert pub._is_configured() is False
 
     def test_configured_when_host_set(self):
         pub = MqttPublisher()
         pub._settings = _make_settings(mqtt_broker_host="broker.local")
-        assert pub._mqtt_configured() is True
+        assert pub._is_configured() is True
 
     @pytest.mark.asyncio
     async def test_publish_drops_silently_when_disconnected(self):
@@ -300,8 +300,8 @@ class TestConnectionLoop:
         mock_client.__aenter__ = AsyncMock(side_effect=side_effect_aenter)
 
         with (
-            patch("app.mqtt.aiomqtt.Client", return_value=mock_client),
-            patch("app.mqtt._broadcast_mqtt_health"),
+            patch("app.mqtt_base.aiomqtt.Client", return_value=mock_client),
+            patch("app.mqtt_base._broadcast_health"),
             patch("app.websocket.broadcast_success"),
             patch("app.websocket.broadcast_health"),
         ):
@@ -321,7 +321,7 @@ class TestConnectionLoop:
         """Connection loop should retry after a connection error with backoff."""
         import asyncio
 
-        from app.mqtt import _BACKOFF_MIN
+        from app.mqtt_base import _BACKOFF_MIN
 
         pub = MqttPublisher()
         settings = _make_settings()
@@ -354,12 +354,12 @@ class TestConnectionLoop:
             return factory
 
         with (
-            patch("app.mqtt.aiomqtt.Client", side_effect=make_client_factory()),
-            patch("app.mqtt._broadcast_mqtt_health"),
+            patch("app.mqtt_base.aiomqtt.Client", side_effect=make_client_factory()),
+            patch("app.mqtt_base._broadcast_health"),
             patch("app.websocket.broadcast_success"),
             patch("app.websocket.broadcast_error"),
             patch("app.websocket.broadcast_health"),
-            patch("app.mqtt.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch("app.mqtt_base.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
         ):
             await pub.start(settings)
 
@@ -375,10 +375,10 @@ class TestConnectionLoop:
 
     @pytest.mark.asyncio
     async def test_backoff_increases_on_repeated_failures(self):
-        """Backoff should double after each failure, capped at _BACKOFF_MAX."""
+        """Backoff should double after each failure, capped at _backoff_max."""
         import asyncio
 
-        from app.mqtt import _BACKOFF_MAX, _BACKOFF_MIN
+        from app.mqtt_base import _BACKOFF_MIN
 
         pub = MqttPublisher()
         settings = _make_settings()
@@ -408,11 +408,11 @@ class TestConnectionLoop:
                 raise asyncio.CancelledError
 
         with (
-            patch("app.mqtt.aiomqtt.Client", side_effect=factory),
-            patch("app.mqtt._broadcast_mqtt_health"),
+            patch("app.mqtt_base.aiomqtt.Client", side_effect=factory),
+            patch("app.mqtt_base._broadcast_health"),
             patch("app.websocket.broadcast_error"),
             patch("app.websocket.broadcast_health"),
-            patch("app.mqtt.asyncio.sleep", side_effect=capture_sleep),
+            patch("app.mqtt_base.asyncio.sleep", side_effect=capture_sleep),
         ):
             await pub.start(settings)
             try:
@@ -423,8 +423,8 @@ class TestConnectionLoop:
         assert sleep_args[0] == _BACKOFF_MIN
         assert sleep_args[1] == _BACKOFF_MIN * 2
         assert sleep_args[2] == _BACKOFF_MIN * 4
-        # Fourth should be capped at _BACKOFF_MAX (5*8=40 > 30)
-        assert sleep_args[3] == _BACKOFF_MAX
+        # Fourth should be capped at _backoff_max (5*8=40 > 30)
+        assert sleep_args[3] == MqttPublisher._backoff_max
 
     @pytest.mark.asyncio
     async def test_waits_for_settings_when_unconfigured(self):
@@ -449,8 +449,8 @@ class TestConnectionLoop:
             return mock
 
         with (
-            patch("app.mqtt.aiomqtt.Client", side_effect=make_success_client),
-            patch("app.mqtt._broadcast_mqtt_health"),
+            patch("app.mqtt_base.aiomqtt.Client", side_effect=make_success_client),
+            patch("app.mqtt_base._broadcast_health"),
             patch("app.websocket.broadcast_success"),
             patch("app.websocket.broadcast_health"),
         ):
@@ -472,7 +472,7 @@ class TestConnectionLoop:
 
     @pytest.mark.asyncio
     async def test_health_broadcast_on_connect_and_failure(self):
-        """_broadcast_mqtt_health should be called on connect and on failure."""
+        """_broadcast_health should be called on connect and on failure."""
         import asyncio
 
         pub = MqttPublisher()
@@ -497,8 +497,8 @@ class TestConnectionLoop:
             return mock
 
         with (
-            patch("app.mqtt.aiomqtt.Client", side_effect=make_client),
-            patch("app.mqtt._broadcast_mqtt_health", side_effect=track_health),
+            patch("app.mqtt_base.aiomqtt.Client", side_effect=make_client),
+            patch("app.mqtt_base._broadcast_health", side_effect=track_health),
             patch("app.websocket.broadcast_success"),
             patch("app.websocket.broadcast_health"),
         ):
@@ -512,7 +512,7 @@ class TestConnectionLoop:
 
     @pytest.mark.asyncio
     async def test_health_broadcast_on_connection_error(self):
-        """_broadcast_mqtt_health should be called when connection fails."""
+        """_broadcast_health should be called when connection fails."""
         import asyncio
 
         pub = MqttPublisher()
@@ -534,11 +534,11 @@ class TestConnectionLoop:
             return mock
 
         with (
-            patch("app.mqtt.aiomqtt.Client", side_effect=make_failing_client),
-            patch("app.mqtt._broadcast_mqtt_health", side_effect=track_health),
+            patch("app.mqtt_base.aiomqtt.Client", side_effect=make_failing_client),
+            patch("app.mqtt_base._broadcast_health", side_effect=track_health),
             patch("app.websocket.broadcast_error"),
             patch("app.websocket.broadcast_health"),
-            patch("app.mqtt.asyncio.sleep", side_effect=cancel_on_sleep),
+            patch("app.mqtt_base.asyncio.sleep", side_effect=cancel_on_sleep),
         ):
             await pub.start(settings)
             try:

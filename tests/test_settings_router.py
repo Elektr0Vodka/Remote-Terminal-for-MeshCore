@@ -117,6 +117,81 @@ class TestUpdateSettings:
         assert settings.mqtt_publish_messages is False
         assert settings.mqtt_publish_raw_packets is False
 
+    @pytest.mark.asyncio
+    async def test_community_mqtt_fields_round_trip(self, test_db):
+        """Community MQTT settings should be saved and retrieved correctly."""
+        mock_community = type("MockCommunity", (), {"restart": AsyncMock()})()
+        with patch("app.community_mqtt.community_publisher", mock_community):
+            result = await update_settings(
+                AppSettingsUpdate(
+                    community_mqtt_enabled=True,
+                    community_mqtt_iata="DEN",
+                    community_mqtt_broker_host="custom-broker.example.com",
+                    community_mqtt_broker_port=8883,
+                    community_mqtt_email="test@example.com",
+                )
+            )
+
+        assert result.community_mqtt_enabled is True
+        assert result.community_mqtt_iata == "DEN"
+        assert result.community_mqtt_broker_host == "custom-broker.example.com"
+        assert result.community_mqtt_broker_port == 8883
+        assert result.community_mqtt_email == "test@example.com"
+
+        # Verify persistence
+        fresh = await AppSettingsRepository.get()
+        assert fresh.community_mqtt_enabled is True
+        assert fresh.community_mqtt_iata == "DEN"
+        assert fresh.community_mqtt_broker_host == "custom-broker.example.com"
+        assert fresh.community_mqtt_broker_port == 8883
+        assert fresh.community_mqtt_email == "test@example.com"
+
+        # Verify restart was called
+        mock_community.restart.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_community_mqtt_iata_validation_rejects_invalid(self, test_db):
+        """Invalid IATA codes should be rejected."""
+        with pytest.raises(HTTPException) as exc:
+            await update_settings(AppSettingsUpdate(community_mqtt_iata="A"))
+        assert exc.value.status_code == 400
+
+        with pytest.raises(HTTPException) as exc:
+            await update_settings(AppSettingsUpdate(community_mqtt_iata="ABCDE"))
+        assert exc.value.status_code == 400
+
+        with pytest.raises(HTTPException) as exc:
+            await update_settings(AppSettingsUpdate(community_mqtt_iata="12"))
+        assert exc.value.status_code == 400
+
+        with pytest.raises(HTTPException) as exc:
+            await update_settings(AppSettingsUpdate(community_mqtt_iata="ABCD"))
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_community_mqtt_enable_requires_iata(self, test_db):
+        """Enabling community MQTT without a valid IATA code should be rejected."""
+        with pytest.raises(HTTPException) as exc:
+            await update_settings(AppSettingsUpdate(community_mqtt_enabled=True))
+        assert exc.value.status_code == 400
+        assert "IATA" in exc.value.detail
+
+    @pytest.mark.asyncio
+    async def test_community_mqtt_iata_uppercased(self, test_db):
+        """IATA codes should be uppercased."""
+        mock_community = type("MockCommunity", (), {"restart": AsyncMock()})()
+        with patch("app.community_mqtt.community_publisher", mock_community):
+            result = await update_settings(AppSettingsUpdate(community_mqtt_iata="den"))
+        assert result.community_mqtt_iata == "DEN"
+
+    @pytest.mark.asyncio
+    async def test_community_mqtt_defaults_on_fresh_db(self, test_db):
+        """Community MQTT fields should have correct defaults on a fresh database."""
+        settings = await AppSettingsRepository.get()
+        assert settings.community_mqtt_enabled is False
+        assert settings.community_mqtt_iata == ""
+        assert settings.community_mqtt_email == ""
+
 
 class TestToggleFavorite:
     @pytest.mark.asyncio

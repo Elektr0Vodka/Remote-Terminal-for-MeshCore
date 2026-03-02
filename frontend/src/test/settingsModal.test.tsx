@@ -39,6 +39,7 @@ const baseHealth: HealthStatus = {
   database_size_mb: 1.2,
   oldest_undecrypted_timestamp: null,
   mqtt_status: null,
+  community_mqtt_status: null,
 };
 
 const baseSettings: AppSettings = {
@@ -60,6 +61,11 @@ const baseSettings: AppSettings = {
   mqtt_topic_prefix: 'meshcore',
   mqtt_publish_messages: false,
   mqtt_publish_raw_packets: false,
+  community_mqtt_enabled: false,
+  community_mqtt_iata: '',
+  community_mqtt_broker_host: 'mqtt-us-v1.letsmesh.net',
+  community_mqtt_broker_port: 443,
+  community_mqtt_email: '',
 };
 
 function renderModal(overrides?: {
@@ -147,6 +153,14 @@ function openConnectivitySection() {
 function openMqttSection() {
   const mqttToggle = screen.getByRole('button', { name: /MQTT/i });
   fireEvent.click(mqttToggle);
+}
+
+function expandPrivateMqtt() {
+  fireEvent.click(screen.getByText('Private MQTT Broker'));
+}
+
+function expandCommunityMqtt() {
+  fireEvent.click(screen.getByText('Community Analytics'));
 }
 
 function openDatabaseSection() {
@@ -408,19 +422,30 @@ describe('SettingsModal', () => {
   it('renders MQTT section with form inputs', () => {
     renderModal();
     openMqttSection();
+    expandPrivateMqtt();
 
+    // Publish checkboxes always visible
+    expect(screen.getByText('Publish Messages')).toBeInTheDocument();
+    expect(screen.getByText('Publish Raw Packets')).toBeInTheDocument();
+
+    // Broker config hidden until a publish option is enabled
+    expect(screen.queryByLabelText('Broker Host')).not.toBeInTheDocument();
+
+    // Enable one publish option to reveal broker config
+    fireEvent.click(screen.getByText('Publish Messages'));
     expect(screen.getByLabelText('Broker Host')).toBeInTheDocument();
     expect(screen.getByLabelText('Broker Port')).toBeInTheDocument();
     expect(screen.getByLabelText('Username')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
     expect(screen.getByLabelText('Topic Prefix')).toBeInTheDocument();
-    expect(screen.getByText('Publish Messages')).toBeInTheDocument();
-    expect(screen.getByText('Publish Raw Packets')).toBeInTheDocument();
   });
 
   it('saves MQTT settings through onSaveAppSettings', async () => {
-    const { onSaveAppSettings } = renderModal();
+    const { onSaveAppSettings } = renderModal({
+      appSettings: { ...baseSettings, mqtt_publish_messages: true },
+    });
     openMqttSection();
+    expandPrivateMqtt();
 
     const hostInput = screen.getByLabelText('Broker Host');
     fireEvent.change(hostInput, { target: { value: 'mqtt.example.com' } });
@@ -446,7 +471,9 @@ describe('SettingsModal', () => {
     });
     openMqttSection();
 
-    expect(screen.getByText('Disabled')).toBeInTheDocument();
+    // Both MQTT and community MQTT show "Disabled" when null status
+    const disabledElements = screen.getAllByText('Disabled');
+    expect(disabledElements.length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows MQTT connected status badge', () => {
@@ -463,6 +490,75 @@ describe('SettingsModal', () => {
     openMqttSection();
 
     expect(screen.getByText('Connected')).toBeInTheDocument();
+  });
+
+  it('renders community sharing section in MQTT tab', () => {
+    renderModal();
+    openMqttSection();
+    expandCommunityMqtt();
+
+    expect(screen.getByText('Community Analytics')).toBeInTheDocument();
+    expect(screen.getByText('Enable Community Analytics')).toBeInTheDocument();
+  });
+
+  it('shows IATA input only when community sharing is enabled', () => {
+    renderModal({
+      appSettings: {
+        ...baseSettings,
+        community_mqtt_enabled: false,
+      },
+    });
+    openMqttSection();
+    expandCommunityMqtt();
+
+    expect(screen.queryByLabelText('Region Code (IATA)')).not.toBeInTheDocument();
+
+    // Enable community sharing
+    fireEvent.click(screen.getByText('Enable Community Analytics'));
+    expect(screen.getByLabelText('Region Code (IATA)')).toBeInTheDocument();
+  });
+
+  it('includes community MQTT fields in save payload', async () => {
+    const { onSaveAppSettings } = renderModal({
+      appSettings: {
+        ...baseSettings,
+        community_mqtt_enabled: true,
+        community_mqtt_iata: 'DEN',
+      },
+    });
+    openMqttSection();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save MQTT Settings' }));
+
+    await waitFor(() => {
+      expect(onSaveAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          community_mqtt_enabled: true,
+          community_mqtt_iata: 'DEN',
+        })
+      );
+    });
+  });
+
+  it('shows community MQTT connected status badge', () => {
+    renderModal({
+      appSettings: {
+        ...baseSettings,
+        community_mqtt_enabled: true,
+      },
+      health: {
+        ...baseHealth,
+        community_mqtt_status: 'connected',
+      },
+    });
+    openMqttSection();
+
+    // Community Analytics sub-section should show Connected
+    const communitySection = screen.getByText('Community Analytics').closest('div');
+    expect(communitySection).not.toBeNull();
+    // Both MQTT and community could show "Connected" — check count
+    const connectedElements = screen.getAllByText('Connected');
+    expect(connectedElements.length).toBeGreaterThanOrEqual(1);
   });
 
   it('fetches statistics when expanded in mobile external-nav mode', async () => {

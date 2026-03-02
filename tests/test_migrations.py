@@ -100,8 +100,8 @@ class TestMigration001:
             # Run migrations
             applied = await run_migrations(conn)
 
-            assert applied == 31  # All migrations run
-            assert await get_version(conn) == 31
+            assert applied == 32  # All migrations run
+            assert await get_version(conn) == 32
 
             # Verify columns exist by inserting and selecting
             await conn.execute(
@@ -183,9 +183,9 @@ class TestMigration001:
             applied1 = await run_migrations(conn)
             applied2 = await run_migrations(conn)
 
-            assert applied1 == 31  # All migrations run
+            assert applied1 == 32  # All migrations run
             assert applied2 == 0  # No migrations on second run
-            assert await get_version(conn) == 31
+            assert await get_version(conn) == 32
         finally:
             await conn.close()
 
@@ -246,8 +246,8 @@ class TestMigration001:
             applied = await run_migrations(conn)
 
             # All migrations applied (version incremented) but no error
-            assert applied == 31
-            assert await get_version(conn) == 31
+            assert applied == 32
+            assert await get_version(conn) == 32
         finally:
             await conn.close()
 
@@ -374,10 +374,10 @@ class TestMigration013:
             )
             await conn.commit()
 
-            # Run migration 13 (plus 14-27 which also run)
+            # Run migration 13 (plus 14-33 which also run)
             applied = await run_migrations(conn)
-            assert applied == 19
-            assert await get_version(conn) == 31
+            assert applied == 20
+            assert await get_version(conn) == 32
 
             # Verify bots array was created with migrated data
             cursor = await conn.execute("SELECT bots FROM app_settings WHERE id = 1")
@@ -497,7 +497,7 @@ class TestMigration018:
             assert await cursor.fetchone() is not None
 
             await run_migrations(conn)
-            assert await get_version(conn) == 31
+            assert await get_version(conn) == 32
 
             # Verify autoindex is gone
             cursor = await conn.execute(
@@ -575,8 +575,8 @@ class TestMigration018:
             await conn.commit()
 
             applied = await run_migrations(conn)
-            assert applied == 14  # Migrations 18-31 run (18+19 skip internally)
-            assert await get_version(conn) == 31
+            assert applied == 15  # Migrations 18-32 run (18+19 skip internally)
+            assert await get_version(conn) == 32
         finally:
             await conn.close()
 
@@ -648,7 +648,7 @@ class TestMigration019:
             assert await cursor.fetchone() is not None
 
             await run_migrations(conn)
-            assert await get_version(conn) == 31
+            assert await get_version(conn) == 32
 
             # Verify autoindex is gone
             cursor = await conn.execute(
@@ -714,8 +714,8 @@ class TestMigration020:
             assert (await cursor.fetchone())[0] == "delete"
 
             applied = await run_migrations(conn)
-            assert applied == 12  # Migrations 20-31
-            assert await get_version(conn) == 31
+            assert applied == 13  # Migrations 20-32
+            assert await get_version(conn) == 32
 
             # Verify WAL mode
             cursor = await conn.execute("PRAGMA journal_mode")
@@ -745,7 +745,7 @@ class TestMigration020:
             await set_version(conn, 20)
 
             applied = await run_migrations(conn)
-            assert applied == 11  # Migrations 21-31 still run
+            assert applied == 12  # Migrations 21-32 still run
 
             # Still WAL + INCREMENTAL
             cursor = await conn.execute("PRAGMA journal_mode")
@@ -803,8 +803,8 @@ class TestMigration028:
             await conn.commit()
 
             applied = await run_migrations(conn)
-            assert applied == 4
-            assert await get_version(conn) == 31
+            assert applied == 5
+            assert await get_version(conn) == 32
 
             # Verify payload_hash column is now BLOB
             cursor = await conn.execute("PRAGMA table_info(raw_packets)")
@@ -873,12 +873,71 @@ class TestMigration028:
             await conn.commit()
 
             applied = await run_migrations(conn)
-            assert applied == 4  # Version still bumped
-            assert await get_version(conn) == 31
+            assert applied == 5  # Version still bumped
+            assert await get_version(conn) == 32
 
             # Verify data unchanged
             cursor = await conn.execute("SELECT payload_hash FROM raw_packets")
             row = await cursor.fetchone()
             assert bytes(row["payload_hash"]) == b"\xab" * 32
+        finally:
+            await conn.close()
+
+
+class TestMigration032:
+    """Test migration 032: add community MQTT columns to app_settings."""
+
+    @pytest.mark.asyncio
+    async def test_migration_adds_all_community_mqtt_columns(self):
+        """Migration adds enabled, iata, broker, and email columns."""
+        conn = await aiosqlite.connect(":memory:")
+        conn.row_factory = aiosqlite.Row
+        try:
+            await set_version(conn, 31)
+
+            # Create app_settings without community columns (pre-migration schema)
+            await conn.execute("""
+                CREATE TABLE app_settings (
+                    id INTEGER PRIMARY KEY,
+                    max_radio_contacts INTEGER DEFAULT 200,
+                    favorites TEXT DEFAULT '[]',
+                    auto_decrypt_dm_on_advert INTEGER DEFAULT 0,
+                    sidebar_sort_order TEXT DEFAULT 'recent',
+                    last_message_times TEXT DEFAULT '{}',
+                    preferences_migrated INTEGER DEFAULT 0,
+                    advert_interval INTEGER DEFAULT 0,
+                    last_advert_time INTEGER DEFAULT 0,
+                    bots TEXT DEFAULT '[]',
+                    mqtt_broker_host TEXT DEFAULT '',
+                    mqtt_broker_port INTEGER DEFAULT 1883,
+                    mqtt_username TEXT DEFAULT '',
+                    mqtt_password TEXT DEFAULT '',
+                    mqtt_use_tls INTEGER DEFAULT 0,
+                    mqtt_tls_insecure INTEGER DEFAULT 0,
+                    mqtt_topic_prefix TEXT DEFAULT 'meshcore',
+                    mqtt_publish_messages INTEGER DEFAULT 0,
+                    mqtt_publish_raw_packets INTEGER DEFAULT 0
+                )
+            """)
+            await conn.execute("INSERT INTO app_settings (id) VALUES (1)")
+            await conn.commit()
+
+            applied = await run_migrations(conn)
+            assert applied == 1
+            assert await get_version(conn) == 32
+
+            # Verify all columns exist with correct defaults
+            cursor = await conn.execute(
+                """SELECT community_mqtt_enabled, community_mqtt_iata,
+                          community_mqtt_broker_host, community_mqtt_broker_port,
+                          community_mqtt_email
+                   FROM app_settings WHERE id = 1"""
+            )
+            row = await cursor.fetchone()
+            assert row["community_mqtt_enabled"] == 0
+            assert row["community_mqtt_iata"] == ""
+            assert row["community_mqtt_broker_host"] == "mqtt-us-v1.letsmesh.net"
+            assert row["community_mqtt_broker_port"] == 443
+            assert row["community_mqtt_email"] == ""
         finally:
             await conn.close()

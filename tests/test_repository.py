@@ -502,6 +502,11 @@ class TestAppSettingsRepository:
                 "mqtt_topic_prefix": "meshcore",
                 "mqtt_publish_messages": 0,
                 "mqtt_publish_raw_packets": 0,
+                "community_mqtt_enabled": 0,
+                "community_mqtt_iata": "",
+                "community_mqtt_broker_host": "mqtt-us-v1.letsmesh.net",
+                "community_mqtt_broker_port": 443,
+                "community_mqtt_email": "",
             }
         )
         mock_conn.execute = AsyncMock(return_value=mock_cursor)
