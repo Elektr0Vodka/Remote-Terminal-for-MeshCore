@@ -518,6 +518,13 @@ async def process_raw_packet(
     payload_type = packet_info.payload_type if packet_info else None
     payload_type_name = payload_type.name if payload_type else "Unknown"
 
+    if packet_info is None and len(raw_bytes) > 2:
+        logger.warning(
+            "Failed to parse %d-byte packet (id=%d); stored undecrypted",
+            len(raw_bytes),
+            packet_id,
+        )
+
     # Log packet arrival at debug level
     path_hex = packet_info.path.hex() if packet_info and packet_info.path else ""
     logger.debug(

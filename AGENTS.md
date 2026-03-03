@@ -171,8 +171,9 @@ This message-layer echo/path handling is independent of raw-packet storage dedup
 │   └── vite.config.ts
 ├── scripts/
 │   ├── all_quality.sh      # Run all lint, format, typecheck, tests, build (parallelized)
-│   ├── publish.sh          # Version bump, changelog, docker build & push
-│   └── deploy.sh           # Deploy to production server
+│   ├── collect_licenses.sh # Gather third-party license attributions
+│   ├── e2e.sh              # End-to-end test runner
+│   └── publish.sh          # Version bump, changelog, docker build & push
 ├── tests/                  # Backend tests (pytest)
 ├── data/                   # SQLite database (runtime)
 └── pyproject.toml          # Python dependencies

@@ -6,10 +6,12 @@ import type { StatisticsResponse } from '../../types';
 export function SettingsStatisticsSection({ className }: { className?: string }) {
   const [stats, setStats] = useState<StatisticsResponse | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setStatsLoading(true);
+    setStatsError(false);
     api.getStatistics().then(
       (data) => {
         if (!cancelled) {
@@ -18,7 +20,10 @@ export function SettingsStatisticsSection({ className }: { className?: string })
         }
       },
       () => {
-        if (!cancelled) setStatsLoading(false);
+        if (!cancelled) {
+          setStatsError(true);
+          setStatsLoading(false);
+        }
       }
     );
     return () => {
@@ -145,6 +150,8 @@ export function SettingsStatisticsSection({ className }: { className?: string })
             </>
           )}
         </div>
+      ) : statsError ? (
+        <div className="py-8 text-center text-muted-foreground">Failed to load statistics.</div>
       ) : null}
     </div>
   );

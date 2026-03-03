@@ -103,18 +103,36 @@ export function SettingsRadioSection({
 
   const handleSave = async () => {
     setError(null);
+
+    const parsedLat = parseFloat(lat);
+    const parsedLon = parseFloat(lon);
+    const parsedTxPower = parseInt(txPower, 10);
+    const parsedFreq = parseFloat(freq);
+    const parsedBw = parseFloat(bw);
+    const parsedSf = parseInt(sf, 10);
+    const parsedCr = parseInt(cr, 10);
+
+    if (
+      [parsedLat, parsedLon, parsedTxPower, parsedFreq, parsedBw, parsedSf, parsedCr].some(
+        (v) => isNaN(v)
+      )
+    ) {
+      setError('All numeric fields must have valid values');
+      return;
+    }
+
     setBusy(true);
 
     try {
       const update: RadioConfigUpdate = {
-        lat: parseFloat(lat),
-        lon: parseFloat(lon),
-        tx_power: parseInt(txPower, 10),
+        lat: parsedLat,
+        lon: parsedLon,
+        tx_power: parsedTxPower,
         radio: {
-          freq: parseFloat(freq),
-          bw: parseFloat(bw),
-          sf: parseInt(sf, 10),
-          cr: parseInt(cr, 10),
+          freq: parsedFreq,
+          bw: parsedBw,
+          sf: parsedSf,
+          cr: parsedCr,
         },
       };
       await onSave(update);
