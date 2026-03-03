@@ -48,6 +48,15 @@ export function NewMessageModal({
   const [loading, setLoading] = useState(false);
   const hashtagInputRef = useRef<HTMLInputElement>(null);
 
+  const resetForm = () => {
+    setName('');
+    setContactKey('');
+    setRoomKey('');
+    setTryHistorical(false);
+    setPermitCapitals(false);
+    setError('');
+  };
+
   const handleCreate = async () => {
     setError('');
     setLoading(true);
@@ -77,6 +86,7 @@ export function NewMessageModal({
         const normalizedName = permitCapitals ? channelName : channelName.toLowerCase();
         await onCreateHashtagChannel(`#${normalizedName}`, tryHistorical);
       }
+      resetForm();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create');
@@ -121,7 +131,15 @@ export function NewMessageModal({
   const showHistoricalOption = tab !== 'existing' && undecryptedCount > 0;
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          resetForm();
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>New Conversation</DialogTitle>
@@ -137,8 +155,7 @@ export function NewMessageModal({
           value={tab}
           onValueChange={(v) => {
             setTab(v as Tab);
-            setName('');
-            setError('');
+            resetForm();
           }}
           className="w-full"
         >
@@ -164,6 +181,7 @@ export function NewMessageModal({
                         id: contact.public_key,
                         name: getContactDisplayName(contact.name, contact.public_key),
                       });
+                      resetForm();
                       onClose();
                     }}
                   >
@@ -294,7 +312,13 @@ export function NewMessageModal({
         {error && <div className="text-sm text-destructive">{error}</div>}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              resetForm();
+              onClose();
+            }}
+          >
             Cancel
           </Button>
           {tab === 'hashtag' && (

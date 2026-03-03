@@ -571,6 +571,90 @@ class TestResendChannelMessage:
         assert "expired" in exc_info.value.detail.lower()
 
 
+class TestRadioExceptionMidSend:
+    """Test that radio exceptions during send don't leave orphaned DB state."""
+
+    @pytest.mark.asyncio
+    async def test_dm_send_radio_exception_no_orphan_message(self, test_db):
+        """When mc.commands.send_msg() raises, no message should be stored in DB."""
+        mc = _make_mc()
+        pub_key = "ab" * 32
+        await _insert_contact(pub_key, "Alice")
+
+        # Make the radio command raise (simulates serial timeout / connection drop)
+        mc.commands.send_msg = AsyncMock(side_effect=ConnectionError("Serial port disconnected"))
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+        ):
+            with pytest.raises(ConnectionError):
+                await send_direct_message(
+                    SendDirectMessageRequest(destination=pub_key, text="This will fail")
+                )
+
+        # No message should be stored — the exception prevented reaching MessageRepository.create
+        messages = await MessageRepository.get_all(
+            msg_type="PRIV", conversation_key=pub_key, limit=10
+        )
+        assert len(messages) == 0
+
+    @pytest.mark.asyncio
+    async def test_channel_send_radio_exception_no_orphan_message(self, test_db):
+        """When mc.commands.send_chan_msg() raises, no message should be stored in DB."""
+        from app.repository import ChannelRepository
+
+        mc = _make_mc(name="TestNode")
+        chan_key = "ab" * 16
+        await ChannelRepository.upsert(key=chan_key, name="#test")
+
+        mc.commands.send_chan_msg = AsyncMock(
+            side_effect=ConnectionError("Serial port disconnected")
+        )
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+        ):
+            with pytest.raises(ConnectionError):
+                await send_channel_message(
+                    SendChannelMessageRequest(channel_key=chan_key, text="This will fail")
+                )
+
+        messages = await MessageRepository.get_all(
+            msg_type="CHAN", conversation_key=chan_key.upper(), limit=10
+        )
+        assert len(messages) == 0
+
+    @pytest.mark.asyncio
+    async def test_channel_send_set_channel_exception_no_orphan(self, test_db):
+        """When mc.commands.set_channel() raises, send is not attempted and no message stored."""
+        from app.repository import ChannelRepository
+
+        mc = _make_mc(name="TestNode")
+        chan_key = "cd" * 16
+        await ChannelRepository.upsert(key=chan_key, name="#broken")
+
+        mc.commands.set_channel = AsyncMock(side_effect=TimeoutError("Radio not responding"))
+
+        with (
+            patch("app.routers.messages.require_connected", return_value=mc),
+            patch.object(radio_manager, "_meshcore", mc),
+        ):
+            with pytest.raises(TimeoutError):
+                await send_channel_message(
+                    SendChannelMessageRequest(channel_key=chan_key, text="Never sent")
+                )
+
+        # send_chan_msg should never have been called
+        mc.commands.send_chan_msg.assert_not_called()
+
+        messages = await MessageRepository.get_all(
+            msg_type="CHAN", conversation_key=chan_key.upper(), limit=10
+        )
+        assert len(messages) == 0
+
+
 class TestConcurrentChannelSends:
     """Test that concurrent channel sends are serialized by the radio operation lock.
 

@@ -1,7 +1,7 @@
 """Tests for WebSocket manager functionality."""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -203,3 +203,48 @@ class TestWebSocketConnectionManagement:
         # Should not raise
         await ws_manager.disconnect(mock_websocket)
         assert len(ws_manager.active_connections) == 0
+
+
+class TestBroadcastEventFanout:
+    """Test that broadcast_event dispatches to WS, private MQTT, and community MQTT."""
+
+    @pytest.mark.asyncio
+    async def test_broadcast_event_dispatches_to_all_three_sinks(self):
+        """broadcast_event creates a WS task, calls mqtt_broadcast, and
+        calls community_mqtt_broadcast."""
+        from app.websocket import broadcast_event
+
+        with (
+            patch("app.websocket.ws_manager") as mock_ws,
+            patch("app.mqtt.mqtt_broadcast") as mock_mqtt,
+            patch("app.community_mqtt.community_mqtt_broadcast") as mock_community,
+        ):
+            mock_ws.broadcast = AsyncMock()
+
+            broadcast_event("message", {"id": 1, "text": "hello"})
+
+            # Let the asyncio task (ws_manager.broadcast) run
+            await asyncio.sleep(0)
+
+            mock_ws.broadcast.assert_called_once_with("message", {"id": 1, "text": "hello"})
+            mock_mqtt.assert_called_once_with("message", {"id": 1, "text": "hello"})
+            mock_community.assert_called_once_with("message", {"id": 1, "text": "hello"})
+
+    @pytest.mark.asyncio
+    async def test_broadcast_event_passes_event_type_to_mqtt_filters(self):
+        """MQTT sinks receive the event_type so they can filter by message vs raw_packet."""
+        from app.websocket import broadcast_event
+
+        with (
+            patch("app.websocket.ws_manager") as mock_ws,
+            patch("app.mqtt.mqtt_broadcast") as mock_mqtt,
+            patch("app.community_mqtt.community_mqtt_broadcast") as mock_community,
+        ):
+            mock_ws.broadcast = AsyncMock()
+
+            broadcast_event("raw_packet", {"data": "ff00"})
+            await asyncio.sleep(0)
+
+            # Both MQTT sinks receive the event type for filtering
+            assert mock_mqtt.call_args.args[0] == "raw_packet"
+            assert mock_community.call_args.args[0] == "raw_packet"

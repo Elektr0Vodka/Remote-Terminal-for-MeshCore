@@ -113,8 +113,8 @@ export function SettingsRadioSection({
     const parsedCr = parseInt(cr, 10);
 
     if (
-      [parsedLat, parsedLon, parsedTxPower, parsedFreq, parsedBw, parsedSf, parsedCr].some(
-        (v) => isNaN(v)
+      [parsedLat, parsedLon, parsedTxPower, parsedFreq, parsedBw, parsedSf, parsedCr].some((v) =>
+        isNaN(v)
       )
     ) {
       setError('All numeric fields must have valid values');

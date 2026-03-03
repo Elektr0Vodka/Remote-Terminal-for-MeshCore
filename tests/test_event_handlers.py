@@ -477,6 +477,61 @@ class TestContactMessageCLIFiltering:
             assert len(messages) == 0
 
 
+class TestContactMessageDBErrorResilience:
+    """Test that DB errors in on_contact_message propagate without crashing silently."""
+
+    @pytest.mark.asyncio
+    async def test_db_error_in_create_propagates(self, test_db):
+        """When MessageRepository.create raises, the exception propagates.
+
+        If this handler silently swallowed DB errors, messages would be lost
+        without any indication. The exception should propagate so the caller
+        (MeshCore event dispatcher) can handle it.
+        """
+        from app.event_handlers import on_contact_message
+
+        class MockEvent:
+            payload = {
+                "pubkey_prefix": "abc123def456",
+                "text": "DB will fail",
+                "txt_type": 0,
+                "sender_timestamp": 1700000000,
+            }
+
+        with (
+            patch("app.event_handlers.broadcast_event"),
+            patch.object(
+                MessageRepository,
+                "create",
+                side_effect=Exception("database is locked"),
+            ),
+        ):
+            with pytest.raises(Exception, match="database is locked"):
+                await on_contact_message(MockEvent())
+
+    @pytest.mark.asyncio
+    async def test_db_error_in_contact_lookup_propagates(self, test_db):
+        """When ContactRepository.get_by_key_or_prefix raises an unexpected error,
+        it propagates rather than being silently swallowed."""
+        from app.event_handlers import on_contact_message
+
+        class MockEvent:
+            payload = {
+                "public_key": "ab" * 32,
+                "text": "Lookup will fail",
+                "txt_type": 0,
+                "sender_timestamp": 1700000000,
+            }
+
+        with patch.object(
+            ContactRepository,
+            "get_by_key_or_prefix",
+            side_effect=RuntimeError("connection pool exhausted"),
+        ):
+            with pytest.raises(RuntimeError, match="connection pool exhausted"):
+                await on_contact_message(MockEvent())
+
+
 class TestEventHandlerRegistration:
     """Test event handler registration and cleanup."""
 
