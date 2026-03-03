@@ -199,7 +199,7 @@ On connect and every 5 minutes thereafter, the community publisher sends a retai
   "model":             "T-Deck",
   "firmware_version":  "v2.2.2 (Build: 2025-01-15)",
   "radio":             "915.0,250.0,10,8",
-  "client_version":    "RemoteTerm/2.4.0",
+  "client_version":    "RemoteTerm 2.4.0",
   "stats": {
     "battery_mv": 4200,
     "uptime_secs": 3600,

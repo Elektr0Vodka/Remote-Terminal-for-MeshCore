@@ -513,7 +513,7 @@ class TestLwtAndStatusPublish:
                 pub, "_fetch_stats", new_callable=AsyncMock, return_value={"battery_mv": 4200}
             ),
             patch("app.community_mqtt._build_radio_info", return_value="915.0,250.0,10,8"),
-            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm/2.4.0"),
+            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm 2.4.0"),
             patch.object(pub, "publish", new_callable=AsyncMock) as mock_publish,
         ):
             await pub._on_connected_async(settings)
@@ -533,7 +533,7 @@ class TestLwtAndStatusPublish:
         assert payload["model"] == "T-Deck"
         assert payload["firmware_version"] == "v2.2.2 (Build: 2025-01-15)"
         assert payload["radio"] == "915.0,250.0,10,8"
-        assert payload["client_version"] == "RemoteTerm/2.4.0"
+        assert payload["client_version"] == "RemoteTerm 2.4.0"
         assert payload["stats"] == {"battery_mv": 4200}
 
     def test_lwt_and_online_share_same_topic(self):
@@ -595,7 +595,7 @@ class TestLwtAndStatusPublish:
             ),
             patch.object(pub, "_fetch_stats", new_callable=AsyncMock, return_value=None),
             patch("app.community_mqtt._build_radio_info", return_value="0,0,0,0"),
-            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm/unknown"),
+            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm unknown"),
             patch.object(pub, "publish", new_callable=AsyncMock) as mock_publish,
         ):
             await pub._on_connected_async(settings)
@@ -872,23 +872,23 @@ class TestBuildRadioInfo:
 
 class TestGetClientVersion:
     def test_returns_remoteterm_prefix(self):
-        """Should return 'RemoteTerm/...' string."""
+        """Should return 'RemoteTerm ...' string."""
         result = _get_client_version()
-        assert result.startswith("RemoteTerm/")
+        assert result.startswith("RemoteTerm ")
 
     def test_returns_version_from_metadata(self):
         """Should use importlib.metadata to get version."""
         with patch("app.community_mqtt.importlib.metadata.version", return_value="1.2.3"):
             result = _get_client_version()
-        assert result == "RemoteTerm/1.2.3"
+        assert result == "RemoteTerm 1.2.3"
 
     def test_fallback_on_error(self):
-        """Should return 'RemoteTerm/unknown' if metadata lookup fails."""
+        """Should return 'RemoteTerm unknown' if metadata lookup fails."""
         with patch(
             "app.community_mqtt.importlib.metadata.version", side_effect=Exception("not found")
         ):
             result = _get_client_version()
-        assert result == "RemoteTerm/unknown"
+        assert result == "RemoteTerm unknown"
 
 
 class TestPublishStatus:
@@ -917,7 +917,7 @@ class TestPublishStatus:
             ),
             patch.object(pub, "_fetch_stats", new_callable=AsyncMock, return_value=stats),
             patch("app.community_mqtt._build_radio_info", return_value="915.0,250.0,10,8"),
-            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm/2.4.0"),
+            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm 2.4.0"),
             patch.object(pub, "publish", new_callable=AsyncMock) as mock_publish,
         ):
             await pub._publish_status(settings)
@@ -930,7 +930,7 @@ class TestPublishStatus:
         assert payload["model"] == "T-Deck"
         assert payload["firmware_version"] == "v2.2.2 (Build: 2025-01-15)"
         assert payload["radio"] == "915.0,250.0,10,8"
-        assert payload["client_version"] == "RemoteTerm/2.4.0"
+        assert payload["client_version"] == "RemoteTerm 2.4.0"
         assert payload["stats"] == stats
 
     @pytest.mark.asyncio
@@ -954,7 +954,7 @@ class TestPublishStatus:
             ),
             patch.object(pub, "_fetch_stats", new_callable=AsyncMock, return_value=None),
             patch("app.community_mqtt._build_radio_info", return_value="0,0,0,0"),
-            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm/unknown"),
+            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm unknown"),
             patch.object(pub, "publish", new_callable=AsyncMock) as mock_publish,
         ):
             await pub._publish_status(settings)
@@ -985,7 +985,7 @@ class TestPublishStatus:
             ),
             patch.object(pub, "_fetch_stats", new_callable=AsyncMock, return_value=None),
             patch("app.community_mqtt._build_radio_info", return_value="0,0,0,0"),
-            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm/unknown"),
+            patch("app.community_mqtt._get_client_version", return_value="RemoteTerm unknown"),
             patch.object(pub, "publish", new_callable=AsyncMock),
         ):
             await pub._publish_status(settings)

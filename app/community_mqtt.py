@@ -286,12 +286,12 @@ def _build_radio_info() -> str:
 
 
 def _get_client_version() -> str:
-    """Return a client version string like 'RemoteTerm/2.4.0'."""
+    """Return a client version string like ``'RemoteTerm 2.4.0'``."""
     try:
         version = importlib.metadata.version("remoteterm-meshcore")
-        return f"RemoteTerm/{version}"
+        return f"RemoteTerm {version}"
     except Exception:
-        return "RemoteTerm/unknown"
+        return "RemoteTerm unknown"
 
 
 class CommunityMqttPublisher(BaseMqttPublisher):
