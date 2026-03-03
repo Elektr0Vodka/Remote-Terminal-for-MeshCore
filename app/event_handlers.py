@@ -104,15 +104,18 @@ async def on_contact_message(event: "Event") -> None:
 
     # Try to create message - INSERT OR IGNORE handles duplicates atomically
     # If the packet processor already stored this message, this returns None
+    ts = payload.get("sender_timestamp")
+    sender_timestamp = ts if ts is not None else received_at
     msg_id = await MessageRepository.create(
         msg_type="PRIV",
         text=payload.get("text", ""),
         conversation_key=sender_pubkey,
-        sender_timestamp=payload.get("sender_timestamp") or received_at,
+        sender_timestamp=sender_timestamp,
         received_at=received_at,
         path=payload.get("path"),
         txt_type=txt_type,
         signature=payload.get("signature"),
+        sender_key=sender_pubkey,
     )
 
     if msg_id is None:
@@ -136,7 +139,7 @@ async def on_contact_message(event: "Event") -> None:
             type="PRIV",
             conversation_key=sender_pubkey,
             text=payload.get("text", ""),
-            sender_timestamp=payload.get("sender_timestamp") or received_at,
+            sender_timestamp=sender_timestamp,
             received_at=received_at,
             paths=paths,
             txt_type=txt_type,
