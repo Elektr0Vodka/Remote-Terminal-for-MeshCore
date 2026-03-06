@@ -6,7 +6,7 @@ import { Separator } from '../ui/separator';
 import { toast } from '../ui/sonner';
 import { cn } from '@/lib/utils';
 import { api } from '../../api';
-import type { FanoutConfig, HealthStatus } from '../../types';
+import type { Channel, Contact, FanoutConfig, HealthStatus } from '../../types';
 
 const BotCodeEditor = lazy(() =>
   import('../BotCodeEditor').then((m) => ({ default: m.BotCodeEditor }))
@@ -16,12 +16,14 @@ const TYPE_LABELS: Record<string, string> = {
   mqtt_private: 'Private MQTT',
   mqtt_community: 'Community MQTT',
   bot: 'Bot',
+  webhook: 'Webhook',
 };
 
 const TYPE_OPTIONS = [
   { value: 'mqtt_private', label: 'Private MQTT' },
   { value: 'mqtt_community', label: 'Community MQTT' },
   { value: 'bot', label: 'Bot' },
+  { value: 'webhook', label: 'Webhook' },
 ];
 
 const DEFAULT_BOT_CODE = `def bot(
@@ -62,16 +64,18 @@ const DEFAULT_BOT_CODE = `def bot(
         return "[BOT] Plong!"
     return None`;
 
+function getStatusLabel(status: string | undefined, type?: string) {
+  if (status === 'connected') return type === 'bot' || type === 'webhook' ? 'Active' : 'Connected';
+  if (status === 'error') return 'Error';
+  if (status === 'disconnected') return 'Disconnected';
+  return 'Inactive';
+}
+
 function getStatusColor(status: string | undefined) {
   if (status === 'connected')
     return 'bg-status-connected shadow-[0_0_6px_hsl(var(--status-connected)/0.5)]';
+  if (status === 'error') return 'bg-destructive shadow-[0_0_6px_hsl(var(--destructive)/0.5)]';
   return 'bg-muted-foreground';
-}
-
-function getStatusLabel(status: string | undefined, type?: string) {
-  if (status === 'connected') return type === 'bot' ? 'Active' : 'Connected';
-  if (status === 'disconnected') return 'Disconnected';
-  return 'Inactive';
 }
 
 function MqttPrivateConfigEditor({
@@ -358,6 +362,364 @@ function BotConfigEditor({
   );
 }
 
+type ScopeMode = 'all' | 'none' | 'only' | 'except';
+
+function getScopeMode(value: unknown): ScopeMode {
+  if (value === 'all') return 'all';
+  if (value === 'none') return 'none';
+  if (typeof value === 'object' && value !== null) {
+    // Check if either channels or contacts uses the {except: [...]} shape
+    const obj = value as Record<string, unknown>;
+    const ch = obj.channels;
+    const co = obj.contacts;
+    if (
+      (typeof ch === 'object' && ch !== null && !Array.isArray(ch)) ||
+      (typeof co === 'object' && co !== null && !Array.isArray(co))
+    ) {
+      return 'except';
+    }
+    return 'only';
+  }
+  return 'all';
+}
+
+/** Extract the key list from a filter value, whether it's a plain list or {except: [...]} */
+function getFilterKeys(filter: unknown): string[] {
+  if (Array.isArray(filter)) return filter as string[];
+  if (typeof filter === 'object' && filter !== null && 'except' in filter)
+    return ((filter as Record<string, unknown>).except as string[]) ?? [];
+  return [];
+}
+
+function ScopeSelector({
+  scope,
+  onChange,
+}: {
+  scope: Record<string, unknown>;
+  onChange: (scope: Record<string, unknown>) => void;
+}) {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+
+  useEffect(() => {
+    api.getChannels().then(setChannels).catch(console.error);
+
+    // Paginate to fetch all contacts (API caps at 1000 per request)
+    (async () => {
+      const all: Contact[] = [];
+      const pageSize = 1000;
+      let offset = 0;
+
+      while (true) {
+        const page = await api.getContacts(pageSize, offset);
+        all.push(...page);
+        if (page.length < pageSize) break;
+        offset += pageSize;
+      }
+      setContacts(all);
+    })().catch(console.error);
+  }, []);
+
+  const messages = scope.messages ?? 'all';
+  const mode = getScopeMode(messages);
+  const isListMode = mode === 'only' || mode === 'except';
+
+  const selectedChannels: string[] =
+    isListMode && typeof messages === 'object' && messages !== null
+      ? getFilterKeys((messages as Record<string, unknown>).channels)
+      : [];
+  const selectedContacts: string[] =
+    isListMode && typeof messages === 'object' && messages !== null
+      ? getFilterKeys((messages as Record<string, unknown>).contacts)
+      : [];
+
+  /** Wrap channel/contact key lists in the right shape for the current mode */
+  const buildMessages = (chKeys: string[], coKeys: string[]) => {
+    if (mode === 'except') {
+      return {
+        channels: { except: chKeys },
+        contacts: { except: coKeys },
+      };
+    }
+    return { channels: chKeys, contacts: coKeys };
+  };
+
+  const handleModeChange = (newMode: ScopeMode) => {
+    if (newMode === 'all' || newMode === 'none') {
+      onChange({ ...scope, messages: newMode });
+    } else if (newMode === 'only') {
+      onChange({ ...scope, messages: { channels: [], contacts: [] } });
+    } else {
+      onChange({
+        ...scope,
+        messages: { channels: { except: [] }, contacts: { except: [] } },
+      });
+    }
+  };
+
+  const toggleChannel = (key: string) => {
+    const current = [...selectedChannels];
+    const idx = current.indexOf(key);
+    if (idx >= 0) current.splice(idx, 1);
+    else current.push(key);
+    onChange({ ...scope, messages: buildMessages(current, selectedContacts) });
+  };
+
+  const toggleContact = (key: string) => {
+    const current = [...selectedContacts];
+    const idx = current.indexOf(key);
+    if (idx >= 0) current.splice(idx, 1);
+    else current.push(key);
+    onChange({ ...scope, messages: buildMessages(selectedChannels, current) });
+  };
+
+  // Non-repeater contacts only (type 0)
+  const filteredContacts = contacts.filter((c) => c.type === 0);
+
+  const modeDescriptions: Record<ScopeMode, string> = {
+    all: 'All messages',
+    none: 'No messages',
+    only: 'Only listed channels/contacts',
+    except: 'All except listed channels/contacts',
+  };
+
+  // For "except" mode, checked means the item is in the exclusion list (will be excluded)
+  const isChannelChecked = (key: string) =>
+    mode === 'except' ? selectedChannels.includes(key) : selectedChannels.includes(key);
+  const isContactChecked = (key: string) =>
+    mode === 'except' ? selectedContacts.includes(key) : selectedContacts.includes(key);
+
+  const listHint =
+    mode === 'only'
+      ? 'Newly added channels or contacts will not be automatically included.'
+      : 'Newly added channels or contacts will be automatically included unless excluded here.';
+
+  const checkboxLabel = mode === 'except' ? 'exclude' : 'include';
+
+  return (
+    <div className="space-y-3">
+      <Label>Message Scope</Label>
+      <div className="space-y-1">
+        {(['all', 'none', 'only', 'except'] as const).map((m) => (
+          <label key={m} className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="scope-mode"
+              checked={mode === m}
+              onChange={() => handleModeChange(m)}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-sm">{modeDescriptions[m]}</span>
+          </label>
+        ))}
+      </div>
+
+      {isListMode && (
+        <>
+          <p className="text-xs text-muted-foreground">{listHint}</p>
+
+          {channels.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">
+                  Channels{' '}
+                  <span className="text-muted-foreground font-normal">({checkboxLabel})</span>
+                </Label>
+                <span className="flex gap-1">
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() =>
+                      onChange({
+                        ...scope,
+                        messages: buildMessages(
+                          channels.map((ch) => ch.key),
+                          selectedContacts
+                        ),
+                      })
+                    }
+                  >
+                    All
+                  </button>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() =>
+                      onChange({ ...scope, messages: buildMessages([], selectedContacts) })
+                    }
+                  >
+                    None
+                  </button>
+                </span>
+              </div>
+              <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 space-y-1">
+                {channels.map((ch) => (
+                  <label key={ch.key} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isChannelChecked(ch.key)}
+                      onChange={() => toggleChannel(ch.key)}
+                      className="h-3.5 w-3.5 rounded border-input accent-primary"
+                    />
+                    <span className="text-sm truncate">{ch.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredContacts.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">
+                  Contacts{' '}
+                  <span className="text-muted-foreground font-normal">({checkboxLabel})</span>
+                </Label>
+                <span className="flex gap-1">
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() =>
+                      onChange({
+                        ...scope,
+                        messages: buildMessages(
+                          selectedChannels,
+                          filteredContacts.map((c) => c.public_key)
+                        ),
+                      })
+                    }
+                  >
+                    All
+                  </button>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() =>
+                      onChange({ ...scope, messages: buildMessages(selectedChannels, []) })
+                    }
+                  >
+                    None
+                  </button>
+                </span>
+              </div>
+              <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 space-y-1">
+                {filteredContacts.map((c) => (
+                  <label key={c.public_key} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isContactChecked(c.public_key)}
+                      onChange={() => toggleContact(c.public_key)}
+                      className="h-3.5 w-3.5 rounded border-input accent-primary"
+                    />
+                    <span className="text-sm truncate">
+                      {c.name || c.public_key.substring(0, 12) + '...'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function WebhookConfigEditor({
+  config,
+  scope,
+  onChange,
+  onScopeChange,
+}: {
+  config: Record<string, unknown>;
+  scope: Record<string, unknown>;
+  onChange: (config: Record<string, unknown>) => void;
+  onScopeChange: (scope: Record<string, unknown>) => void;
+}) {
+  const headersStr = JSON.stringify(config.headers ?? {}, null, 2);
+  const [headersText, setHeadersText] = useState(headersStr);
+  const [headersError, setHeadersError] = useState<string | null>(null);
+
+  const handleHeadersChange = (text: string) => {
+    setHeadersText(text);
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setHeadersError('Must be a JSON object');
+        return;
+      }
+      setHeadersError(null);
+      onChange({ ...config, headers: parsed });
+    } catch {
+      setHeadersError('Invalid JSON');
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Send message data as JSON to an HTTP endpoint when messages are received.
+      </p>
+
+      <div className="space-y-2">
+        <Label htmlFor="fanout-webhook-url">URL</Label>
+        <Input
+          id="fanout-webhook-url"
+          type="url"
+          placeholder="https://example.com/webhook"
+          value={(config.url as string) || ''}
+          onChange={(e) => onChange({ ...config, url: e.target.value })}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="fanout-webhook-method">HTTP Method</Label>
+          <select
+            id="fanout-webhook-method"
+            value={(config.method as string) || 'POST'}
+            onChange={(e) => onChange({ ...config, method: e.target.value })}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="fanout-webhook-secret">Secret (optional)</Label>
+          <Input
+            id="fanout-webhook-secret"
+            type="password"
+            placeholder="Sent as X-Webhook-Secret header"
+            value={(config.secret as string) || ''}
+            onChange={(e) => onChange({ ...config, secret: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="fanout-webhook-headers">Extra Headers (JSON)</Label>
+        <textarea
+          id="fanout-webhook-headers"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono min-h-[60px]"
+          value={headersText}
+          onChange={(e) => handleHeadersChange(e.target.value)}
+          placeholder='{"Authorization": "Bearer ..."}'
+        />
+        {headersError && <p className="text-xs text-destructive">{headersError}</p>}
+      </div>
+
+      <Separator />
+
+      <ScopeSelector scope={scope} onChange={onScopeChange} />
+    </div>
+  );
+}
+
 export function SettingsFanoutSection({
   health,
   onHealthRefresh,
@@ -373,7 +735,6 @@ export function SettingsFanoutSection({
   const [editScope, setEditScope] = useState<Record<string, unknown>>({});
   const [editName, setEditName] = useState('');
   const [busy, setBusy] = useState(false);
-  const [addingType, setAddingType] = useState<string | null>(null);
 
   const loadConfigs = useCallback(async () => {
     try {
@@ -438,10 +799,6 @@ export function SettingsFanoutSection({
     }
   };
 
-  const handleAddStart = (type: string) => {
-    setAddingType(type);
-  };
-
   const handleAddCreate = async (type: string) => {
     const defaults: Record<string, Record<string, unknown>> = {
       mqtt_private: {
@@ -462,11 +819,18 @@ export function SettingsFanoutSection({
       bot: {
         code: DEFAULT_BOT_CODE,
       },
+      webhook: {
+        url: '',
+        method: 'POST',
+        headers: {},
+        secret: '',
+      },
     };
     const defaultScopes: Record<string, Record<string, unknown>> = {
       mqtt_private: { messages: 'all', raw_packets: 'all' },
       mqtt_community: { messages: 'none', raw_packets: 'all' },
       bot: { messages: 'all', raw_packets: 'none' },
+      webhook: { messages: 'all', raw_packets: 'none' },
     };
 
     try {
@@ -478,7 +842,6 @@ export function SettingsFanoutSection({
         enabled: false,
       });
       await loadConfigs();
-      setAddingType(null);
       handleEdit(created);
       toast.success('Integration created');
     } catch (err) {
@@ -533,6 +896,15 @@ export function SettingsFanoutSection({
           <BotConfigEditor config={editConfig} onChange={setEditConfig} />
         )}
 
+        {editingConfig.type === 'webhook' && (
+          <WebhookConfigEditor
+            config={editConfig}
+            scope={editScope}
+            onChange={setEditConfig}
+            onScopeChange={setEditScope}
+          />
+        )}
+
         <Separator />
 
         <div className="flex gap-2">
@@ -554,11 +926,21 @@ export function SettingsFanoutSection({
         Integrations are an experimental feature in open beta.
       </div>
 
-      {configs.length === 0 ? (
-        <div className="text-center py-8 border border-dashed border-input rounded-md">
-          <p className="text-muted-foreground mb-4">No integrations configured</p>
-        </div>
-      ) : (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Add:</span>
+        {TYPE_OPTIONS.filter((opt) => opt.value !== 'bot' || !health?.bots_disabled).map((opt) => (
+          <Button
+            key={opt.value}
+            variant="outline"
+            size="sm"
+            onClick={() => handleAddCreate(opt.value)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+
+      {configs.length > 0 && (
         <div className="space-y-2">
           {configs.map((cfg) => {
             const statusEntry = health?.fanout_statuses?.[cfg.id];
@@ -608,33 +990,6 @@ export function SettingsFanoutSection({
             );
           })}
         </div>
-      )}
-
-      {addingType ? (
-        <div className="border border-input rounded-md p-3 space-y-2">
-          <Label>Select integration type:</Label>
-          <div className="flex flex-wrap gap-2">
-            {TYPE_OPTIONS.filter((opt) => opt.value !== 'bot' || !health?.bots_disabled).map(
-              (opt) => (
-                <Button
-                  key={opt.value}
-                  variant={addingType === opt.value ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleAddCreate(opt.value)}
-                >
-                  {opt.label}
-                </Button>
-              )
-            )}
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => setAddingType(null)}>
-            Cancel
-          </Button>
-        </div>
-      ) : (
-        <Button variant="outline" onClick={() => handleAddStart('mqtt_private')} className="w-full">
-          + Add Integration
-        </Button>
       )}
     </div>
   );

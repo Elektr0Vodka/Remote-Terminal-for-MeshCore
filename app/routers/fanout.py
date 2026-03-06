@@ -12,7 +12,7 @@ from app.repository.fanout import FanoutConfigRepository
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/fanout", tags=["fanout"])
 
-_VALID_TYPES = {"mqtt_private", "mqtt_community", "bot"}
+_VALID_TYPES = {"mqtt_private", "mqtt_community", "bot", "webhook"}
 
 _IATA_RE = re.compile(r"^[A-Z]{3}$")
 
@@ -65,12 +65,32 @@ def _validate_bot_config(config: dict) -> None:
         ) from None
 
 
+def _validate_webhook_config(config: dict) -> None:
+    """Validate webhook config blob."""
+    url = config.get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="url is required for webhook")
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="url must start with http:// or https://")
+    method = config.get("method", "POST").upper()
+    if method not in ("POST", "PUT", "PATCH"):
+        raise HTTPException(status_code=400, detail="method must be POST, PUT, or PATCH")
+    headers = config.get("headers", {})
+    if not isinstance(headers, dict):
+        raise HTTPException(status_code=400, detail="headers must be a JSON object")
+
+
 def _enforce_scope(config_type: str, scope: dict) -> dict:
     """Enforce type-specific scope constraints. Returns normalized scope."""
     if config_type == "mqtt_community":
         return {"messages": "none", "raw_packets": "all"}
     if config_type == "bot":
         return {"messages": "all", "raw_packets": "none"}
+    if config_type == "webhook":
+        messages = scope.get("messages", "all")
+        if messages not in ("all", "none") and not isinstance(messages, dict):
+            messages = "all"
+        return {"messages": messages, "raw_packets": "none"}
     # For mqtt_private, validate scope values
     messages = scope.get("messages", "all")
     if messages not in ("all", "none") and not isinstance(messages, dict):
@@ -108,6 +128,8 @@ async def create_fanout_config(body: FanoutConfigCreate) -> dict:
             _validate_mqtt_community_config(body.config)
         elif body.type == "bot":
             _validate_bot_config(body.config)
+        elif body.type == "webhook":
+            _validate_webhook_config(body.config)
 
     scope = _enforce_scope(body.type, body.scope)
 
@@ -156,6 +178,8 @@ async def update_fanout_config(config_id: str, body: FanoutConfigUpdate) -> dict
             _validate_mqtt_community_config(config_to_validate)
         elif existing["type"] == "bot":
             _validate_bot_config(config_to_validate)
+        elif existing["type"] == "webhook":
+            _validate_webhook_config(config_to_validate)
 
     updated = await FanoutConfigRepository.update(config_id, **kwargs)
     if updated is None:

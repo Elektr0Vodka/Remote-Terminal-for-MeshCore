@@ -56,6 +56,26 @@ class TestScopeMatchesMessage:
         scope = {"messages": {"contacts": ["pk1"]}}
         assert not _scope_matches_message(scope, {"type": "PRIV", "conversation_key": "pk2"})
 
+    def test_dict_channels_except_excludes_listed(self):
+        scope = {"messages": {"channels": {"except": ["ch1"]}, "contacts": "all"}}
+        assert not _scope_matches_message(scope, {"type": "CHAN", "conversation_key": "ch1"})
+
+    def test_dict_channels_except_includes_unlisted(self):
+        scope = {"messages": {"channels": {"except": ["ch1"]}, "contacts": "all"}}
+        assert _scope_matches_message(scope, {"type": "CHAN", "conversation_key": "ch2"})
+
+    def test_dict_contacts_except_excludes_listed(self):
+        scope = {"messages": {"channels": "all", "contacts": {"except": ["pk1"]}}}
+        assert not _scope_matches_message(scope, {"type": "PRIV", "conversation_key": "pk1"})
+
+    def test_dict_contacts_except_includes_unlisted(self):
+        scope = {"messages": {"channels": "all", "contacts": {"except": ["pk1"]}}}
+        assert _scope_matches_message(scope, {"type": "PRIV", "conversation_key": "pk2"})
+
+    def test_dict_channels_except_empty_matches_all(self):
+        scope = {"messages": {"channels": {"except": []}}}
+        assert _scope_matches_message(scope, {"type": "CHAN", "conversation_key": "ch1"})
+
 
 class TestScopeMatchesRaw:
     def test_all_matches(self):
@@ -626,3 +646,106 @@ class TestMigration037:
             assert row[0] == 0
         finally:
             await db.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Webhook module unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookModule:
+    @pytest.mark.asyncio
+    async def test_status_disconnected_when_no_url(self):
+        from app.fanout.webhook import WebhookModule
+
+        mod = WebhookModule("test", {"url": ""})
+        await mod.start()
+        assert mod.status == "disconnected"
+        await mod.stop()
+
+    @pytest.mark.asyncio
+    async def test_status_connected_with_url(self):
+        from app.fanout.webhook import WebhookModule
+
+        mod = WebhookModule("test", {"url": "http://localhost:9999/hook"})
+        await mod.start()
+        assert mod.status == "connected"
+        await mod.stop()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_with_matching_scope(self):
+        """WebhookModule dispatches through FanoutManager scope matching."""
+        manager = FanoutManager()
+        mod = StubModule()
+        scope = {"messages": {"channels": ["ch1"], "contacts": "none"}, "raw_packets": "none"}
+        manager._modules["test-webhook"] = (mod, scope)
+
+        await manager.broadcast_message({"type": "CHAN", "conversation_key": "ch1", "text": "yes"})
+        await manager.broadcast_message({"type": "CHAN", "conversation_key": "ch2", "text": "no"})
+        await manager.broadcast_message(
+            {"type": "PRIV", "conversation_key": "pk1", "text": "dm no"}
+        )
+
+        assert len(mod.message_calls) == 1
+        assert mod.message_calls[0]["text"] == "yes"
+
+
+# ---------------------------------------------------------------------------
+# Webhook router validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookValidation:
+    def test_validate_webhook_config_requires_url(self):
+        from fastapi import HTTPException
+
+        from app.routers.fanout import _validate_webhook_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_webhook_config({"url": ""})
+        assert exc_info.value.status_code == 400
+        assert "url is required" in exc_info.value.detail
+
+    def test_validate_webhook_config_requires_http_scheme(self):
+        from fastapi import HTTPException
+
+        from app.routers.fanout import _validate_webhook_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_webhook_config({"url": "ftp://example.com"})
+        assert exc_info.value.status_code == 400
+
+    def test_validate_webhook_config_rejects_bad_method(self):
+        from fastapi import HTTPException
+
+        from app.routers.fanout import _validate_webhook_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_webhook_config({"url": "https://example.com/hook", "method": "DELETE"})
+        assert exc_info.value.status_code == 400
+        assert "method" in exc_info.value.detail
+
+    def test_validate_webhook_config_accepts_valid(self):
+        from app.routers.fanout import _validate_webhook_config
+
+        # Should not raise
+        _validate_webhook_config(
+            {"url": "https://example.com/hook", "method": "POST", "headers": {}}
+        )
+
+    def test_enforce_scope_webhook_strips_raw_packets(self):
+        from app.routers.fanout import _enforce_scope
+
+        scope = _enforce_scope("webhook", {"messages": "all", "raw_packets": "all"})
+        assert scope["raw_packets"] == "none"
+        assert scope["messages"] == "all"
+
+    def test_enforce_scope_webhook_preserves_selective(self):
+        from app.routers.fanout import _enforce_scope
+
+        scope = _enforce_scope(
+            "webhook",
+            {"messages": {"channels": ["ch1"], "contacts": "none"}, "raw_packets": "all"},
+        )
+        assert scope["raw_packets"] == "none"
+        assert scope["messages"] == {"channels": ["ch1"], "contacts": "none"}

@@ -20,10 +20,32 @@ def _register_module_types() -> None:
     from app.fanout.bot import BotModule
     from app.fanout.mqtt_community import MqttCommunityModule
     from app.fanout.mqtt_private import MqttPrivateModule
+    from app.fanout.webhook import WebhookModule
 
     _MODULE_TYPES["mqtt_private"] = MqttPrivateModule
     _MODULE_TYPES["mqtt_community"] = MqttCommunityModule
     _MODULE_TYPES["bot"] = BotModule
+    _MODULE_TYPES["webhook"] = WebhookModule
+
+
+def _matches_filter(filter_value: Any, key: str) -> bool:
+    """Check a single filter value (channels or contacts) against a key.
+
+    Supported shapes:
+      "all"                        -> True
+      "none"                       -> False
+      ["key1", "key2"]             -> key in list  (only listed)
+      {"except": ["key1", "key2"]} -> key not in list  (all except listed)
+    """
+    if filter_value == "all":
+        return True
+    if filter_value == "none":
+        return False
+    if isinstance(filter_value, list):
+        return key in filter_value
+    if isinstance(filter_value, dict) and "except" in filter_value:
+        return key not in filter_value["except"]
+    return False
 
 
 def _scope_matches_message(scope: dict, data: dict) -> bool:
@@ -37,21 +59,9 @@ def _scope_matches_message(scope: dict, data: dict) -> bool:
         msg_type = data.get("type", "")
         conversation_key = data.get("conversation_key", "")
         if msg_type == "CHAN":
-            channels = messages.get("channels", "none")
-            if channels == "all":
-                return True
-            if channels == "none":
-                return False
-            if isinstance(channels, list):
-                return conversation_key in channels
+            return _matches_filter(messages.get("channels", "none"), conversation_key)
         elif msg_type == "PRIV":
-            contacts = messages.get("contacts", "none")
-            if contacts == "all":
-                return True
-            if contacts == "none":
-                return False
-            if isinstance(contacts, list):
-                return conversation_key in contacts
+            return _matches_filter(messages.get("contacts", "none"), conversation_key)
     return False
 
 
