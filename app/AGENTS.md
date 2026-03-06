@@ -179,6 +179,12 @@ app/
 - `POST /settings/blocked-names/toggle`
 - `POST /settings/migrate`
 
+### Fanout
+- `GET /fanout` — list all fanout configs
+- `POST /fanout` — create new fanout config
+- `PATCH /fanout/{id}` — update fanout config (triggers module reload)
+- `DELETE /fanout/{id}` — delete fanout config (stops module)
+
 ### Statistics
 - `GET /statistics` — aggregated mesh network stats (entity counts, message/packet splits, activity windows, busiest channels)
 

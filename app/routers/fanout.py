@@ -167,6 +167,9 @@ async def update_fanout_config(config_id: str, body: FanoutConfigUpdate) -> dict
     if existing is None:
         raise HTTPException(status_code=404, detail="Fanout config not found")
 
+    if existing["type"] == "bot" and server_settings.disable_bots:
+        raise HTTPException(status_code=403, detail="Bot system disabled by server configuration")
+
     kwargs = {}
     if body.name is not None:
         kwargs["name"] = body.name

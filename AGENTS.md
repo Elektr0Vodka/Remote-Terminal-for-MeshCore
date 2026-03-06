@@ -75,7 +75,7 @@ Ancillary AGENTS.md files which should generally not be reviewed unless specific
 - Raw packet feed — a debug/observation tool ("radio aquarium"); interesting to watch or copy packets from, but not critical infrastructure
 - Map view — visual display of node locations from advertisements
 - Network visualizer — force-directed graph of mesh topology
-- Bot system — automated message responses
+- Fanout integrations (MQTT, bots, webhooks, Apprise) — see `app/fanout/AGENTS_fanout.md`
 - Read state tracking / mark-all-read — convenience feature for unread badges; no need for transactional atomicity or race-condition hardening
 
 ## Error Handling Philosophy
@@ -259,7 +259,7 @@ All endpoints are prefixed with `/api` (e.g., `/api/health`).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/health` | Connection status |
+| GET | `/api/health` | Connection status, fanout statuses, bots_disabled flag |
 | GET | `/api/radio/config` | Radio configuration |
 | PATCH | `/api/radio/config` | Update name, location, radio params |
 | PUT | `/api/radio/private-key` | Import private key to radio |
@@ -312,6 +312,10 @@ All endpoints are prefixed with `/api` (e.g., `/api/health`).
 | POST | `/api/settings/blocked-keys/toggle` | Toggle blocked key |
 | POST | `/api/settings/blocked-names/toggle` | Toggle blocked name |
 | POST | `/api/settings/migrate` | One-time migration from frontend localStorage |
+| GET | `/api/fanout` | List all fanout configs |
+| POST | `/api/fanout` | Create new fanout config |
+| PATCH | `/api/fanout/{id}` | Update fanout config (triggers module reload) |
+| DELETE | `/api/fanout/{id}` | Delete fanout config (stops module) |
 | GET | `/api/statistics` | Aggregated mesh network statistics |
 | WS | `/api/ws` | Real-time updates |
 

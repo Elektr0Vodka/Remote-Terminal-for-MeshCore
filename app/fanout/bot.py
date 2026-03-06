@@ -58,7 +58,7 @@ class BotModule(FanoutModule):
         else:
             conversation_key = data.get("conversation_key", "")
             sender_key = None
-            is_outgoing = False
+            is_outgoing = bool(data.get("outgoing", False))
             sender_name = data.get("sender_name")
             channel_key = conversation_key
 

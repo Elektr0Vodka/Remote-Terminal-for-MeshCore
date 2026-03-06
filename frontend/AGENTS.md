@@ -241,15 +241,14 @@ LocalStorage migration helpers for favorites; canonical favorites are server-sid
 - `preferences_migrated`
 - `advert_interval`
 - `last_advert_time`
-- `bots`
-- `mqtt_broker_host`, `mqtt_broker_port`, `mqtt_username`, `mqtt_password`
-- `mqtt_use_tls`, `mqtt_tls_insecure`, `mqtt_topic_prefix`, `mqtt_publish_messages`, `mqtt_publish_raw_packets`
-- `community_mqtt_enabled`, `community_mqtt_iata`, `community_mqtt_broker_host`, `community_mqtt_broker_port`, `community_mqtt_email`
 - `flood_scope`
 - `blocked_keys`, `blocked_names`
 
-`HealthStatus` includes `mqtt_status` (`"connected"`, `"disconnected"`, `"disabled"`, or `null`).
-`HealthStatus` also includes `community_mqtt_status` with the same status values.
+Note: MQTT, bot, and community MQTT settings were migrated to the `fanout_configs` table (managed via `/api/fanout`). They are no longer part of `AppSettings`.
+
+`HealthStatus` includes `fanout_statuses: Record<string, FanoutStatusEntry>` mapping config IDs to `{name, type, status}`. Also includes `bots_disabled: boolean`.
+
+`FanoutConfig` represents a single fanout integration: `{id, type, name, enabled, config, scope, sort_order, created_at}`.
 
 `RawPacket.decrypted_info` includes `channel_key` and `contact_key` for MQTT topic routing.
 

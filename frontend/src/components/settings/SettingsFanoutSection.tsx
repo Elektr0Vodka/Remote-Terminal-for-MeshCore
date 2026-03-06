@@ -477,8 +477,8 @@ function ScopeSelector({
     onChange({ ...scope, messages: buildMessages(selectedChannels, current) });
   };
 
-  // Non-repeater contacts only (type 0)
-  const filteredContacts = contacts.filter((c) => c.type === 0);
+  // Exclude repeaters (2), rooms (3), and sensors (4)
+  const filteredContacts = contacts.filter((c) => c.type === 0 || c.type === 1);
 
   const modeDescriptions: Record<ScopeMode, string> = {
     all: 'All messages',
@@ -1044,6 +1044,13 @@ export function SettingsFanoutSection({
       <div className="rounded-md border border-warning/50 bg-warning/10 px-4 py-3 text-sm text-warning">
         Integrations are an experimental feature in open beta.
       </div>
+
+      {health?.bots_disabled && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Bot system is disabled by server configuration (MESHCORE_DISABLE_BOTS). Bot integrations
+          cannot be created or modified.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">Add:</span>

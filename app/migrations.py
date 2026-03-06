@@ -2129,14 +2129,22 @@ async def _migrate_036_create_fanout_configs(conn: aiosqlite.Connection) -> None
         sort_order += 1
         logger.info("Migrated private MQTT settings to fanout_configs (enabled=%s)", enabled)
 
-    # 4. Migrate community MQTT if enabled
+    # 4. Migrate community MQTT if enabled OR configured (preserve disabled-but-configured)
     community_enabled = bool(row["community_mqtt_enabled"])
-    if community_enabled:
+    community_iata = row["community_mqtt_iata"] or ""
+    community_host = row["community_mqtt_broker_host"] or ""
+    community_email = row["community_mqtt_email"] or ""
+    community_has_config = bool(
+        community_iata
+        or community_email
+        or (community_host and community_host != "mqtt-us-v1.letsmesh.net")
+    )
+    if community_enabled or community_has_config:
         config = {
-            "broker_host": row["community_mqtt_broker_host"] or "mqtt-us-v1.letsmesh.net",
+            "broker_host": community_host or "mqtt-us-v1.letsmesh.net",
             "broker_port": row["community_mqtt_broker_port"] or 443,
-            "iata": row["community_mqtt_iata"] or "",
-            "email": row["community_mqtt_email"] or "",
+            "iata": community_iata,
+            "email": community_email,
         }
 
         scope = {
@@ -2153,14 +2161,16 @@ async def _migrate_036_create_fanout_configs(conn: aiosqlite.Connection) -> None
                 str(uuid.uuid4()),
                 "mqtt_community",
                 "Community MQTT",
-                1,
+                1 if community_enabled else 0,
                 json.dumps(config),
                 json.dumps(scope),
                 sort_order,
                 now,
             ),
         )
-        logger.info("Migrated community MQTT settings to fanout_configs")
+        logger.info(
+            "Migrated community MQTT settings to fanout_configs (enabled=%s)", community_enabled
+        )
 
     await conn.commit()
 
