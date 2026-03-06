@@ -15,7 +15,6 @@ import hashlib
 import importlib.metadata
 import json
 import logging
-import re
 import ssl
 import time
 from datetime import datetime
@@ -42,7 +41,6 @@ _STATS_MIN_CACHE_SECS = 60  # Don't re-fetch stats within 60s
 
 # Ed25519 group order
 _L = 2**252 + 27742317777372353535851937790883648493
-_IATA_RE = re.compile(r"^[A-Z]{3}$")
 
 # Route type mapping: bottom 2 bits of first byte
 _ROUTE_MAP = {0: "F", 1: "F", 2: "D", 3: "T"}
@@ -333,12 +331,7 @@ class CommunityMqttPublisher(BaseMqttPublisher):
         from app.websocket import broadcast_error
 
         s: CommunityMqttSettings | None = self._settings
-        if (
-            s
-            and s.community_mqtt_enabled
-            and not has_private_key()
-            and not self._key_unavailable_warned
-        ):
+        if s and not has_private_key() and not self._key_unavailable_warned:
             broadcast_error(
                 "Community MQTT unavailable",
                 "Radio firmware does not support private key export.",
