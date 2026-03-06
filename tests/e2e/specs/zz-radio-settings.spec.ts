@@ -23,15 +23,16 @@ test.describe('Radio settings', () => {
       await nameInput.clear();
       await nameInput.fill(testName);
 
-      await page.getByRole('button', { name: 'Save Radio Config & Reboot' }).click();
-      await expect(page.getByText('Radio config saved, rebooting...')).toBeVisible({ timeout: 10_000 });
+      // Use "Save" (no reboot) — name changes apply immediately
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(page.getByText('Radio config saved')).toBeVisible({ timeout: 10_000 });
+
+      // --- Step 2: Verify via API (send_appstart refreshes cached info) ---
+      const config = await getRadioConfig();
+      expect(config.name).toBe(testName);
 
       // Exit settings page mode
       await page.getByRole('button', { name: /Back to Chat/i }).click();
-
-      // --- Step 2: Verify via API (now returns fresh data after send_appstart fix) ---
-      const config = await getRadioConfig();
-      expect(config.name).toBe(testName);
 
       // --- Step 3: Verify persistence across page reload ---
       await page.reload();

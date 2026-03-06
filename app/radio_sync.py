@@ -117,7 +117,16 @@ async def sync_and_offload_contacts(mc: MeshCore) -> dict:
         result = await mc.commands.get_contacts()
 
         if result is None or result.type == EventType.ERROR:
-            logger.error("Failed to get contacts from radio: %s", result)
+            logger.error(
+                "Failed to get contacts from radio: %s. "
+                "If you see this repeatedly, the radio may be visible on the "
+                "serial/TCP/BLE port but not responding to commands. Check for "
+                "another process with the serial port open (other RemoteTerm "
+                "instances, serial monitors, etc.), verify the firmware is "
+                "up-to-date and in client mode (not repeater), or try a "
+                "power cycle.",
+                result,
+            )
             return {"synced": 0, "removed": 0, "error": str(result)}
 
         contacts = result.payload or {}
@@ -662,8 +671,19 @@ async def _sync_contacts_to_radio_inner(mc: MeshCore) -> dict:
                 logger.debug("Loaded contact %s to radio", contact.public_key[:12])
             else:
                 failed += 1
+                reason = result.payload
+                hint = ""
+                if reason is None:
+                    hint = (
+                        " (no response from radio — if this repeats, check for "
+                        "serial port contention from another process or try a "
+                        "power cycle)"
+                    )
                 logger.warning(
-                    "Failed to load contact %s: %s", contact.public_key[:12], result.payload
+                    "Failed to load contact %s: %s%s",
+                    contact.public_key[:12],
+                    reason,
+                    hint,
                 )
         except Exception as e:
             failed += 1

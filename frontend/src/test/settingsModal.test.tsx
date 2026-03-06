@@ -295,7 +295,7 @@ describe('SettingsModal', () => {
     });
     openRadioSection();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save Radio Config & Reboot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Reboot' }));
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledTimes(1);
       expect(onReboot).toHaveBeenCalledTimes(1);

@@ -48,6 +48,40 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+class _RepeatSquelch(logging.Filter):
+    """Suppress rapid-fire identical messages and emit a summary instead.
+
+    Attached to the ``meshcore`` library logger to catch its repeated
+    "Serial Connection started" lines that flood the log when another
+    process holds the serial port.
+    """
+
+    def __init__(self, threshold: int = 3) -> None:
+        super().__init__()
+        self._last_msg: str | None = None
+        self._repeat_count: int = 0
+        self._threshold = threshold
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if msg == self._last_msg:
+            self._repeat_count += 1
+            if self._repeat_count == self._threshold:
+                record.msg = (
+                    "%s (repeated %d times — possible serial port contention from another process)"
+                )
+                record.args = (msg, self._repeat_count)
+                record.levelno = logging.WARNING
+                record.levelname = "WARNING"
+                return True
+            # Suppress further repeats beyond the threshold
+            return self._repeat_count < self._threshold
+        else:
+            self._last_msg = msg
+            self._repeat_count = 1
+            return True
+
+
 def setup_logging() -> None:
     """Configure logging for the application."""
     logging.basicConfig(
@@ -55,3 +89,6 @@ def setup_logging() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    # Squelch repeated messages from the meshcore library (e.g. rapid-fire
+    # "Serial Connection started" when the port is contended).
+    logging.getLogger("meshcore").addFilter(_RepeatSquelch())

@@ -141,9 +141,7 @@ export function SettingsRadioSection({
     );
   };
 
-  const handleSave = async () => {
-    setError(null);
-
+  const buildUpdate = (): RadioConfigUpdate | null => {
     const parsedLat = parseFloat(lat);
     const parsedLon = parseFloat(lon);
     const parsedTxPower = parseInt(txPower, 10);
@@ -158,24 +156,46 @@ export function SettingsRadioSection({
       )
     ) {
       setError('All numeric fields must have valid values');
-      return;
+      return null;
     }
 
-    setBusy(true);
+    return {
+      name,
+      lat: parsedLat,
+      lon: parsedLon,
+      tx_power: parsedTxPower,
+      radio: {
+        freq: parsedFreq,
+        bw: parsedBw,
+        sf: parsedSf,
+        cr: parsedCr,
+      },
+    };
+  };
 
+  const handleSave = async () => {
+    setError(null);
+    const update = buildUpdate();
+    if (!update) return;
+
+    setBusy(true);
     try {
-      const update: RadioConfigUpdate = {
-        name,
-        lat: parsedLat,
-        lon: parsedLon,
-        tx_power: parsedTxPower,
-        radio: {
-          freq: parsedFreq,
-          bw: parsedBw,
-          sf: parsedSf,
-          cr: parsedCr,
-        },
-      };
+      await onSave(update);
+      toast.success('Radio config saved');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveAndReboot = async () => {
+    setError(null);
+    const update = buildUpdate();
+    if (!update) return;
+
+    setBusy(true);
+    try {
       await onSave(update);
       toast.success('Radio config saved, rebooting...');
       setRebooting(true);
@@ -413,9 +433,22 @@ export function SettingsRadioSection({
         </div>
       )}
 
-      <Button onClick={handleSave} disabled={busy || rebooting} className="w-full">
-        {busy || rebooting ? 'Saving & Rebooting...' : 'Save Radio Config & Reboot'}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={handleSave}
+          disabled={busy || rebooting}
+          variant="outline"
+          className="flex-1"
+        >
+          {busy && !rebooting ? 'Saving...' : 'Save'}
+        </Button>
+        <Button onClick={handleSaveAndReboot} disabled={busy || rebooting} className="flex-1">
+          {rebooting ? 'Rebooting...' : 'Save & Reboot'}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Some settings may require a reboot to take effect on some radios.
+      </p>
 
       <Separator />
 

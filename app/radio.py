@@ -470,6 +470,8 @@ class RadioManager:
             from app.websocket import broadcast_health
 
             CHECK_INTERVAL_SECONDS = 5
+            UNRESPONSIVE_THRESHOLD = 3
+            consecutive_setup_failures = 0
 
             while True:
                 try:
@@ -483,6 +485,7 @@ class RadioManager:
                         logger.warning("Radio connection lost, broadcasting status change")
                         broadcast_health(False, self._connection_info)
                         self._last_connected = False
+                        consecutive_setup_failures = 0
 
                     if not current_connected:
                         # Attempt reconnection on every loop while disconnected
@@ -492,6 +495,7 @@ class RadioManager:
                             await self.post_connect_setup()
                             broadcast_health(True, self._connection_info)
                             self._last_connected = True
+                            consecutive_setup_failures = 0
 
                     elif not self._last_connected and current_connected:
                         # Connection restored (might have reconnected automatically).
@@ -500,19 +504,34 @@ class RadioManager:
                         await self.post_connect_setup()
                         broadcast_health(True, self._connection_info)
                         self._last_connected = True
+                        consecutive_setup_failures = 0
 
                     elif current_connected and not self._setup_complete:
                         # Transport connected but setup incomplete — retry
                         logger.info("Retrying post-connect setup...")
                         await self.post_connect_setup()
                         broadcast_health(True, self._connection_info)
+                        consecutive_setup_failures = 0
 
                 except asyncio.CancelledError:
                     # Task is being cancelled, exit cleanly
                     break
                 except Exception as e:
-                    # Log error but continue monitoring - don't let the monitor die
-                    logger.exception("Error in connection monitor, continuing: %s", e)
+                    consecutive_setup_failures += 1
+                    if consecutive_setup_failures == UNRESPONSIVE_THRESHOLD:
+                        logger.error(
+                            "Post-connect setup has failed %d times in a row. "
+                            "The radio port appears open but the radio is not "
+                            "responding to commands. Common causes: another "
+                            "process has the serial port open (check for other "
+                            "RemoteTerm instances, serial monitors, etc.), the "
+                            "firmware is in repeater mode (not client), or the "
+                            "radio needs a power cycle. Will keep retrying.",
+                            consecutive_setup_failures,
+                        )
+                    elif consecutive_setup_failures < UNRESPONSIVE_THRESHOLD:
+                        logger.exception("Error in connection monitor, continuing: %s", e)
+                    # After the threshold, silently retry (avoid log spam)
 
         self._reconnect_task = asyncio.create_task(monitor_loop())
         logger.info("Radio connection monitor started")

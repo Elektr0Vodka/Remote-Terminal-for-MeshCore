@@ -115,10 +115,9 @@ test.describe('Webhook integration settings', () => {
     const row = page.getByText('Scope Webhook').locator('..');
     await row.getByRole('button', { name: 'Edit' }).click();
 
-    // Verify scope selector is visible with all four modes
+    // Verify scope selector is visible with the three webhook-applicable modes
     await expect(page.getByText('Message Scope')).toBeVisible();
     await expect(page.getByText('All messages')).toBeVisible();
-    await expect(page.getByText('No messages')).toBeVisible();
     await expect(page.getByText('Only listed channels/contacts')).toBeVisible();
     await expect(page.getByText('All except listed channels/contacts')).toBeVisible();
 

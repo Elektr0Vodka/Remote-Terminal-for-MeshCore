@@ -1,4 +1,4 @@
-import { test, expect } from '../helpers/meshTrafficTest';
+import { test, expect, nudgeEchoBot } from '../helpers/meshTrafficTest';
 import { createChannel, getChannels, getMessages } from '../helpers/api';
 
 /**
@@ -55,6 +55,9 @@ test.describe('Incoming mesh messages', () => {
   });
 
   test('receive an incoming message in any room', { tag: '@mesh-traffic' }, async ({ page }) => {
+    // Nudge echo bot on #flightless — may generate an incoming packet quickly
+    await nudgeEchoBot();
+
     await page.goto('/');
     await expect(page.getByText('Connected')).toBeVisible();
 
@@ -103,6 +106,9 @@ test.describe('Incoming mesh messages', () => {
   });
 
   test('incoming message with path shows hop badge and path modal', { tag: '@mesh-traffic' }, async ({ page }) => {
+    // Nudge echo bot on #flightless — may generate an incoming packet quickly
+    await nudgeEchoBot();
+
     await page.goto('/');
     await expect(page.getByText('Connected')).toBeVisible();
 
