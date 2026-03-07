@@ -85,7 +85,7 @@ describe('SettingsFanoutSection', () => {
 
     expect(screen.getByRole('menuitem', { name: 'Private MQTT' })).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'meshtomqtt/LetsMesh/MeshRank' })
+      screen.getByRole('menuitem', { name: 'meshcoretomqtt/LetsMesh/MeshRank' })
     ).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Webhook' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Apprise' })).toBeInTheDocument();
