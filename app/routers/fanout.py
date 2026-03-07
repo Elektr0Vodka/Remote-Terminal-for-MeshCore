@@ -2,6 +2,7 @@
 
 import logging
 import re
+import string
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -15,6 +16,48 @@ router = APIRouter(prefix="/fanout", tags=["fanout"])
 _VALID_TYPES = {"mqtt_private", "mqtt_community", "bot", "webhook", "apprise"}
 
 _IATA_RE = re.compile(r"^[A-Z]{3}$")
+_DEFAULT_COMMUNITY_MQTT_TOPIC_TEMPLATE = "meshcore/{IATA}/{PUBLIC_KEY}/packets"
+_DEFAULT_COMMUNITY_MQTT_BROKER_HOST = "mqtt-us-v1.letsmesh.net"
+_DEFAULT_COMMUNITY_MQTT_BROKER_PORT = 443
+_DEFAULT_COMMUNITY_MQTT_TRANSPORT = "websockets"
+_DEFAULT_COMMUNITY_MQTT_AUTH_MODE = "token"
+_COMMUNITY_MQTT_TEMPLATE_FIELD_CANONICAL = {
+    "iata": "IATA",
+    "public_key": "PUBLIC_KEY",
+}
+_ALLOWED_COMMUNITY_MQTT_TRANSPORTS = {"tcp", "websockets"}
+_ALLOWED_COMMUNITY_MQTT_AUTH_MODES = {"token", "password", "none"}
+
+
+def _normalize_community_topic_template(topic_template: str) -> str:
+    """Normalize Community MQTT topic template placeholders to canonical uppercase form."""
+    template = topic_template.strip() or _DEFAULT_COMMUNITY_MQTT_TOPIC_TEMPLATE
+    parts: list[str] = []
+    try:
+        parsed = string.Formatter().parse(template)
+        for literal_text, field_name, format_spec, conversion in parsed:
+            parts.append(literal_text)
+            if field_name is None:
+                continue
+            normalized_field = _COMMUNITY_MQTT_TEMPLATE_FIELD_CANONICAL.get(field_name.lower())
+            if normalized_field is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"topic_template may only use {{IATA}} and {{PUBLIC_KEY}}; got {field_name}"
+                    ),
+                )
+            replacement = ["{", normalized_field]
+            if conversion:
+                replacement.extend(["!", conversion])
+            if format_spec:
+                replacement.extend([":", format_spec])
+            replacement.append("}")
+            parts.append("".join(replacement))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid topic_template: {exc}") from None
+
+    return "".join(parts)
 
 
 class FanoutConfigCreate(BaseModel):
@@ -43,6 +86,46 @@ def _validate_mqtt_private_config(config: dict) -> None:
 
 def _validate_mqtt_community_config(config: dict) -> None:
     """Validate mqtt_community config blob. Normalizes IATA to uppercase."""
+    broker_host = str(config.get("broker_host", _DEFAULT_COMMUNITY_MQTT_BROKER_HOST)).strip()
+    if not broker_host:
+        broker_host = _DEFAULT_COMMUNITY_MQTT_BROKER_HOST
+    config["broker_host"] = broker_host
+
+    port = config.get("broker_port", _DEFAULT_COMMUNITY_MQTT_BROKER_PORT)
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise HTTPException(status_code=400, detail="broker_port must be between 1 and 65535")
+    config["broker_port"] = port
+
+    transport = str(config.get("transport", _DEFAULT_COMMUNITY_MQTT_TRANSPORT)).strip().lower()
+    if transport not in _ALLOWED_COMMUNITY_MQTT_TRANSPORTS:
+        raise HTTPException(
+            status_code=400,
+            detail="transport must be 'websockets' or 'tcp'",
+        )
+    config["transport"] = transport
+    config["use_tls"] = bool(config.get("use_tls", True))
+    config["tls_verify"] = bool(config.get("tls_verify", True))
+
+    auth_mode = str(config.get("auth_mode", _DEFAULT_COMMUNITY_MQTT_AUTH_MODE)).strip().lower()
+    if auth_mode not in _ALLOWED_COMMUNITY_MQTT_AUTH_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail="auth_mode must be 'token', 'password', or 'none'",
+        )
+    config["auth_mode"] = auth_mode
+    username = str(config.get("username", "")).strip()
+    password = str(config.get("password", "")).strip()
+    if auth_mode == "password" and (not username or not password):
+        raise HTTPException(
+            status_code=400,
+            detail="username and password are required when auth_mode is 'password'",
+        )
+    config["username"] = username
+    config["password"] = password
+
+    token_audience = str(config.get("token_audience", "")).strip()
+    config["token_audience"] = token_audience
+
     iata = config.get("iata", "").upper().strip()
     if not iata or not _IATA_RE.fullmatch(iata):
         raise HTTPException(
@@ -50,6 +133,14 @@ def _validate_mqtt_community_config(config: dict) -> None:
             detail="IATA code is required and must be exactly 3 uppercase alphabetic characters",
         )
     config["iata"] = iata
+
+    topic_template = str(
+        config.get("topic_template", _DEFAULT_COMMUNITY_MQTT_TOPIC_TEMPLATE)
+    ).strip()
+    if not topic_template:
+        topic_template = _DEFAULT_COMMUNITY_MQTT_TOPIC_TEMPLATE
+
+    config["topic_template"] = _normalize_community_topic_template(topic_template)
 
 
 def _validate_bot_config(config: dict) -> None:

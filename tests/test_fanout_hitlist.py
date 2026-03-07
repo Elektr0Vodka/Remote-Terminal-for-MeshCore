@@ -656,3 +656,67 @@ class TestCommunityMqttIataValidation:
 
         with pytest.raises(HTTPException):
             _validate_mqtt_community_config({"iata": "pdx1"})
+
+    def test_topic_template_defaults_when_missing(self):
+        from app.routers.fanout import _validate_mqtt_community_config
+
+        config = {"iata": "PDX"}
+        _validate_mqtt_community_config(config)
+        assert config["broker_host"] == "mqtt-us-v1.letsmesh.net"
+        assert config["broker_port"] == 443
+        assert config["transport"] == "websockets"
+        assert config["use_tls"] is True
+        assert config["tls_verify"] is True
+        assert config["auth_mode"] == "token"
+        assert config["username"] == ""
+        assert config["password"] == ""
+        assert config["token_audience"] == ""
+        assert config["topic_template"] == "meshcore/{IATA}/{PUBLIC_KEY}/packets"
+
+    def test_topic_template_normalizes_placeholder_capitalization(self):
+        from app.routers.fanout import _validate_mqtt_community_config
+
+        config = {"iata": "PDX", "topic_template": "mesh2mqtt/{iata}/node/{Public_Key}"}
+        _validate_mqtt_community_config(config)
+        assert config["topic_template"] == "mesh2mqtt/{IATA}/node/{PUBLIC_KEY}"
+
+    def test_topic_template_rejects_unknown_placeholder(self):
+        from app.routers.fanout import _validate_mqtt_community_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_mqtt_community_config(
+                {"iata": "PDX", "topic_template": "meshcore/{foo}/{PUBLIC_KEY}/packets"}
+            )
+        assert exc_info.value.status_code == 400
+        assert "topic_template" in exc_info.value.detail
+
+    def test_transport_rejects_unknown_value(self):
+        from app.routers.fanout import _validate_mqtt_community_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_mqtt_community_config({"iata": "PDX", "transport": "udp"})
+        assert exc_info.value.status_code == 400
+        assert "transport" in exc_info.value.detail
+
+    def test_blank_token_audience_is_preserved(self):
+        from app.routers.fanout import _validate_mqtt_community_config
+
+        config = {"iata": "PDX", "token_audience": "   "}
+        _validate_mqtt_community_config(config)
+        assert config["token_audience"] == ""
+
+    def test_auth_mode_rejects_unknown_value(self):
+        from app.routers.fanout import _validate_mqtt_community_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_mqtt_community_config({"iata": "PDX", "auth_mode": "jwt"})
+        assert exc_info.value.status_code == 400
+        assert "auth_mode" in exc_info.value.detail
+
+    def test_password_auth_requires_credentials(self):
+        from app.routers.fanout import _validate_mqtt_community_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_mqtt_community_config({"iata": "PDX", "auth_mode": "password"})
+        assert exc_info.value.status_code == 400
+        assert "username and password" in exc_info.value.detail

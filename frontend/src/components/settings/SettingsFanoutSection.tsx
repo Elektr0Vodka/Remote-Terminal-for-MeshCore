@@ -14,7 +14,7 @@ const BotCodeEditor = lazy(() =>
 
 const TYPE_LABELS: Record<string, string> = {
   mqtt_private: 'Private MQTT',
-  mqtt_community: 'Community MQTT',
+  mqtt_community: 'Community MQTT/mesh2mqtt',
   bot: 'Bot',
   webhook: 'Webhook',
   apprise: 'Apprise',
@@ -22,11 +22,31 @@ const TYPE_LABELS: Record<string, string> = {
 
 const TYPE_OPTIONS = [
   { value: 'mqtt_private', label: 'Private MQTT' },
-  { value: 'mqtt_community', label: 'Community MQTT' },
+  { value: 'mqtt_community', label: 'Community MQTT/mesh2mqtt' },
   { value: 'bot', label: 'Bot' },
   { value: 'webhook', label: 'Webhook' },
   { value: 'apprise', label: 'Apprise' },
 ];
+
+const DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE = 'meshcore/{IATA}/{PUBLIC_KEY}/packets';
+const DEFAULT_COMMUNITY_BROKER_HOST = 'mqtt-us-v1.letsmesh.net';
+const DEFAULT_COMMUNITY_BROKER_PORT = 443;
+const DEFAULT_COMMUNITY_TRANSPORT = 'websockets';
+const DEFAULT_COMMUNITY_AUTH_MODE = 'token';
+
+function formatBrokerSummary(
+  config: Record<string, unknown>,
+  defaults: { host: string; port: number }
+) {
+  const host = (config.broker_host as string) || defaults.host;
+  const port = typeof config.broker_port === 'number' ? config.broker_port : defaults.port;
+  return `${host}:${port}`;
+}
+
+function formatPrivateTopicSummary(config: Record<string, unknown>) {
+  const prefix = (config.topic_prefix as string) || 'meshcore';
+  return `${prefix}/dm:<pubkey>, ${prefix}/gm:<channel>, ${prefix}/raw/...`;
+}
 
 const DEFAULT_BOT_CODE = `def bot(
     sender_name: str | None,
@@ -75,10 +95,11 @@ function getStatusLabel(status: string | undefined, type?: string) {
 }
 
 function getStatusColor(status: string | undefined, enabled?: boolean) {
-  if (enabled === false) return 'bg-warning shadow-[0_0_6px_hsl(var(--warning)/0.5)]';
+  if (enabled === false) return 'bg-muted-foreground';
   if (status === 'connected')
     return 'bg-status-connected shadow-[0_0_6px_hsl(var(--status-connected)/0.5)]';
-  if (status === 'error') return 'bg-destructive shadow-[0_0_6px_hsl(var(--destructive)/0.5)]';
+  if (status === 'error' || status === 'disconnected')
+    return 'bg-destructive shadow-[0_0_6px_hsl(var(--destructive)/0.5)]';
   return 'bg-muted-foreground';
 }
 
@@ -201,6 +222,8 @@ function MqttCommunityConfigEditor({
   config: Record<string, unknown>;
   onChange: (config: Record<string, unknown>) => void;
 }) {
+  const authMode = (config.auth_mode as string) || DEFAULT_COMMUNITY_AUTH_MODE;
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
@@ -214,8 +237,8 @@ function MqttCommunityConfigEditor({
           <Input
             id="fanout-comm-host"
             type="text"
-            placeholder="mqtt-us-v1.letsmesh.net"
-            value={(config.broker_host as string) || 'mqtt-us-v1.letsmesh.net'}
+            placeholder={DEFAULT_COMMUNITY_BROKER_HOST}
+            value={(config.broker_host as string) || DEFAULT_COMMUNITY_BROKER_HOST}
             onChange={(e) => onChange({ ...config, broker_host: e.target.value })}
           />
         </div>
@@ -226,12 +249,122 @@ function MqttCommunityConfigEditor({
             type="number"
             min="1"
             max="65535"
-            value={(config.broker_port as number) || 443}
+            value={(config.broker_port as number) || DEFAULT_COMMUNITY_BROKER_PORT}
             onChange={(e) =>
-              onChange({ ...config, broker_port: parseInt(e.target.value, 10) || 443 })
+              onChange({
+                ...config,
+                broker_port: parseInt(e.target.value, 10) || DEFAULT_COMMUNITY_BROKER_PORT,
+              })
             }
           />
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="fanout-comm-transport">Transport</Label>
+          <select
+            id="fanout-comm-transport"
+            value={(config.transport as string) || DEFAULT_COMMUNITY_TRANSPORT}
+            onChange={(e) => onChange({ ...config, transport: e.target.value })}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="websockets">WebSockets</option>
+            <option value="tcp">TCP</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="fanout-comm-auth-mode">Authentication</Label>
+          <select
+            id="fanout-comm-auth-mode"
+            value={authMode}
+            onChange={(e) => onChange({ ...config, auth_mode: e.target.value })}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="token">Token</option>
+            <option value="none">None</option>
+            <option value="password">Username / Password</option>
+          </select>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        LetsMesh uses <code>token</code> auth. MeshRank uses <code>none</code>.
+      </p>
+
+      {authMode === 'token' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="fanout-comm-token-audience">Token Audience</Label>
+            <Input
+              id="fanout-comm-token-audience"
+              type="text"
+              placeholder={(config.broker_host as string) || DEFAULT_COMMUNITY_BROKER_HOST}
+              value={(config.token_audience as string | undefined) ?? ''}
+              onChange={(e) => onChange({ ...config, token_audience: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">Defaults to the broker host when blank</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="fanout-comm-email">Owner Email (optional)</Label>
+            <Input
+              id="fanout-comm-email"
+              type="email"
+              placeholder="you@example.com"
+              value={(config.email as string) || ''}
+              onChange={(e) => onChange({ ...config, email: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Used to claim your node on the community aggregator
+            </p>
+          </div>
+        </div>
+      )}
+
+      {authMode === 'password' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="fanout-comm-username">Username</Label>
+            <Input
+              id="fanout-comm-username"
+              type="text"
+              value={(config.username as string) || ''}
+              onChange={(e) => onChange({ ...config, username: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="fanout-comm-password">Password</Label>
+            <Input
+              id="fanout-comm-password"
+              type="password"
+              value={(config.password as string) || ''}
+              onChange={(e) => onChange({ ...config, password: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={config.use_tls === undefined ? true : !!config.use_tls}
+            onChange={(e) => onChange({ ...config, use_tls: e.target.checked })}
+            className="h-4 w-4 rounded border-border"
+          />
+          <span className="text-sm">Use TLS</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer ml-7">
+          <input
+            type="checkbox"
+            checked={config.tls_verify === undefined ? true : !!config.tls_verify}
+            onChange={(e) => onChange({ ...config, tls_verify: e.target.checked })}
+            className="h-4 w-4 rounded border-border"
+            disabled={config.use_tls === undefined ? false : !config.use_tls}
+          />
+          <span className="text-sm">Verify TLS certificates</span>
+        </label>
       </div>
 
       <div className="space-y-2">
@@ -251,16 +384,16 @@ function MqttCommunityConfigEditor({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="fanout-comm-email">Owner Email (optional)</Label>
+        <Label htmlFor="fanout-comm-topic-template">Packet Topic Template</Label>
         <Input
-          id="fanout-comm-email"
-          type="email"
-          placeholder="you@example.com"
-          value={(config.email as string) || ''}
-          onChange={(e) => onChange({ ...config, email: e.target.value })}
+          id="fanout-comm-topic-template"
+          type="text"
+          value={(config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE}
+          onChange={(e) => onChange({ ...config, topic_template: e.target.value })}
         />
         <p className="text-xs text-muted-foreground">
-          Used to claim your node on the community aggregator
+          Use <code>{'{IATA}'}</code> and <code>{'{PUBLIC_KEY}'}</code>. Default:{' '}
+          <code>{DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE}</code>
         </p>
       </div>
     </div>
@@ -943,9 +1076,17 @@ export function SettingsFanoutSection({
       },
       mqtt_community: {
         broker_host: 'mqtt-us-v1.letsmesh.net',
-        broker_port: 443,
+        broker_port: DEFAULT_COMMUNITY_BROKER_PORT,
+        transport: DEFAULT_COMMUNITY_TRANSPORT,
+        use_tls: true,
+        tls_verify: true,
+        auth_mode: DEFAULT_COMMUNITY_AUTH_MODE,
+        username: '',
+        password: '',
         iata: '',
         email: '',
+        token_audience: '',
+        topic_template: DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
       },
       bot: {
         code: DEFAULT_BOT_CODE,
@@ -1093,7 +1234,7 @@ export function SettingsFanoutSection({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Add:</span>
+        <span className="text-sm text-muted-foreground">Add a new entry:</span>
         {TYPE_OPTIONS.filter((opt) => opt.value !== 'bot' || !health?.bots_disabled).map((opt) => (
           <Button
             key={opt.value}
@@ -1111,6 +1252,7 @@ export function SettingsFanoutSection({
           {configs.map((cfg) => {
             const statusEntry = health?.fanout_statuses?.[cfg.id];
             const status = cfg.enabled ? statusEntry?.status : undefined;
+            const communityConfig = cfg.config as Record<string, unknown>;
             return (
               <div key={cfg.id} className="border border-input rounded-md overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/50">
@@ -1155,6 +1297,43 @@ export function SettingsFanoutSection({
                     Edit
                   </Button>
                 </div>
+
+                {cfg.type === 'mqtt_community' && (
+                  <div className="space-y-1 border-t border-input px-3 py-2 text-xs text-muted-foreground">
+                    <div>
+                      Broker:{' '}
+                      {formatBrokerSummary(communityConfig, {
+                        host: DEFAULT_COMMUNITY_BROKER_HOST,
+                        port: DEFAULT_COMMUNITY_BROKER_PORT,
+                      })}
+                    </div>
+                    <div className="break-all">
+                      Topic:{' '}
+                      <code>
+                        {(communityConfig.topic_template as string) ||
+                          DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE}
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                {cfg.type === 'mqtt_private' && (
+                  <div className="space-y-1 border-t border-input px-3 py-2 text-xs text-muted-foreground">
+                    <div>
+                      Broker:{' '}
+                      {formatBrokerSummary(cfg.config as Record<string, unknown>, {
+                        host: '',
+                        port: 1883,
+                      })}
+                    </div>
+                    <div className="break-all">
+                      Topics:{' '}
+                      <code>
+                        {formatPrivateTopicSummary(cfg.config as Record<string, unknown>)}
+                      </code>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

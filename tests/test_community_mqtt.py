@@ -23,6 +23,11 @@ from app.fanout.community_mqtt import (
     _generate_jwt_token,
     _get_client_version,
 )
+from app.fanout.mqtt_community import (
+    _config_to_settings,
+    _publish_community_packet,
+    _render_packet_topic,
+)
 
 
 def _make_test_keys() -> tuple[bytes, bytes]:
@@ -55,8 +60,15 @@ def _make_community_settings(**overrides) -> SimpleNamespace:
         "community_mqtt_enabled": True,
         "community_mqtt_broker_host": "mqtt-us-v1.letsmesh.net",
         "community_mqtt_broker_port": 443,
+        "community_mqtt_transport": "websockets",
+        "community_mqtt_use_tls": True,
+        "community_mqtt_tls_verify": True,
+        "community_mqtt_auth_mode": "token",
+        "community_mqtt_username": "",
+        "community_mqtt_password": "",
         "community_mqtt_iata": "",
         "community_mqtt_email": "",
+        "community_mqtt_token_audience": "mqtt-us-v1.letsmesh.net",
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -390,19 +402,37 @@ class TestCommunityMqttPublisher:
     def test_is_configured_false_when_disabled(self):
         pub = CommunityMqttPublisher()
         pub._settings = SimpleNamespace(community_mqtt_enabled=False)
-        with patch("app.keystore.has_private_key", return_value=True):
+        with patch("app.keystore.get_public_key", return_value=b"x" * 32):
             assert pub._is_configured() is False
 
     def test_is_configured_false_when_no_private_key(self):
         pub = CommunityMqttPublisher()
-        pub._settings = SimpleNamespace(community_mqtt_enabled=True)
-        with patch("app.keystore.has_private_key", return_value=False):
+        pub._settings = SimpleNamespace(
+            community_mqtt_enabled=True, community_mqtt_auth_mode="token"
+        )
+        with (
+            patch("app.keystore.get_public_key", return_value=b"x" * 32),
+            patch("app.keystore.has_private_key", return_value=False),
+        ):
             assert pub._is_configured() is False
 
     def test_is_configured_true_when_enabled_with_key(self):
         pub = CommunityMqttPublisher()
-        pub._settings = SimpleNamespace(community_mqtt_enabled=True)
-        with patch("app.keystore.has_private_key", return_value=True):
+        pub._settings = SimpleNamespace(
+            community_mqtt_enabled=True, community_mqtt_auth_mode="token"
+        )
+        with (
+            patch("app.keystore.get_public_key", return_value=b"x" * 32),
+            patch("app.keystore.has_private_key", return_value=True),
+        ):
+            assert pub._is_configured() is True
+
+    def test_is_configured_true_for_none_auth_without_private_key(self):
+        pub = CommunityMqttPublisher()
+        pub._settings = SimpleNamespace(
+            community_mqtt_enabled=True, community_mqtt_auth_mode="none"
+        )
+        with patch("app.keystore.get_public_key", return_value=b"x" * 32):
             assert pub._is_configured() is True
 
 
@@ -429,6 +459,49 @@ class TestBuildStatusTopic:
         settings = SimpleNamespace(community_mqtt_iata=" lax ")
         topic = _build_status_topic(settings, "PUBKEY")
         assert topic == "meshcore/LAX/PUBKEY/status"
+
+
+class TestRenderPacketTopic:
+    def test_uses_default_template(self):
+        topic = _render_packet_topic(
+            "meshcore/{IATA}/{PUBLIC_KEY}/packets",
+            iata="LAX",
+            public_key="AABB1122",
+        )
+        assert topic == "meshcore/LAX/AABB1122/packets"
+
+    def test_supports_custom_template(self):
+        topic = _render_packet_topic(
+            "mesh2mqtt/{IATA}/node/{PUBLIC_KEY}",
+            iata="PDX",
+            public_key="PUBKEY",
+        )
+        assert topic == "mesh2mqtt/PDX/node/PUBKEY"
+
+    def test_accepts_mixed_case_placeholders(self):
+        topic = _render_packet_topic(
+            "mesh2mqtt/{iata}/node/{Public_Key}",
+            iata="SEA",
+            public_key="PUBKEY",
+        )
+        assert topic == "mesh2mqtt/SEA/node/PUBKEY"
+
+
+class TestCommunityConfigDefaults:
+    def test_existing_config_without_new_fields_gets_letsmesh_defaults(self):
+        settings = _config_to_settings({"iata": "LAX", "email": "user@example.com"})
+
+        assert settings.community_mqtt_broker_host == "mqtt-us-v1.letsmesh.net"
+        assert settings.community_mqtt_broker_port == 443
+        assert settings.community_mqtt_transport == "websockets"
+        assert settings.community_mqtt_use_tls is True
+        assert settings.community_mqtt_tls_verify is True
+        assert settings.community_mqtt_auth_mode == "token"
+        assert settings.community_mqtt_username == ""
+        assert settings.community_mqtt_password == ""
+        assert settings.community_mqtt_token_audience == ""
+        assert settings.community_mqtt_iata == "LAX"
+        assert settings.community_mqtt_email == "user@example.com"
 
 
 class TestLwtAndStatusPublish:
@@ -460,6 +533,70 @@ class TestLwtAndStatusPublish:
         assert payload["origin_id"] == pubkey_hex
         assert "timestamp" in payload
         assert "client" not in payload
+        assert kwargs["transport"] == "websockets"
+        assert kwargs["websocket_path"] == "/"
+        assert kwargs["tls_context"] is not None
+        assert kwargs["username"] == f"v1_{pubkey_hex}"
+
+    def test_build_client_kwargs_supports_tcp_transport_and_custom_audience(self):
+        pub = CommunityMqttPublisher()
+        private_key, public_key = _make_test_keys()
+        settings = _make_community_settings(
+            community_mqtt_broker_host="meshrank.net",
+            community_mqtt_broker_port=8883,
+            community_mqtt_transport="tcp",
+            community_mqtt_use_tls=True,
+            community_mqtt_tls_verify=True,
+            community_mqtt_token_audience="meshrank.net",
+            community_mqtt_email="user@example.com",
+            community_mqtt_iata="SFO",
+        )
+
+        with (
+            patch("app.keystore.get_private_key", return_value=private_key),
+            patch("app.keystore.get_public_key", return_value=public_key),
+            patch("app.radio.radio_manager") as mock_radio,
+        ):
+            mock_radio.meshcore = None
+            kwargs = pub._build_client_kwargs(settings)
+
+        assert kwargs["hostname"] == "meshrank.net"
+        assert kwargs["port"] == 8883
+        assert kwargs["transport"] == "tcp"
+        assert "websocket_path" not in kwargs
+        assert kwargs["tls_context"] is not None
+
+        payload_b64 = kwargs["password"].split(".")[1]
+        import base64
+
+        padded = payload_b64 + "=" * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded))
+        assert payload["aud"] == "meshrank.net"
+        assert payload["email"] == "user@example.com"
+
+    def test_build_client_kwargs_supports_none_auth(self):
+        pub = CommunityMqttPublisher()
+        _, public_key = _make_test_keys()
+        settings = _make_community_settings(
+            community_mqtt_broker_host="meshrank.net",
+            community_mqtt_broker_port=8883,
+            community_mqtt_transport="tcp",
+            community_mqtt_auth_mode="none",
+        )
+
+        with (
+            patch("app.keystore.get_private_key", return_value=None),
+            patch("app.keystore.get_public_key", return_value=public_key),
+            patch("app.radio.radio_manager") as mock_radio,
+        ):
+            mock_radio.meshcore = None
+            kwargs = pub._build_client_kwargs(settings)
+
+        assert kwargs["hostname"] == "meshrank.net"
+        assert kwargs["port"] == 8883
+        assert kwargs["transport"] == "tcp"
+        assert "username" not in kwargs
+        assert "password" not in kwargs
 
     @pytest.mark.asyncio
     async def test_on_connected_async_publishes_online_status(self):
@@ -577,6 +714,42 @@ class TestLwtAndStatusPublish:
 
         payload = mock_publish.call_args[0][1]
         assert payload["origin"] == "MeshCore Device"
+
+
+class TestCommunityPacketPublishTopic:
+    @pytest.mark.asyncio
+    async def test_publish_community_packet_uses_configured_topic_template(self):
+        publisher = MagicMock()
+        publisher.publish = AsyncMock()
+        publisher.connected = True
+        publisher._settings = object()
+
+        data = {
+            "id": 1,
+            "observation_id": 1,
+            "timestamp": 1700000000,
+            "data": "0100",
+            "payload_type": "GROUP_TEXT",
+            "snr": None,
+            "rssi": None,
+            "decrypted": False,
+            "decrypted_info": None,
+        }
+        config = {"iata": "lax", "topic_template": "mesh2mqtt/{IATA}/node/{PUBLIC_KEY}"}
+
+        mock_radio = MagicMock()
+        mock_radio.meshcore = MagicMock()
+        mock_radio.meshcore.self_info = {"name": "Node"}
+
+        with (
+            patch("app.keystore.get_public_key", return_value=bytes.fromhex("AA" * 32)),
+            patch("app.radio.radio_manager", mock_radio),
+        ):
+            await _publish_community_packet(publisher, config, data)
+
+        publisher.publish.assert_awaited_once()
+        topic = publisher.publish.await_args.args[0]
+        assert topic == f"mesh2mqtt/LAX/node/{'AA' * 32}"
 
 
 def _mock_radio_operation(mc_mock):

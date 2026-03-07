@@ -66,9 +66,17 @@ describe('SettingsFanoutSection', () => {
     renderSection();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Private MQTT' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Community MQTT/mesh2mqtt' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Webhook' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Apprise' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Bot' })).toBeInTheDocument();
+    });
+  });
+
+  it('shows updated add label phrasing', async () => {
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByText('Add a new entry:')).toBeInTheDocument();
     });
   });
 
@@ -264,5 +272,193 @@ describe('SettingsFanoutSection', () => {
       // Should show the URL input for webhook type
       expect(screen.getByLabelText(/URL/)).toBeInTheDocument();
     });
+  });
+
+  it('community MQTT editor exposes packet topic template', async () => {
+    const communityConfig: FanoutConfig = {
+      id: 'comm-1',
+      type: 'mqtt_community',
+      name: 'Community MQTT/mesh2mqtt',
+      enabled: false,
+      config: {
+        broker_host: 'mqtt-us-v1.letsmesh.net',
+        broker_port: 443,
+        transport: 'tcp',
+        use_tls: true,
+        tls_verify: true,
+        auth_mode: 'token',
+        iata: 'LAX',
+        email: '',
+        token_audience: 'meshrank.net',
+        topic_template: 'mesh2mqtt/{IATA}/node/{PUBLIC_KEY}',
+      },
+      scope: { messages: 'none', raw_packets: 'all' },
+      sort_order: 0,
+      created_at: 1000,
+    };
+    mockedApi.getFanoutConfigs.mockResolvedValue([communityConfig]);
+    renderSection();
+    await waitFor(() => expect(screen.getByText('Community MQTT/mesh2mqtt')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(screen.getByText('← Back to list')).toBeInTheDocument());
+
+    expect(screen.getByLabelText('Packet Topic Template')).toHaveValue(
+      'mesh2mqtt/{IATA}/node/{PUBLIC_KEY}'
+    );
+    expect(screen.getByLabelText('Transport')).toHaveValue('tcp');
+    expect(screen.getByLabelText('Authentication')).toHaveValue('token');
+    expect(screen.getByLabelText('Token Audience')).toHaveValue('meshrank.net');
+    expect(screen.getByText(/LetsMesh uses/)).toBeInTheDocument();
+  });
+
+  it('existing community MQTT config without auth_mode defaults to token in the editor', async () => {
+    const communityConfig: FanoutConfig = {
+      id: 'comm-legacy',
+      type: 'mqtt_community',
+      name: 'Legacy Community MQTT',
+      enabled: false,
+      config: {
+        broker_host: 'mqtt-us-v1.letsmesh.net',
+        broker_port: 443,
+        transport: 'websockets',
+        use_tls: true,
+        tls_verify: true,
+        iata: 'LAX',
+        email: 'user@example.com',
+        token_audience: '',
+        topic_template: 'meshcore/{IATA}/{PUBLIC_KEY}/packets',
+      },
+      scope: { messages: 'none', raw_packets: 'all' },
+      sort_order: 0,
+      created_at: 1000,
+    };
+    mockedApi.getFanoutConfigs.mockResolvedValue([communityConfig]);
+    renderSection();
+    await waitFor(() => expect(screen.getByText('Legacy Community MQTT')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(screen.getByText('← Back to list')).toBeInTheDocument());
+
+    expect(screen.getByLabelText('Authentication')).toHaveValue('token');
+    expect(screen.getByLabelText('Token Audience')).toBeInTheDocument();
+  });
+
+  it('community MQTT token audience can be cleared back to blank', async () => {
+    const communityConfig: FanoutConfig = {
+      id: 'comm-1',
+      type: 'mqtt_community',
+      name: 'Community MQTT/mesh2mqtt',
+      enabled: false,
+      config: {
+        broker_host: 'mqtt-us-v1.letsmesh.net',
+        broker_port: 443,
+        transport: 'websockets',
+        use_tls: true,
+        tls_verify: true,
+        auth_mode: 'token',
+        iata: 'LAX',
+        email: '',
+        token_audience: 'meshrank.net',
+        topic_template: 'meshcore/{IATA}/{PUBLIC_KEY}/packets',
+      },
+      scope: { messages: 'none', raw_packets: 'all' },
+      sort_order: 0,
+      created_at: 1000,
+    };
+    mockedApi.getFanoutConfigs.mockResolvedValue([communityConfig]);
+    renderSection();
+    await waitFor(() => expect(screen.getByText('Community MQTT/mesh2mqtt')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(screen.getByText('← Back to list')).toBeInTheDocument());
+
+    const audienceInput = screen.getByLabelText('Token Audience');
+    fireEvent.change(audienceInput, { target: { value: '' } });
+
+    expect(audienceInput).toHaveValue('');
+  });
+
+  it('community MQTT can be configured for no auth', async () => {
+    const communityConfig: FanoutConfig = {
+      id: 'comm-1',
+      type: 'mqtt_community',
+      name: 'Community MQTT/mesh2mqtt',
+      enabled: false,
+      config: {
+        broker_host: 'meshrank.net',
+        broker_port: 8883,
+        transport: 'tcp',
+        use_tls: true,
+        tls_verify: true,
+        auth_mode: 'none',
+        iata: 'LAX',
+        topic_template: 'meshrank/uplink/ROOM/{PUBLIC_KEY}/packets',
+      },
+      scope: { messages: 'none', raw_packets: 'all' },
+      sort_order: 0,
+      created_at: 1000,
+    };
+    mockedApi.getFanoutConfigs.mockResolvedValue([communityConfig]);
+    renderSection();
+    await waitFor(() => expect(screen.getByText('Community MQTT/mesh2mqtt')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(screen.getByText('← Back to list')).toBeInTheDocument());
+
+    expect(screen.getByLabelText('Authentication')).toHaveValue('none');
+    expect(screen.queryByLabelText('Token Audience')).not.toBeInTheDocument();
+  });
+
+  it('community MQTT list shows configured packet topic', async () => {
+    const communityConfig: FanoutConfig = {
+      id: 'comm-1',
+      type: 'mqtt_community',
+      name: 'Community MQTT/mesh2mqtt',
+      enabled: false,
+      config: {
+        broker_host: 'mqtt-us-v1.letsmesh.net',
+        broker_port: 443,
+        transport: 'websockets',
+        use_tls: true,
+        tls_verify: true,
+        auth_mode: 'token',
+        iata: 'LAX',
+        email: '',
+        token_audience: 'mqtt-us-v1.letsmesh.net',
+        topic_template: 'mesh2mqtt/{IATA}/node/{PUBLIC_KEY}',
+      },
+      scope: { messages: 'none', raw_packets: 'all' },
+      sort_order: 0,
+      created_at: 1000,
+    };
+    mockedApi.getFanoutConfigs.mockResolvedValue([communityConfig]);
+    renderSection();
+
+    await waitFor(() =>
+      expect(screen.getByText('Broker: mqtt-us-v1.letsmesh.net:443')).toBeInTheDocument()
+    );
+    expect(screen.getByText('mesh2mqtt/{IATA}/node/{PUBLIC_KEY}')).toBeInTheDocument();
+    expect(screen.queryByText('Region: LAX')).not.toBeInTheDocument();
+  });
+
+  it('private MQTT list shows broker and topic summary', async () => {
+    const privateConfig: FanoutConfig = {
+      id: 'mqtt-1',
+      type: 'mqtt_private',
+      name: 'Private MQTT',
+      enabled: true,
+      config: { broker_host: 'broker.local', broker_port: 1883, topic_prefix: 'meshcore' },
+      scope: { messages: 'all', raw_packets: 'all' },
+      sort_order: 0,
+      created_at: 1000,
+    };
+    mockedApi.getFanoutConfigs.mockResolvedValue([privateConfig]);
+    renderSection();
+
+    await waitFor(() => expect(screen.getByText('Broker: broker.local:1883')).toBeInTheDocument());
+    expect(
+      screen.getByText('meshcore/dm:<pubkey>, meshcore/gm:<channel>, meshcore/raw/...')
+    ).toBeInTheDocument();
   });
 });

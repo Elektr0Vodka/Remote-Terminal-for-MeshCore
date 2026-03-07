@@ -52,8 +52,15 @@ class CommunityMqttSettings(Protocol):
     community_mqtt_enabled: bool
     community_mqtt_broker_host: str
     community_mqtt_broker_port: int
+    community_mqtt_transport: str
+    community_mqtt_use_tls: bool
+    community_mqtt_tls_verify: bool
+    community_mqtt_auth_mode: str
+    community_mqtt_username: str
+    community_mqtt_password: str
     community_mqtt_iata: str
     community_mqtt_email: str
+    community_mqtt_token_audience: str
 
 
 def _base64url_encode(data: bytes) -> str:
@@ -327,11 +334,18 @@ class CommunityMqttPublisher(BaseMqttPublisher):
         await super().start(settings)
 
     def _on_not_configured(self) -> None:
-        from app.keystore import has_private_key
+        from app.keystore import get_public_key, has_private_key
         from app.websocket import broadcast_error
 
         s: CommunityMqttSettings | None = self._settings
-        if s and not has_private_key() and not self._key_unavailable_warned:
+        auth_mode = getattr(s, "community_mqtt_auth_mode", "token") if s else "token"
+        if (
+            s
+            and auth_mode == "token"
+            and get_public_key() is not None
+            and not has_private_key()
+            and not self._key_unavailable_warned
+        ):
             broadcast_error(
                 "Community MQTT unavailable",
                 "Radio firmware does not support private key export.",
@@ -340,10 +354,17 @@ class CommunityMqttPublisher(BaseMqttPublisher):
 
     def _is_configured(self) -> bool:
         """Check if community MQTT is enabled and keys are available."""
-        from app.keystore import has_private_key
+        from app.keystore import get_public_key, has_private_key
 
         s: CommunityMqttSettings | None = self._settings
-        return bool(s and s.community_mqtt_enabled and has_private_key())
+        if not s or not s.community_mqtt_enabled:
+            return False
+        if get_public_key() is None:
+            return False
+        auth_mode = getattr(s, "community_mqtt_auth_mode", "token")
+        if auth_mode == "token":
+            return has_private_key()
+        return True
 
     def _build_client_kwargs(self, settings: object) -> dict[str, Any]:
         s: CommunityMqttSettings = settings  # type: ignore[assignment]
@@ -352,19 +373,23 @@ class CommunityMqttPublisher(BaseMqttPublisher):
 
         private_key = get_private_key()
         public_key = get_public_key()
-        assert private_key is not None and public_key is not None  # guaranteed by _pre_connect
+        assert public_key is not None  # guaranteed by _pre_connect
 
         pubkey_hex = public_key.hex().upper()
         broker_host = s.community_mqtt_broker_host or _DEFAULT_BROKER
         broker_port = s.community_mqtt_broker_port or _DEFAULT_PORT
-        jwt_token = _generate_jwt_token(
-            private_key,
-            public_key,
-            audience=broker_host,
-            email=s.community_mqtt_email or "",
-        )
+        transport = s.community_mqtt_transport or "websockets"
+        use_tls = bool(s.community_mqtt_use_tls)
+        tls_verify = bool(s.community_mqtt_tls_verify)
+        auth_mode = s.community_mqtt_auth_mode or "token"
+        secure_connection = use_tls and tls_verify
 
-        tls_context = ssl.create_default_context()
+        tls_context: ssl.SSLContext | None = None
+        if use_tls:
+            tls_context = ssl.create_default_context()
+            if not tls_verify:
+                tls_context.check_hostname = False
+                tls_context.verify_mode = ssl.CERT_NONE
 
         device_name = ""
         if radio_manager.meshcore and radio_manager.meshcore.self_info:
@@ -380,16 +405,30 @@ class CommunityMqttPublisher(BaseMqttPublisher):
             }
         )
 
-        return {
+        kwargs: dict[str, Any] = {
             "hostname": broker_host,
             "port": broker_port,
-            "transport": "websockets",
+            "transport": transport,
             "tls_context": tls_context,
-            "websocket_path": "/",
-            "username": f"v1_{pubkey_hex}",
-            "password": jwt_token,
             "will": aiomqtt.Will(status_topic, offline_payload, retain=True),
         }
+        if auth_mode == "token":
+            assert private_key is not None
+            token_audience = (s.community_mqtt_token_audience or "").strip() or broker_host
+            jwt_token = _generate_jwt_token(
+                private_key,
+                public_key,
+                audience=token_audience,
+                email=(s.community_mqtt_email or "") if secure_connection else "",
+            )
+            kwargs["username"] = f"v1_{pubkey_hex}"
+            kwargs["password"] = jwt_token
+        elif auth_mode == "password":
+            kwargs["username"] = s.community_mqtt_username or None
+            kwargs["password"] = s.community_mqtt_password or None
+        if transport == "websockets":
+            kwargs["websocket_path"] = "/"
+        return kwargs
 
     def _on_connected(self, settings: object) -> tuple[str, str]:
         s: CommunityMqttSettings = settings  # type: ignore[assignment]
@@ -543,7 +582,9 @@ class CommunityMqttPublisher(BaseMqttPublisher):
         if not self.connected:
             logger.info("Community MQTT publish failure detected, reconnecting")
             return True
-        if elapsed >= _TOKEN_RENEWAL_THRESHOLD:
+        s: CommunityMqttSettings | None = self._settings
+        auth_mode = getattr(s, "community_mqtt_auth_mode", "token") if s else "token"
+        if auth_mode == "token" and elapsed >= _TOKEN_RENEWAL_THRESHOLD:
             logger.info("Community MQTT JWT nearing expiry, reconnecting")
             return True
         return False
@@ -551,9 +592,11 @@ class CommunityMqttPublisher(BaseMqttPublisher):
     async def _pre_connect(self, settings: object) -> bool:
         from app.keystore import get_private_key, get_public_key
 
+        s: CommunityMqttSettings = settings  # type: ignore[assignment]
+        auth_mode = s.community_mqtt_auth_mode or "token"
         private_key = get_private_key()
         public_key = get_public_key()
-        if private_key is None or public_key is None:
+        if public_key is None or (auth_mode == "token" and private_key is None):
             # Keys not available yet, wait for settings change or key export
             self.connected = False
             self._version_event.clear()
