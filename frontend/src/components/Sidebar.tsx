@@ -28,6 +28,7 @@ type ConversationRow = {
 };
 
 type CollapseState = {
+  tools: boolean;
   favorites: boolean;
   channels: boolean;
   contacts: boolean;
@@ -37,6 +38,7 @@ type CollapseState = {
 const SIDEBAR_COLLAPSE_STATE_KEY = 'remoteterm-sidebar-collapse-state';
 
 const DEFAULT_COLLAPSE_STATE: CollapseState = {
+  tools: false,
   favorites: false,
   channels: false,
   contacts: false,
@@ -49,6 +51,7 @@ function loadCollapsedState(): CollapseState {
     if (!raw) return DEFAULT_COLLAPSE_STATE;
     const parsed = JSON.parse(raw) as Partial<CollapseState>;
     return {
+      tools: parsed.tools ?? DEFAULT_COLLAPSE_STATE.tools,
       favorites: parsed.favorites ?? DEFAULT_COLLAPSE_STATE.favorites,
       channels: parsed.channels ?? DEFAULT_COLLAPSE_STATE.channels,
       contacts: parsed.contacts ?? DEFAULT_COLLAPSE_STATE.contacts,
@@ -100,6 +103,7 @@ export function Sidebar({
   const sortOrder = sortOrderProp;
   const [searchQuery, setSearchQuery] = useState('');
   const initialCollapsedState = useMemo(loadCollapsedState, []);
+  const [toolsCollapsed, setToolsCollapsed] = useState(initialCollapsedState.tools);
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(initialCollapsedState.favorites);
   const [channelsCollapsed, setChannelsCollapsed] = useState(initialCollapsedState.channels);
   const [contactsCollapsed, setContactsCollapsed] = useState(initialCollapsedState.contacts);
@@ -262,6 +266,7 @@ export function Sidebar({
     if (isSearching) {
       if (!collapseSnapshotRef.current) {
         collapseSnapshotRef.current = {
+          tools: toolsCollapsed,
           favorites: favoritesCollapsed,
           channels: channelsCollapsed,
           contacts: contactsCollapsed,
@@ -269,7 +274,14 @@ export function Sidebar({
         };
       }
 
-      if (favoritesCollapsed || channelsCollapsed || contactsCollapsed || repeatersCollapsed) {
+      if (
+        toolsCollapsed ||
+        favoritesCollapsed ||
+        channelsCollapsed ||
+        contactsCollapsed ||
+        repeatersCollapsed
+      ) {
+        setToolsCollapsed(false);
         setFavoritesCollapsed(false);
         setChannelsCollapsed(false);
         setContactsCollapsed(false);
@@ -281,17 +293,26 @@ export function Sidebar({
     if (collapseSnapshotRef.current) {
       const prev = collapseSnapshotRef.current;
       collapseSnapshotRef.current = null;
+      setToolsCollapsed(prev.tools);
       setFavoritesCollapsed(prev.favorites);
       setChannelsCollapsed(prev.channels);
       setContactsCollapsed(prev.contacts);
       setRepeatersCollapsed(prev.repeaters);
     }
-  }, [isSearching, favoritesCollapsed, channelsCollapsed, contactsCollapsed, repeatersCollapsed]);
+  }, [
+    isSearching,
+    toolsCollapsed,
+    favoritesCollapsed,
+    channelsCollapsed,
+    contactsCollapsed,
+    repeatersCollapsed,
+  ]);
 
   useEffect(() => {
     if (isSearching) return;
 
     const state: CollapseState = {
+      tools: toolsCollapsed,
       favorites: favoritesCollapsed,
       channels: channelsCollapsed,
       contacts: contactsCollapsed,
@@ -303,7 +324,14 @@ export function Sidebar({
     } catch {
       // Ignore localStorage write failures (e.g., disabled storage)
     }
-  }, [isSearching, favoritesCollapsed, channelsCollapsed, contactsCollapsed, repeatersCollapsed]);
+  }, [
+    isSearching,
+    toolsCollapsed,
+    favoritesCollapsed,
+    channelsCollapsed,
+    contactsCollapsed,
+    repeatersCollapsed,
+  ]);
 
   // Separate favorites from regular items, and build combined favorites list
   const { favoriteItems, nonFavoriteChannels, nonFavoriteContacts, nonFavoriteRepeaters } =
@@ -422,6 +450,38 @@ export function Sidebar({
     </div>
   );
 
+  const renderSidebarActionRow = ({
+    key,
+    active = false,
+    icon,
+    label,
+    onClick,
+  }: {
+    key: string;
+    active?: boolean;
+    icon: string;
+    label: React.ReactNode;
+    onClick: () => void;
+  }) => (
+    <div
+      key={key}
+      className={cn(
+        'px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active && 'bg-accent border-l-primary'
+      )}
+      role="button"
+      tabIndex={0}
+      aria-current={active ? 'page' : undefined}
+      onKeyDown={handleKeyboardActivate}
+      onClick={onClick}
+    >
+      <span className="text-muted-foreground text-xs" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="flex-1 truncate text-muted-foreground">{label}</span>
+    </div>
+  );
+
   const getSectionUnreadCount = (rows: ConversationRow[]): number =>
     rows.reduce((total, row) => total + row.unreadCount, 0);
 
@@ -438,6 +498,77 @@ export function Sidebar({
   const channelsUnreadCount = getSectionUnreadCount(channelRows);
   const contactsUnreadCount = getSectionUnreadCount(contactRows);
   const repeatersUnreadCount = getSectionUnreadCount(repeaterRows);
+  const toolRows = !query
+    ? [
+        renderSidebarActionRow({
+          key: 'tool-raw',
+          active: isActive('raw', 'raw'),
+          icon: '📡',
+          label: 'Packet Feed',
+          onClick: () =>
+            handleSelectConversation({
+              type: 'raw',
+              id: 'raw',
+              name: 'Raw Packet Feed',
+            }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-map',
+          active: isActive('map', 'map'),
+          icon: '🗺️',
+          label: 'Node Map',
+          onClick: () =>
+            handleSelectConversation({
+              type: 'map',
+              id: 'map',
+              name: 'Node Map',
+            }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-visualizer',
+          active: isActive('visualizer', 'visualizer'),
+          icon: '✨',
+          label: 'Mesh Visualizer',
+          onClick: () =>
+            handleSelectConversation({
+              type: 'visualizer',
+              id: 'visualizer',
+              name: 'Mesh Visualizer',
+            }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-search',
+          active: isActive('search', 'search'),
+          icon: '🔍',
+          label: 'Message Search',
+          onClick: () =>
+            handleSelectConversation({
+              type: 'search',
+              id: 'search',
+              name: 'Message Search',
+            }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-cracker',
+          active: showCracker,
+          icon: '🔓',
+          label: (
+            <>
+              {showCracker ? 'Hide' : 'Show'} Room Finder
+              <span
+                className={cn(
+                  'ml-1 text-[11px]',
+                  crackerRunning ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                ({crackerRunning ? 'running' : 'idle'})
+              </span>
+            </>
+          ),
+          onClick: onToggleCracker,
+        }),
+      ]
+    : [];
 
   const renderSectionHeader = (
     title: string,
@@ -538,137 +669,12 @@ export function Sidebar({
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
-        {/* Raw Packet Feed */}
-        {!query && (
-          <div
-            className={cn(
-              'px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isActive('raw', 'raw') && 'bg-accent border-l-primary'
-            )}
-            role="button"
-            tabIndex={0}
-            aria-current={isActive('raw', 'raw') ? 'page' : undefined}
-            onKeyDown={handleKeyboardActivate}
-            onClick={() =>
-              handleSelectConversation({
-                type: 'raw',
-                id: 'raw',
-                name: 'Raw Packet Feed',
-              })
-            }
-          >
-            <span className="text-muted-foreground text-xs" aria-hidden="true">
-              📡
-            </span>
-            <span className="flex-1 truncate text-muted-foreground">Packet Feed</span>
-          </div>
-        )}
-
-        {/* Node Map */}
-        {!query && (
-          <div
-            className={cn(
-              'px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isActive('map', 'map') && 'bg-accent border-l-primary'
-            )}
-            role="button"
-            tabIndex={0}
-            aria-current={isActive('map', 'map') ? 'page' : undefined}
-            onKeyDown={handleKeyboardActivate}
-            onClick={() =>
-              handleSelectConversation({
-                type: 'map',
-                id: 'map',
-                name: 'Node Map',
-              })
-            }
-          >
-            <span className="text-muted-foreground text-xs" aria-hidden="true">
-              🗺️
-            </span>
-            <span className="flex-1 truncate text-muted-foreground">Node Map</span>
-          </div>
-        )}
-
-        {/* Mesh Visualizer */}
-        {!query && (
-          <div
-            className={cn(
-              'px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isActive('visualizer', 'visualizer') && 'bg-accent border-l-primary'
-            )}
-            role="button"
-            tabIndex={0}
-            aria-current={isActive('visualizer', 'visualizer') ? 'page' : undefined}
-            onKeyDown={handleKeyboardActivate}
-            onClick={() =>
-              handleSelectConversation({
-                type: 'visualizer',
-                id: 'visualizer',
-                name: 'Mesh Visualizer',
-              })
-            }
-          >
-            <span className="text-muted-foreground text-xs" aria-hidden="true">
-              ✨
-            </span>
-            <span className="flex-1 truncate text-muted-foreground">Mesh Visualizer</span>
-          </div>
-        )}
-
-        {/* Message Search */}
-        {!query && (
-          <div
-            className={cn(
-              'px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isActive('search', 'search') && 'bg-accent border-l-primary'
-            )}
-            role="button"
-            tabIndex={0}
-            aria-current={isActive('search', 'search') ? 'page' : undefined}
-            onKeyDown={handleKeyboardActivate}
-            onClick={() =>
-              handleSelectConversation({
-                type: 'search',
-                id: 'search',
-                name: 'Message Search',
-              })
-            }
-          >
-            <span className="text-muted-foreground text-xs" aria-hidden="true">
-              🔍
-            </span>
-            <span className="flex-1 truncate text-muted-foreground">Message Search</span>
-          </div>
-        )}
-
-        {/* Cracker Toggle */}
-        {!query && (
-          <div
-            className={cn(
-              'px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              showCracker && 'bg-accent border-l-primary'
-            )}
-            role="button"
-            tabIndex={0}
-            onKeyDown={handleKeyboardActivate}
-            onClick={onToggleCracker}
-          >
-            <span className="text-muted-foreground text-xs" aria-hidden="true">
-              🔓
-            </span>
-            <span className="flex-1 truncate text-muted-foreground">
-              {showCracker ? 'Hide' : 'Show'} Room Finder
-              <span
-                className={cn(
-                  'ml-1 text-[11px]',
-                  crackerRunning ? 'text-primary' : 'text-muted-foreground'
-                )}
-              >
-                ({crackerRunning ? 'running' : 'idle'})
-              </span>
-            </span>
-          </div>
+        {/* Tools */}
+        {toolRows.length > 0 && (
+          <>
+            {renderSectionHeader('Tools', toolsCollapsed, () => setToolsCollapsed((prev) => !prev))}
+            {(isSearching || !toolsCollapsed) && toolRows}
+          </>
         )}
 
         {/* Mark All Read */}

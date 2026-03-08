@@ -104,9 +104,11 @@ describe('Sidebar section summaries', () => {
   it('expands collapsed sections during search and restores collapse state after clearing search', async () => {
     const { opsChannel, aliceName } = renderSidebar();
 
+    fireEvent.click(screen.getByRole('button', { name: /Tools/i }));
     fireEvent.click(screen.getByRole('button', { name: /Channels/i }));
     fireEvent.click(screen.getByRole('button', { name: /Contacts/i }));
 
+    expect(screen.queryByText('Packet Feed')).not.toBeInTheDocument();
     expect(screen.queryByText(opsChannel.name)).not.toBeInTheDocument();
     expect(screen.queryByText(aliceName)).not.toBeInTheDocument();
 
@@ -120,6 +122,7 @@ describe('Sidebar section summaries', () => {
     fireEvent.change(search, { target: { value: '' } });
 
     await waitFor(() => {
+      expect(screen.queryByText('Packet Feed')).not.toBeInTheDocument();
       expect(screen.queryByText(opsChannel.name)).not.toBeInTheDocument();
       expect(screen.queryByText(aliceName)).not.toBeInTheDocument();
     });
@@ -128,15 +131,18 @@ describe('Sidebar section summaries', () => {
   it('persists collapsed section state across unmount and remount', () => {
     const { opsChannel, aliceName, unmount } = renderSidebar();
 
+    fireEvent.click(screen.getByRole('button', { name: /Tools/i }));
     fireEvent.click(screen.getByRole('button', { name: /Channels/i }));
     fireEvent.click(screen.getByRole('button', { name: /Contacts/i }));
 
+    expect(screen.queryByText('Packet Feed')).not.toBeInTheDocument();
     expect(screen.queryByText(opsChannel.name)).not.toBeInTheDocument();
     expect(screen.queryByText(aliceName)).not.toBeInTheDocument();
 
     unmount();
     renderSidebar();
 
+    expect(screen.queryByText('Packet Feed')).not.toBeInTheDocument();
     expect(screen.queryByText(opsChannel.name)).not.toBeInTheDocument();
     expect(screen.queryByText(aliceName)).not.toBeInTheDocument();
   });
