@@ -221,7 +221,9 @@ async def on_path_update(event: "Event") -> None:
         )
         return
 
-    await ContactRepository.update_path(contact.public_key, str(path), normalized_path_len)
+    await ContactRepository.update_path(
+        contact.public_key, str(path), normalized_path_len
+    )
 
 
 async def on_new_contact(event: "Event") -> None:

@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.path_utils import infer_hash_size
+
 
 class Contact(BaseModel):
     public_key: str = Field(description="Public key (64-char hex)")
@@ -32,6 +34,7 @@ class Contact(BaseModel):
             "flags": self.flags,
             "out_path": self.last_path or "",
             "out_path_len": self.last_path_len,
+            "out_path_hash_mode": infer_hash_size(self.last_path or "", self.last_path_len) - 1,
             "adv_lat": self.lat if self.lat is not None else 0.0,
             "adv_lon": self.lon if self.lon is not None else 0.0,
             "last_advert": self.last_advert if self.last_advert is not None else 0,

@@ -25,8 +25,8 @@ class ContactRepository:
         await db.conn.execute(
             """
             INSERT INTO contacts (public_key, name, type, flags, last_path, last_path_len,
-                                  last_advert, lat, lon, last_seen, on_radio, last_contacted,
-                                  first_seen)
+                                  last_advert, lat, lon, last_seen,
+                                  on_radio, last_contacted, first_seen)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(public_key) DO UPDATE SET
                 name = COALESCE(excluded.name, contacts.name),
@@ -200,9 +200,12 @@ class ContactRepository:
         return [ContactRepository._row_to_contact(row) for row in rows]
 
     @staticmethod
-    async def update_path(public_key: str, path: str, path_len: int) -> None:
+    async def update_path(
+        public_key: str, path: str, path_len: int
+    ) -> None:
         await db.conn.execute(
-            "UPDATE contacts SET last_path = ?, last_path_len = ?, last_seen = ? WHERE public_key = ?",
+            """UPDATE contacts SET last_path = ?, last_path_len = ?,
+               last_seen = ? WHERE public_key = ?""",
             (path, path_len, int(time.time()), public_key.lower()),
         )
         await db.conn.commit()
