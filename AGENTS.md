@@ -427,3 +427,11 @@ mc.subscribe(EventType.ACK, handler)
 Byte-perfect channel retries are user-triggered via `POST /api/messages/channel/{message_id}/resend` and are allowed for 30 seconds after the original send.
 
 **Transport mutual exclusivity:** Only one of `MESHCORE_SERIAL_PORT`, `MESHCORE_TCP_HOST`, or `MESHCORE_BLE_ADDRESS` may be set. If none are set, serial auto-detection is used.
+
+## Errata & Known Non-Issues
+
+### `meshcore_py` advert parsing can crash on malformed/truncated RF log packets
+
+The vendored MeshCore Python reader's `LOG_DATA` advert path assumes the decoded advert payload always contains at least 101 bytes of advert body and reads the flags byte with `pk_buf.read(1)[0]` without a length guard. If a malformed or truncated RF log frame slips through, `MessageReader.handle_rx()` can fail with `IndexError: index out of range` from `meshcore/reader.py` while parsing payload type `0x04` (advert).
+
+This does not indicate database corruption or a message-store bug. It is a parser-hardening gap in `meshcore_py`: the reader does not fully mirror firmware-side packet/path validation before attempting advert decode. The practical effect is usually a one-off asyncio task failure for that packet while later packets continue processing normally.
