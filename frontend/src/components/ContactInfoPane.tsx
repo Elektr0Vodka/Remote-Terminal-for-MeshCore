@@ -23,6 +23,13 @@ const CONTACT_TYPE_LABELS: Record<number, string> = {
   4: 'Sensor',
 };
 
+function formatPathHashMode(mode: number): string | null {
+  if (mode < 0 || mode > 2) {
+    return null;
+  }
+  return `${mode + 1}-byte IDs`;
+}
+
 interface ContactInfoPaneProps {
   contactKey: string | null;
   fromChannel?: boolean;
@@ -99,6 +106,7 @@ export function ContactInfoPane({
     isValidLocation(contact.lat, contact.lon)
       ? calculateDistance(config.lat, config.lon, contact.lat, contact.lon)
       : null;
+  const pathHashModeLabel = contact ? formatPathHashMode(contact.out_path_hash_mode) : null;
 
   return (
     <Sheet open={contactKey !== null} onOpenChange={(open) => !open && onClose()}>
@@ -223,6 +231,7 @@ export function ContactInfoPane({
                   />
                 )}
                 {contact.last_path_len === -1 && <InfoItem label="Routing" value="Flood" />}
+                {pathHashModeLabel && <InfoItem label="Hop Width" value={pathHashModeLabel} />}
               </div>
             </div>
 
