@@ -24,7 +24,6 @@ class DecryptRequest(BaseModel):
     channel_name: str | None = Field(
         default=None, description="Channel name (for hashtag channels, key derived from name)"
     )
-    # Fields for contact (DM) decryption
     private_key: str | None = Field(
         default=None,
         description="Our private key as hex (64 bytes = 128 chars, Ed25519 seed + pubkey)",
@@ -38,6 +37,36 @@ class DecryptResult(BaseModel):
     started: bool
     total_packets: int
     message: str
+
+
+class MaintenanceRequest(BaseModel):
+    prune_undecrypted_days: int | None = Field(
+        default=None, ge=1, description="Delete undecrypted packets older than this many days"
+    )
+    purge_linked_raw_packets: bool = Field(
+        default=False,
+        description="Delete raw packets already linked to a stored message",
+    )
+
+
+class MaintenanceResult(BaseModel):
+    packets_deleted: int
+    vacuumed: bool
+
+
+class TimeseriesBin(BaseModel):
+    start_ts: int
+    packet_count: int
+    byte_count: int
+
+
+class TimeseriesResponse(BaseModel):
+    bins: list[TimeseriesBin]
+    total_packets: int
+    total_bytes: int
+    start_ts: int
+    end_ts: int
+    bin_seconds: int
 
 
 def _bad_request(detail: str) -> HTTPException:
@@ -62,7 +91,6 @@ async def _run_historical_channel_decryption(
         result = try_decrypt_packet_with_channel_key(packet_data, channel_key_bytes)
 
         if result is not None:
-            # Extract path from the raw packet for storage
             packet_info = parse_packet(packet_data)
             path_hex = packet_info.path.hex() if packet_info else None
 
@@ -76,7 +104,7 @@ async def _run_historical_channel_decryption(
                 received_at=packet_timestamp,
                 path=path_hex,
                 path_len=packet_info.path_length if packet_info else None,
-                realtime=False,  # Historical decryption should not trigger fanout
+                realtime=False,
             )
 
             if msg_id is not None:
@@ -86,7 +114,6 @@ async def _run_historical_channel_decryption(
         "Historical channel decryption complete: %d/%d packets decrypted", decrypted_count, total
     )
 
-    # Notify frontend
     if decrypted_count > 0:
         name = display_name or channel_key_hex[:12]
         broadcast_success(
@@ -111,7 +138,6 @@ async def decrypt_historical_packets(
     Runs in the background. Multiple decrypt jobs can run concurrently.
     """
     if request.key_type == "channel":
-        # Channel decryption
         if request.channel_key:
             try:
                 channel_key_bytes = bytes.fromhex(request.channel_key)
@@ -126,14 +152,12 @@ async def decrypt_historical_packets(
         else:
             raise _bad_request("Must provide channel_key or channel_name")
 
-        # Get count and lookup channel name for display
         count = await RawPacketRepository.get_undecrypted_count()
         if count == 0:
             return DecryptResult(
                 started=False, total_packets=0, message="No undecrypted packets to process"
             )
 
-        # Try to find channel name for display
         channel = await ChannelRepository.get_by_key(channel_key_hex)
         display_name = channel.name if channel else request.channel_name
 
@@ -149,7 +173,6 @@ async def decrypt_historical_packets(
         )
 
     elif request.key_type == "contact":
-        # DM decryption
         if not request.private_key:
             raise _bad_request("Must provide private_key for contact decryption")
         if not request.contact_public_key:
@@ -179,7 +202,6 @@ async def decrypt_historical_packets(
                 message="No undecrypted TEXT_MESSAGE packets to process",
             )
 
-        # Try to find contact name for display
         from app.repository import ContactRepository
 
         contact = await ContactRepository.get_by_key(contact_public_key_hex)
@@ -201,21 +223,6 @@ async def decrypt_historical_packets(
         )
 
     raise _bad_request("key_type must be 'channel' or 'contact'")
-
-
-class MaintenanceRequest(BaseModel):
-    prune_undecrypted_days: int | None = Field(
-        default=None, ge=1, description="Delete undecrypted packets older than this many days"
-    )
-    purge_linked_raw_packets: bool = Field(
-        default=False,
-        description="Delete raw packets already linked to a stored message",
-    )
-
-
-class MaintenanceResult(BaseModel):
-    packets_deleted: int
-    vacuumed: bool
 
 
 @router.post("/maintenance", response_model=MaintenanceResult)
@@ -246,10 +253,6 @@ async def run_maintenance(request: MaintenanceRequest) -> MaintenanceResult:
         deleted += purged_linked
         logger.info("Deleted %d linked raw packets", purged_linked)
 
-    # Run VACUUM to reclaim space on a dedicated connection.
-    # VACUUM requires exclusive access — if the main connection is actively
-    # writing (background sync, message processing, etc.) it fails with
-    # SQLITE_BUSY. This is expected; we just report vacuumed=False.
     vacuumed = False
     try:
         async with aiosqlite.connect(db.db_path) as vacuum_conn:
@@ -262,3 +265,73 @@ async def run_maintenance(request: MaintenanceRequest) -> MaintenanceResult:
         logger.error("VACUUM failed unexpectedly: %s", e)
 
     return MaintenanceResult(packets_deleted=deleted, vacuumed=vacuumed)
+
+
+@router.get("/timeseries", response_model=TimeseriesResponse)
+async def get_packet_timeseries(
+    start_ts: int,
+    end_ts: int,
+    bin_count: int = 40,
+) -> TimeseriesResponse:
+    """
+    Return time-binned packet counts and byte totals from the raw_packets table.
+
+    Used by MyNodeView for historical chart ranges longer than the live session.
+
+    - start_ts / end_ts: Unix timestamps (seconds)
+    - bin_count: number of chart bars to return (default 40)
+    """
+    if end_ts <= start_ts:
+        raise HTTPException(status_code=400, detail="end_ts must be greater than start_ts")
+    if bin_count < 1 or bin_count > 200:
+        raise HTTPException(status_code=400, detail="bin_count must be 1–200")
+
+    duration = end_ts - start_ts
+    bin_seconds = max(1, duration // bin_count)
+
+    async with aiosqlite.connect(db.db_path) as conn:
+        async with conn.execute(
+            """
+            SELECT
+                (:start_ts + (timestamp - :start_ts) / :bin_seconds * :bin_seconds) AS bin_start,
+                COUNT(*) AS packet_count,
+                SUM(LENGTH(data)) AS byte_count
+            FROM raw_packets
+            WHERE timestamp >= :start_ts AND timestamp < :end_ts
+            GROUP BY bin_start
+            ORDER BY bin_start
+            """,
+            {
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+                "bin_seconds": bin_seconds,
+            },
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    filled: dict[int, TimeseriesBin] = {}
+    for row in rows:
+        filled[int(row[0])] = TimeseriesBin(
+            start_ts=int(row[0]),
+            packet_count=int(row[1]),
+            byte_count=int(row[2]) if row[2] else 0,
+        )
+
+    bins = []
+    total_packets = 0
+    total_bytes = 0
+    for i in range(bin_count):
+        t = start_ts + i * bin_seconds
+        b = filled.get(t, TimeseriesBin(start_ts=t, packet_count=0, byte_count=0))
+        bins.append(b)
+        total_packets += b.packet_count
+        total_bytes += b.byte_count
+
+    return TimeseriesResponse(
+        bins=bins,
+        total_packets=total_packets,
+        total_bytes=total_bytes,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        bin_seconds=bin_seconds,
+    )

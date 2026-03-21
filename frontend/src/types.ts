@@ -281,7 +281,8 @@ export interface ResendChannelMessageResponse {
   message?: Message;
 }
 
-type ConversationType = 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search';
+// Added 'node' for the My Node analytics view
+type ConversationType = 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node';
 
 export interface Conversation {
   type: ConversationType;

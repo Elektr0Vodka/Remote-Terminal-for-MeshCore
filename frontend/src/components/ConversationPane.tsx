@@ -27,6 +27,7 @@ const MapView = lazy(() => import('./MapView').then((m) => ({ default: m.MapView
 const VisualizerView = lazy(() =>
   import('./VisualizerView').then((m) => ({ default: m.VisualizerView }))
 );
+const MyNodeView = lazy(() => import('./MyNodeView'));
 
 interface ConversationPaneProps {
   activeConversation: Conversation | null;
@@ -198,6 +199,18 @@ export function ConversationPane({
 
   if (activeConversation.type === 'search') {
     return null;
+  }
+
+  if (activeConversation.type === 'node') {
+    return (
+      <Suspense fallback={<LoadingPane label="Loading node analytics..." />}>
+        <MyNodeView
+          rawPackets={rawPackets}
+          rawPacketStatsSession={rawPacketStatsSession}
+          contacts={contacts}
+        />
+      </Suspense>
+    );
   }
 
   if (activeContactIsRepeater) {

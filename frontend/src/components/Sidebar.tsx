@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BarChart2,
   Bell,
   CheckCheck,
   ChevronDown,
@@ -197,7 +198,7 @@ export function Sidebar({
   };
 
   const isActive = (
-    type: 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search',
+    type: 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node',
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
@@ -740,6 +741,18 @@ export function Sidebar({
               type: 'search',
               id: 'search',
               name: 'Message Search',
+            }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-node',
+          active: isActive('node', 'node'),
+          icon: <BarChart2 className="h-4 w-4" />,
+          label: 'My Node',
+          onClick: () =>
+            handleSelectConversation({
+              type: 'node',
+              id: 'node',
+              name: 'My Node',
             }),
         }),
         renderSidebarActionRow({
