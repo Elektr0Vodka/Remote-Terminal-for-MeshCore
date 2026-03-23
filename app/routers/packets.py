@@ -137,45 +137,6 @@ async def get_undecrypted_count() -> dict:
     return {"count": count}
 
 
-@router.get("/{packet_id}", response_model=RawPacketDetail)
-async def get_raw_packet(packet_id: int) -> RawPacketDetail:
-    """Fetch one stored raw packet by row ID for on-demand inspection."""
-    packet_row = await RawPacketRepository.get_by_id(packet_id)
-    if packet_row is None:
-        raise HTTPException(status_code=404, detail="Raw packet not found")
-
-    stored_packet_id, packet_data, packet_timestamp, message_id = packet_row
-    packet_info = parse_packet(packet_data)
-    payload_type_name = packet_info.payload_type.name if packet_info else "Unknown"
-
-    decrypted_info: RawPacketDecryptedInfo | None = None
-    if message_id is not None:
-        message = await MessageRepository.get_by_id(message_id)
-        if message is not None:
-            if message.type == "CHAN":
-                channel = await ChannelRepository.get_by_key(message.conversation_key)
-                decrypted_info = RawPacketDecryptedInfo(
-                    channel_name=channel.name if channel else None,
-                    sender=message.sender_name,
-                    channel_key=message.conversation_key,
-                    contact_key=message.sender_key,
-                )
-            else:
-                decrypted_info = RawPacketDecryptedInfo(
-                    sender=message.sender_name,
-                    contact_key=message.conversation_key,
-                )
-
-    return RawPacketDetail(
-        id=stored_packet_id,
-        timestamp=packet_timestamp,
-        data=packet_data.hex(),
-        payload_type=payload_type_name,
-        decrypted=message_id is not None,
-        decrypted_info=decrypted_info,
-    )
-
-
 @router.post("/decrypt/historical", response_model=DecryptResult)
 async def decrypt_historical_packets(
     request: DecryptRequest, background_tasks: BackgroundTasks, response: Response
@@ -536,4 +497,47 @@ async def get_packet_timeseries(
         bin_seconds=bin_seconds,
         has_signal_data=has_signal_data,
         has_type_data=has_type_data,
+    )
+
+
+# NOTE: This route MUST remain last in the file. FastAPI matches routes in
+# registration order — any literal-path GET routes above (e.g. /recent,
+# /timeseries, /undecrypted/count) must be registered first or they will
+# be swallowed by this catch-all integer parameter.
+@router.get("/{packet_id}", response_model=RawPacketDetail)
+async def get_raw_packet(packet_id: int) -> RawPacketDetail:
+    """Fetch one stored raw packet by row ID for on-demand inspection."""
+    packet_row = await RawPacketRepository.get_by_id(packet_id)
+    if packet_row is None:
+        raise HTTPException(status_code=404, detail="Raw packet not found")
+
+    stored_packet_id, packet_data, packet_timestamp, message_id = packet_row
+    packet_info = parse_packet(packet_data)
+    payload_type_name = packet_info.payload_type.name if packet_info else "Unknown"
+
+    decrypted_info: RawPacketDecryptedInfo | None = None
+    if message_id is not None:
+        message = await MessageRepository.get_by_id(message_id)
+        if message is not None:
+            if message.type == "CHAN":
+                channel = await ChannelRepository.get_by_key(message.conversation_key)
+                decrypted_info = RawPacketDecryptedInfo(
+                    channel_name=channel.name if channel else None,
+                    sender=message.sender_name,
+                    channel_key=message.conversation_key,
+                    contact_key=message.sender_key,
+                )
+            else:
+                decrypted_info = RawPacketDecryptedInfo(
+                    sender=message.sender_name,
+                    contact_key=message.conversation_key,
+                )
+
+    return RawPacketDetail(
+        id=stored_packet_id,
+        timestamp=packet_timestamp,
+        data=packet_data.hex(),
+        payload_type=payload_type_name,
+        decrypted=message_id is not None,
+        decrypted_info=decrypted_info,
     )
