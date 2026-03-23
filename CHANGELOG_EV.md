@@ -22,3 +22,38 @@ Adds a dedicated **My Node** analytics page accessible from the sidebar (bar cha
 - `frontend/src/types.ts` — added `'node'` to `ConversationType`
 - `frontend/src/components/Sidebar.tsx` — added My Node entry to the tools section
 - `frontend/src/components/ConversationPane.tsx` — added `'node'` conversation type handler, passes `rawPacketStatsSession` to `MyNodeView`
+
+
+# Map View Improvements (23-3-2026)
+
+Overhauled the Node Map with a set of usability and performance improvements.
+
+## What's changed
+
+### Node type filtering
+Added a toggle bar above the map to show or hide nodes by type. Each button displays the node's emoji icon and a live count of visible nodes in the current time window.
+
+| Type | Icon |
+|------|------|
+| Client | 📟 |
+| Repeater | 🛜 |
+| Room Server | 🏠 |
+| Sensor | 📡 |
+| Unknown | ❓ |
+
+### Emoji markers
+Replaced the plain circle markers with per-type emoji icons. Each marker has a small coloured dot beneath it indicating recency — same colour scheme as before (cyan < 1h, blue < 1d, amber < 3d, grey older). Focused contacts get a dashed white ring.
+
+### Time window presets
+Replaced the hard-coded 7-day filter with a row of preset buttons:
+**1h · 2h · 6h · 12h · 24h · 7d · 30d · All**
+
+The active preset is highlighted. The info bar updates to reflect the selected window.
+
+### Marker clustering
+Added marker clustering via `react-leaflet-cluster`. Nearby markers are grouped into a numbered bubble at lower zoom levels and expand automatically as you zoom in (unclusters at zoom 14+).
+
+A **Cluster** toggle button in the filter bar lets you enable or disable clustering at any time. The preference is saved to `localStorage` and defaults to **on** for better performance on lower-end systems.
+
+### Dependencies
+- Added `react-leaflet-cluster@2.1.0`
