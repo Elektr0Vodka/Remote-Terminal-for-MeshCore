@@ -54,10 +54,15 @@ class MaintenanceResult(BaseModel):
     vacuumed: bool
 
 
+# ─── Timeseries models ────────────────────────────────────────────────────────
+
 class TimeseriesBin(BaseModel):
     start_ts: int
     packet_count: int
     byte_count: int
+    avg_rssi: float | None = None
+    avg_snr: float | None = None
+    type_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class TimeseriesResponse(BaseModel):
@@ -67,6 +72,8 @@ class TimeseriesResponse(BaseModel):
     start_ts: int
     end_ts: int
     bin_seconds: int
+    has_signal_data: bool
+    has_type_data: bool
 
 
 def _bad_request(detail: str) -> HTTPException:
@@ -267,6 +274,66 @@ async def run_maintenance(request: MaintenanceRequest) -> MaintenanceResult:
     return MaintenanceResult(packets_deleted=deleted, vacuumed=vacuumed)
 
 
+@router.get("/recent")
+async def get_recent_packets(limit: int = 500) -> list[dict]:
+    """
+    Return the most recent raw packets from the database in the same shape
+    as the WebSocket raw_packet broadcast, so the frontend can seed the
+    packet feed on mount and after reconnect without losing history.
+
+    - limit: max packets to return (default 500, max 2000)
+    - Ordered oldest-first so the frontend can append in natural order
+    """
+    limit = min(max(1, limit), 2000)
+
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+
+        # Check whether signal columns exist (added in migration 47)
+        async with conn.execute("PRAGMA table_info(raw_packets)") as cur:
+            columns = {row[1] for row in await cur.fetchall()}
+        has_signal_cols = "rssi" in columns and "snr" in columns and "payload_type" in columns
+
+        if has_signal_cols:
+            query = """
+                SELECT id, timestamp, data, message_id, rssi, snr, payload_type
+                FROM raw_packets
+                ORDER BY id DESC
+                LIMIT ?
+            """
+        else:
+            query = """
+                SELECT id, timestamp, data, message_id,
+                       NULL as rssi, NULL as snr, NULL as payload_type
+                FROM raw_packets
+                ORDER BY id DESC
+                LIMIT ?
+            """
+
+        async with conn.execute(query, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+
+    # Reverse so oldest-first for natural append order on frontend
+    packets = []
+    for row in reversed(rows):
+        raw_hex = bytes(row["data"]).hex()
+        payload_type = row["payload_type"] or "Unknown"
+        packets.append({
+            "id": row["id"],
+            # observation_id not meaningful for historical — use id as stand-in
+            "observation_id": row["id"],
+            "timestamp": row["timestamp"],
+            "data": raw_hex,
+            "payload_type": payload_type,
+            "snr": row["snr"],
+            "rssi": row["rssi"],
+            "decrypted": row["message_id"] is not None,
+            "decrypted_info": None,
+        })
+
+    return packets
+
+
 @router.get("/timeseries", response_model=TimeseriesResponse)
 async def get_packet_timeseries(
     start_ts: int,
@@ -274,12 +341,18 @@ async def get_packet_timeseries(
     bin_count: int = 40,
 ) -> TimeseriesResponse:
     """
-    Return time-binned packet counts and byte totals from the raw_packets table.
+    Return time-binned packet counts, byte totals, signal averages, and type breakdowns
+    from the raw_packets table.
 
     Used by MyNodeView for historical chart ranges longer than the live session.
 
     - start_ts / end_ts: Unix timestamps (seconds)
     - bin_count: number of chart bars to return (default 40)
+
+    Returns per-bin:
+    - packet_count, byte_count (always available)
+    - avg_rssi, avg_snr (available for packets captured after migration 47)
+    - type_counts: dict of payload_type -> count (available after migration 47)
     """
     if end_ts <= start_ts:
         raise HTTPException(status_code=400, detail="end_ts must be greater than start_ts")
@@ -290,42 +363,129 @@ async def get_packet_timeseries(
     bin_seconds = max(1, duration // bin_count)
 
     async with aiosqlite.connect(db.db_path) as conn:
-        async with conn.execute(
-            """
-            SELECT
-                (:start_ts + (timestamp - :start_ts) / :bin_seconds * :bin_seconds) AS bin_start,
-                COUNT(*) AS packet_count,
-                SUM(LENGTH(data)) AS byte_count
-            FROM raw_packets
-            WHERE timestamp >= :start_ts AND timestamp < :end_ts
-            GROUP BY bin_start
-            ORDER BY bin_start
-            """,
-            {
-                "start_ts": start_ts,
-                "end_ts": end_ts,
-                "bin_seconds": bin_seconds,
-            },
-        ) as cursor:
-            rows = await cursor.fetchall()
+        # Check whether signal columns exist (added in migration 47)
+        async with conn.execute("PRAGMA table_info(raw_packets)") as cur:
+            columns = {row[1] for row in await cur.fetchall()}
+        has_signal_cols = "rssi" in columns and "snr" in columns and "payload_type" in columns
 
-    filled: dict[int, TimeseriesBin] = {}
+        if has_signal_cols:
+            # Rich query: group by bin AND payload_type to get type breakdown + signal averages
+            async with conn.execute(
+                """
+                SELECT
+                    (:start_ts + (timestamp - :start_ts) / :bin_seconds * :bin_seconds) AS bin_start,
+                    payload_type,
+                    COUNT(*) AS packet_count,
+                    SUM(LENGTH(data)) AS byte_count,
+                    AVG(rssi) AS avg_rssi,
+                    AVG(snr) AS avg_snr
+                FROM raw_packets
+                WHERE timestamp >= :start_ts AND timestamp < :end_ts
+                GROUP BY bin_start, payload_type
+                ORDER BY bin_start
+                """,
+                {
+                    "start_ts": start_ts,
+                    "end_ts": end_ts,
+                    "bin_seconds": bin_seconds,
+                },
+            ) as cursor:
+                rows = await cursor.fetchall()
+        else:
+            # Legacy query: no signal columns yet
+            async with conn.execute(
+                """
+                SELECT
+                    (:start_ts + (timestamp - :start_ts) / :bin_seconds * :bin_seconds) AS bin_start,
+                    NULL AS payload_type,
+                    COUNT(*) AS packet_count,
+                    SUM(LENGTH(data)) AS byte_count,
+                    NULL AS avg_rssi,
+                    NULL AS avg_snr
+                FROM raw_packets
+                WHERE timestamp >= :start_ts AND timestamp < :end_ts
+                GROUP BY bin_start
+                ORDER BY bin_start
+                """,
+                {
+                    "start_ts": start_ts,
+                    "end_ts": end_ts,
+                    "bin_seconds": bin_seconds,
+                },
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+    # Aggregate rows into bins (multiple rows per bin when grouping by payload_type)
+    bin_map: dict[int, dict] = {}
     for row in rows:
-        filled[int(row[0])] = TimeseriesBin(
-            start_ts=int(row[0]),
-            packet_count=int(row[1]),
-            byte_count=int(row[2]) if row[2] else 0,
-        )
+        t = int(row[0])
+        ptype = row[1]
+        count = int(row[2])
+        nbytes = int(row[3]) if row[3] else 0
+        avg_rssi = float(row[4]) if row[4] is not None else None
+        avg_snr = float(row[5]) if row[5] is not None else None
 
-    bins = []
+        if t not in bin_map:
+            bin_map[t] = {
+                "packet_count": 0,
+                "byte_count": 0,
+                "rssi_sum": 0.0,
+                "rssi_count": 0,
+                "snr_sum": 0.0,
+                "snr_count": 0,
+                "type_counts": {},
+            }
+
+        b = bin_map[t]
+        b["packet_count"] += count
+        b["byte_count"] += nbytes
+
+        if avg_rssi is not None:
+            # avg_rssi is already averaged over `count` packets in that type-bin
+            b["rssi_sum"] += avg_rssi * count
+            b["rssi_count"] += count
+
+        if avg_snr is not None:
+            b["snr_sum"] += avg_snr * count
+            b["snr_count"] += count
+
+        if ptype:
+            b["type_counts"][ptype] = b["type_counts"].get(ptype, 0) + count
+
+    # Build output bins — fill all bin_count slots
+    bins: list[TimeseriesBin] = []
     total_packets = 0
     total_bytes = 0
+    has_signal_data = False
+    has_type_data = False
+
     for i in range(bin_count):
         t = start_ts + i * bin_seconds
-        b = filled.get(t, TimeseriesBin(start_ts=t, packet_count=0, byte_count=0))
-        bins.append(b)
-        total_packets += b.packet_count
-        total_bytes += b.byte_count
+        if t in bin_map:
+            b = bin_map[t]
+            avg_rssi_out: float | None = None
+            avg_snr_out: float | None = None
+            if b["rssi_count"] > 0:
+                avg_rssi_out = b["rssi_sum"] / b["rssi_count"]
+                has_signal_data = True
+            if b["snr_count"] > 0:
+                avg_snr_out = b["snr_sum"] / b["snr_count"]
+                has_signal_data = True
+            if b["type_counts"]:
+                has_type_data = True
+
+            bins.append(TimeseriesBin(
+                start_ts=t,
+                packet_count=b["packet_count"],
+                byte_count=b["byte_count"],
+                avg_rssi=avg_rssi_out,
+                avg_snr=avg_snr_out,
+                type_counts=b["type_counts"],
+            ))
+            total_packets += b["packet_count"]
+            total_bytes += b["byte_count"]
+        else:
+            bins.append(TimeseriesBin(start_ts=t, packet_count=0, byte_count=0))
 
     return TimeseriesResponse(
         bins=bins,
@@ -334,4 +494,6 @@ async def get_packet_timeseries(
         start_ts=start_ts,
         end_ts=end_ts,
         bin_seconds=bin_seconds,
+        has_signal_data=has_signal_data,
+        has_type_data=has_type_data,
     )

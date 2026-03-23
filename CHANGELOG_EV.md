@@ -1,3 +1,45 @@
+# Packet Feed History Persistence (23-3-2026)
+
+Packet feed no longer resets to empty on page refresh or radio reconnect.
+
+## What's changed
+
+### New backend endpoint (`app/routers/packets.py`)
+- `GET /api/packets/recent?limit=500` — returns the most recent raw packets from the database in the same shape as the WebSocket `raw_packet` broadcast. Compatible with and without migration 47 signal columns. Ordered oldest-first for natural append order on the frontend.
+
+### Frontend seed on mount (`frontend/src/App.tsx`)
+- On first load, fetches `/api/packets/recent` and seeds `rawPackets` state before the WebSocket session begins. Errors are silently ignored — live packets still arrive normally.
+
+### Reconnect behaviour (`frontend/src/hooks/useRealtimeAppState.ts`)
+- `onReconnect` now re-fetches `/api/packets/recent` instead of calling `setRawPackets([])`, so history survives radio disconnects and reconnects.
+
+---
+
+# Raw Packet Signal Storage (23-3-2026)
+
+RSSI, SNR, and payload type are now stored in the database at ingest time, enabling rich historical analytics.
+
+## What's changed
+
+### Database migration (`app/migrations.py`)
+- Migration 47: adds `rssi INTEGER`, `snr REAL`, and `payload_type TEXT` columns to `raw_packets`. Existing rows retain `NULL` for these fields (signal data is not recoverable from stored hex bytes).
+
+### Repository (`app/repository/raw_packets.py`)
+- `RawPacketRepository.create()` now accepts and stores `rssi`, `snr`, and `payload_type` parameters.
+
+### Packet processor (`app/packet_processor.py`)
+- `process_raw_packet()` parses the packet type before calling `create()` so `payload_type_name` is always bound, fixing an `UnboundLocalError` on malformed packets.
+- Passes `rssi`, `snr`, and `payload_type` through to the repository.
+
+### Timeseries endpoint (`app/routers/packets.py`)
+- `GET /api/packets/timeseries` now returns `avg_rssi`, `avg_snr`, and `type_counts` per bin when migration 47 columns are present, falling back to count/byte-only data for older databases.
+- Added `has_signal_data` and `has_type_data` flags to the response so the frontend can conditionally render charts.
+
+### My Node page (`frontend/src/components/MyNodeView.tsx`)
+- `fetchHistorical` maps `avg_rssi`, `avg_snr`, and `type_counts` from the timeseries response onto the existing `Bin` structure, enabling SNR, RSSI, and stacked packet-type charts for all historical time windows (not just the live ≤ 1h session).
+
+---
+
 # My Node Page
 
 Adds a dedicated **My Node** analytics page accessible from the sidebar (bar chart icon).
@@ -23,6 +65,8 @@ Adds a dedicated **My Node** analytics page accessible from the sidebar (bar cha
 - `frontend/src/components/Sidebar.tsx` — added My Node entry to the tools section
 - `frontend/src/components/ConversationPane.tsx` — added `'node'` conversation type handler, passes `rawPacketStatsSession` to `MyNodeView`
 
+---
+
 # Sidebar Improvements (23-3-2026)
 
 Added a customization panel to the sidebar.
@@ -39,6 +83,11 @@ Each list item has a grip handle. Drag to reorder, drop to confirm. The drop tar
 
 ### Mark all as read
 Moved the "Mark all as read" action from a standalone floating row into the Channels section header. It appears as a small `CheckCheck` icon next to the unread count badge, only when there are unread channel messages.
+
+### Favorites fix
+Fixed a regression where favorited repeaters and room servers were not appearing in the Favorites section. All five contact types (clients, repeaters, rooms, sensors, unknown) are now correctly split between Favorites and their own sections.
+
+---
 
 # Map View Improvements (23-3-2026)
 

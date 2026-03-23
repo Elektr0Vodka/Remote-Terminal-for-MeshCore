@@ -359,7 +359,12 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_046_cleanup_orphaned_contact_child_rows(conn)
         await set_version(conn, 46)
         applied += 1
-
+    # Migration 47: Add rssi, snr, payload_type columns to raw_packets
+    if version < 47:
+        logger.info("Applying migration 47: add rssi, snr, payload_type to raw_packets")
+        await _migrate_047_add_raw_packet_signal_columns(conn)
+        await set_version(conn, 47)
+        applied += 1
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -2867,4 +2872,31 @@ async def _migrate_046_cleanup_orphaned_contact_child_rows(conn: aiosqlite.Conne
                 (orphan_key,),
             )
 
+    await conn.commit()
+    
+    
+async def _migrate_047_add_raw_packet_signal_columns(conn: aiosqlite.Connection) -> None:
+    """
+    Add rssi, snr, and payload_type columns to raw_packets.
+
+    These are populated at ingest time going forward and enable rich historical
+    analytics: per-bin signal quality and packet type breakdown in the
+    /api/packets/timeseries endpoint and MyNodeView charts.
+
+    Existing rows will have NULL for these columns (no backfill possible since
+    RSSI/SNR are not stored in the raw packet data itself).
+    """
+    for column, typedef in [
+        ("rssi",         "INTEGER"),
+        ("snr",          "REAL"),
+        ("payload_type", "TEXT"),
+    ]:
+        try:
+            await conn.execute(f"ALTER TABLE raw_packets ADD COLUMN {column} {typedef}")
+            logger.debug("Added %s to raw_packets", column)
+        except aiosqlite.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                logger.debug("raw_packets.%s already exists, skipping", column)
+            else:
+                raise
     await conn.commit()

@@ -487,35 +487,38 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
   const fetchHistorical = useCallback(async (startTs: number, endTs: number) => {
     setHistoricalLoading(true); setHistoricalError(null);
     try {
-      const res = await fetch(`/api/packets/timeseries?start_ts=${startTs}&end_ts=${endTs}&bin_count=${BIN_COUNT}`);
+      const res = await fetch(
+        `/api/packets/timeseries?start_ts=${startTs}&end_ts=${endTs}&bin_count=${BIN_COUNT}`
+      );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.detail ?? `HTTP ${res.status}`);
       }
       const data = await res.json();
-      setHistoricalBins(data.bins.map((b: { start_ts: number; packet_count: number; byte_count: number }) => ({
-        time: b.start_ts * 1000, packets: b.packet_count, bytes: b.byte_count,
-        types: {}, snrs: [], rssis: [],
-      })));
+      setHistoricalBins(
+        data.bins.map((b: {
+          start_ts: number;
+          packet_count: number;
+          byte_count: number;
+          avg_rssi?: number | null;
+          avg_snr?: number | null;
+          type_counts?: Record<string, number>;
+        }) => ({
+          time:    b.start_ts * 1000,
+          packets: b.packet_count,
+          bytes:   b.byte_count,
+          // Expand avg signal back into arrays so mean() works uniformly
+          rssis:   b.avg_rssi != null ? [b.avg_rssi] : [],
+          snrs:    b.avg_snr  != null ? [b.avg_snr]  : [],
+          // type_counts from new endpoint, empty object for legacy data
+          types:   b.type_counts ?? {},
+        }))
+      );
     } catch (err) {
       setHistoricalError(err instanceof Error ? err.message : 'Failed to fetch history');
       setHistoricalBins(null);
     } finally { setHistoricalLoading(false); }
   }, []);
-
-  useEffect(() => {
-    if (selectedWindow.useLive) { setHistoricalBins(null); return; }
-    if (selectedWindow.key === 'custom') {
-      if (customStart && customEnd) {
-        const s = Math.floor(new Date(customStart).getTime() / 1000);
-        const e = Math.floor(new Date(customEnd).getTime() / 1000);
-        if (e > s) void fetchHistorical(s, e);
-      }
-      return;
-    }
-    const nowTs = Math.floor(Date.now() / 1000);
-    void fetchHistorical(nowTs - selectedWindow.seconds!, nowTs);
-  }, [selectedWindow, customStart, customEnd, fetchHistorical]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const windowSeconds = useMemo((): number => {
@@ -789,7 +792,7 @@ const resolvedStrongest = useMemo(() =>
               </div>
 
               {!selectedWindow.useLive && (
-                <p className="px-3 pb-2 text-[10px] text-muted-foreground">Historical data from database · SNR/RSSI and type breakdown only available in live session (≤ 1h)</p>
+                <p className="px-3 pb-2 text-[10px] text-muted-foreground"> Historical data from database {!selectedWindow.useLive && ' · Signal and type data available for packets captured after the latest update'}</p>
               )}
             </div>
 

@@ -170,8 +170,18 @@ export function useRealtimeAppState({
         });
       },
       onReconnect: () => {
-        setRawPackets([]);
-        reconcileOnReconnect();
+     // Re-seed packet feed from DB so history survives reconnects
+		fetch('/api/packets/recent?limit=500')
+		  .then((r) => r.json())
+		  .then((data: RawPacket[]) => {
+			if (Array.isArray(data) && data.length > 0) {
+			  setRawPackets(data);
+			 } else {
+			   setRawPackets([]);
+			}
+       })
+       .catch(() => setRawPackets([]));
+     reconcileOnReconnect();
         refreshUnreads();
         api.getChannels().then(setChannels).catch(console.error);
         fetchAllContacts()

@@ -11,7 +11,13 @@ logger = logging.getLogger(__name__)
 
 class RawPacketRepository:
     @staticmethod
-    async def create(data: bytes, timestamp: int | None = None) -> tuple[int, bool]:
+    async def create(
+        data: bytes,
+        timestamp: int | None = None,
+        rssi: int | None = None,
+        snr: float | None = None,
+        payload_type: str | None = None,
+    ) -> tuple[int, bool]:
         """
         Create a raw packet with payload-based deduplication.
 
@@ -21,6 +27,9 @@ class RawPacketRepository:
 
         Deduplication is based on the SHA-256 hash of the packet payload
         (excluding routing/path information).
+
+        Signal metadata (rssi, snr, payload_type) is stored for historical analytics.
+        For duplicate packets only the first observation's signal data is kept.
         """
         ts = timestamp if timestamp is not None else int(time.time())
 
@@ -47,11 +56,12 @@ class RawPacketRepository:
             )
             return (existing["id"], False)
 
-        # New packet - insert with hash
+        # New packet - insert with hash and signal metadata
         try:
             cursor = await db.conn.execute(
-                "INSERT INTO raw_packets (timestamp, data, payload_hash) VALUES (?, ?, ?)",
-                (ts, data, payload_hash),
+                "INSERT INTO raw_packets (timestamp, data, payload_hash, rssi, snr, payload_type) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (ts, data, payload_hash, rssi, snr, payload_type),
             )
             await db.conn.commit()
             assert cursor.lastrowid is not None  # INSERT always returns a row ID
