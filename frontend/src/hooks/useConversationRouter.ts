@@ -90,8 +90,12 @@ export function useConversationRouter({
       setActiveConversationState({ type: 'search', id: 'search', name: 'Message Search' });
       hasSetDefaultConversation.current = true;
       return;
-    }
-
+    }	
+	if (hashConv?.type === 'node') {
+	   setActiveConversationState({ type: 'node', id: 'node', name: 'My Node' });
+	   hasSetDefaultConversation.current = true;
+	   return;
+	}
     // Handle channel hash (ID-first with legacy-name fallback)
     if (hashConv?.type === 'channel') {
       const channel = resolveChannelFromHashToken(hashConv.name, channels);
@@ -110,7 +114,7 @@ export function useConversationRouter({
       const lastViewed = getLastViewedConversation();
       if (
         lastViewed &&
-        (lastViewed.type === 'raw' || lastViewed.type === 'map' || lastViewed.type === 'visualizer')
+        (lastViewed.type === 'raw' || lastViewed.type === 'map' || lastViewed.type === 'visualizer'|| lastViewed.type === 'node')
       ) {
         setActiveConversationState(lastViewed);
         hasSetDefaultConversation.current = true;

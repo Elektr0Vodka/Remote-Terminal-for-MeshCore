@@ -75,17 +75,18 @@ export function App() {
   const [rawPackets, setRawPackets] = useState<RawPacket[]>([]);
 	  // Seed packet feed from DB history on first load
 	  useEffect(() => {
-		fetch('/api/packets/recent?limit=500')
-		  .then((r) => r.json())
-		  .then((data: RawPacket[]) => {
-			if (Array.isArray(data) && data.length > 0) {
-			  setRawPackets(data);
-			}
-		  })
-		  .catch(() => {
-			// Non-fatal — live packets will still arrive via WS
-		  });
-	  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      fetch('/api/packets/recent?limit=500')
+       .then((r) => r.json())
+       .then((data: RawPacket[]) => {
+         if (Array.isArray(data) && data.length > 0) {
+           setRawPackets(data);
+           // Replay historical packets into the stats session so Session
+           // Breakdown and RF Neighbors are populated on refresh.
+           data.forEach((packet) => recordRawPacketObservation?.(packet));
+         }
+       })
+       .catch(() => {});
+   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [channelUnreadMarker, setChannelUnreadMarker] = useState<ChannelUnreadMarker | null>(null);
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   const lastUnreadBackfillAttemptRef = useRef<string | null>(null);

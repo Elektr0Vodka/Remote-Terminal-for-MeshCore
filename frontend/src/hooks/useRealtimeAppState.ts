@@ -179,9 +179,10 @@ export function useRealtimeAppState({
 		fetch('/api/packets/recent?limit=500')
 		  .then((r) => r.json())
 		  .then((data: RawPacket[]) => {
-			if (Array.isArray(data) && data.length > 0) {
-			  setRawPackets(data);
-			 } else {
+				if (Array.isArray(data) && data.length > 0) {
+			   setRawPackets(data);
+			   data.forEach((packet) => recordRawPacketObservation?.(packet));
+			   } else {
 			   setRawPackets([]);
 			}
        })
