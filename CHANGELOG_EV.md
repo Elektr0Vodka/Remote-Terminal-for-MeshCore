@@ -23,6 +23,22 @@ Adds a dedicated **My Node** analytics page accessible from the sidebar (bar cha
 - `frontend/src/components/Sidebar.tsx` — added My Node entry to the tools section
 - `frontend/src/components/ConversationPane.tsx` — added `'node'` conversation type handler, passes `rawPacketStatsSession` to `MyNodeView`
 
+# Sidebar Improvements (23-3-2026)
+
+Added a customization panel to the sidebar.
+
+## What's changed
+
+### Drag-to-reorder customization
+A gear icon in the sidebar header opens a settings panel with two drag-and-drop lists:
+
+- **Section Order** — reorder Favorites, Channels, Contacts, Room Servers, Repeaters, and Tools
+- **Tool Order** — reorder the tools within the Tools section (Packet Feed, Node Map, Mesh Visualizer, Message Search, My Node, Room Finder)
+
+Each list item has a grip handle. Drag to reorder, drop to confirm. The drop target highlights in primary colour while dragging. Both orders are persisted to `localStorage` and restored on reload. A **Reset to defaults** link restores original order.
+
+### Mark all as read
+Moved the "Mark all as read" action from a standalone floating row into the Channels section header. It appears as a small `CheckCheck` icon next to the unread count badge, only when there are unread channel messages.
 
 # Map View Improvements (23-3-2026)
 
