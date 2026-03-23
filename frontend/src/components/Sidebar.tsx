@@ -5,10 +5,12 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronRight,
+  GripVertical,
   LockOpen,
   Logs,
   Map,
   Search as SearchIcon,
+  Settings,
   SquarePen,
   Waypoints,
   X,
@@ -41,6 +43,8 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 
+// ─── Types ──────────────────────────────────────────────────────────────────
+
 type FavoriteItem = { type: 'channel'; channel: Channel } | { type: 'contact'; contact: Contact };
 
 type ConversationRow = {
@@ -63,15 +67,91 @@ type CollapseState = {
   repeaters: boolean;
 };
 
+// ─── Section ordering ────────────────────────────────────────────────────────
+
+type SidebarSection = 'tools' | 'favorites' | 'channels' | 'contacts' | 'rooms' | 'repeaters';
+
+const ALL_SECTIONS: SidebarSection[] = [
+  'tools', 'favorites', 'channels', 'contacts', 'rooms', 'repeaters',
+];
+
+const SECTION_LABELS: Record<SidebarSection, string> = {
+  tools: 'Tools',
+  favorites: 'Favorites',
+  channels: 'Channels',
+  contacts: 'Contacts',
+  rooms: 'Room Servers',
+  repeaters: 'Repeaters',
+};
+
+const SIDEBAR_SECTION_ORDER_KEY = 'remoteterm-sidebar-section-order';
+
+function loadSectionOrder(): SidebarSection[] {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_SECTION_ORDER_KEY);
+    if (!raw) return [...ALL_SECTIONS];
+    const parsed = JSON.parse(raw) as string[];
+    const valid = parsed.filter((s): s is SidebarSection => ALL_SECTIONS.includes(s as SidebarSection));
+    const missing = ALL_SECTIONS.filter((s) => !valid.includes(s));
+    return [...valid, ...missing];
+  } catch {
+    return [...ALL_SECTIONS];
+  }
+}
+
+function saveSectionOrder(order: SidebarSection[]): void {
+  localStorage.setItem(SIDEBAR_SECTION_ORDER_KEY, JSON.stringify(order));
+}
+
+// ─── Tool ordering ───────────────────────────────────────────────────────────
+
+type ToolKey =
+  | 'packet-feed'
+  | 'node-map'
+  | 'mesh-visualizer'
+  | 'message-search'
+  | 'my-node'
+  | 'room-finder';
+
+const TOOL_LABELS: Record<ToolKey, string> = {
+  'packet-feed': 'Packet Feed',
+  'node-map': 'Node Map',
+  'mesh-visualizer': 'Mesh Visualizer',
+  'message-search': 'Message Search',
+  'my-node': 'My Node',
+  'room-finder': 'Room Finder',
+};
+
+const ALL_TOOL_KEYS: ToolKey[] = [
+  'packet-feed', 'node-map', 'mesh-visualizer', 'message-search', 'my-node', 'room-finder',
+];
+
+const SIDEBAR_TOOL_ORDER_KEY = 'remoteterm-sidebar-tool-order';
+
+function loadToolOrder(): ToolKey[] {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_TOOL_ORDER_KEY);
+    if (!raw) return [...ALL_TOOL_KEYS];
+    const parsed = JSON.parse(raw) as string[];
+    const valid = parsed.filter((k): k is ToolKey => ALL_TOOL_KEYS.includes(k as ToolKey));
+    const missing = ALL_TOOL_KEYS.filter((k) => !valid.includes(k));
+    return [...valid, ...missing];
+  } catch {
+    return [...ALL_TOOL_KEYS];
+  }
+}
+
+function saveToolOrder(order: ToolKey[]): void {
+  localStorage.setItem(SIDEBAR_TOOL_ORDER_KEY, JSON.stringify(order));
+}
+
+// ─── Collapse state ──────────────────────────────────────────────────────────
+
 const SIDEBAR_COLLAPSE_STATE_KEY = 'remoteterm-sidebar-collapse-state';
 
 const DEFAULT_COLLAPSE_STATE: CollapseState = {
-  tools: false,
-  favorites: false,
-  channels: false,
-  contacts: false,
-  rooms: false,
-  repeaters: false,
+  tools: false, favorites: false, channels: false,
+  contacts: false, rooms: false, repeaters: false,
 };
 
 function loadCollapsedState(): CollapseState {
@@ -80,17 +160,86 @@ function loadCollapsedState(): CollapseState {
     if (!raw) return DEFAULT_COLLAPSE_STATE;
     const parsed = JSON.parse(raw) as Partial<CollapseState>;
     return {
-      tools: parsed.tools ?? DEFAULT_COLLAPSE_STATE.tools,
-      favorites: parsed.favorites ?? DEFAULT_COLLAPSE_STATE.favorites,
-      channels: parsed.channels ?? DEFAULT_COLLAPSE_STATE.channels,
-      contacts: parsed.contacts ?? DEFAULT_COLLAPSE_STATE.contacts,
-      rooms: parsed.rooms ?? DEFAULT_COLLAPSE_STATE.rooms,
-      repeaters: parsed.repeaters ?? DEFAULT_COLLAPSE_STATE.repeaters,
+      tools: parsed.tools ?? false,
+      favorites: parsed.favorites ?? false,
+      channels: parsed.channels ?? false,
+      contacts: parsed.contacts ?? false,
+      rooms: parsed.rooms ?? false,
+      repeaters: parsed.repeaters ?? false,
     };
   } catch {
     return DEFAULT_COLLAPSE_STATE;
   }
 }
+
+// ─── Drag-and-drop list ──────────────────────────────────────────────────────
+
+function DragList<T extends string>({
+  items,
+  labels,
+  onReorder,
+}: {
+  items: T[];
+  labels: Record<string, string>;
+  onReorder: (next: T[]) => void;
+}) {
+  const dragIndex = useRef<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (i: number) => {
+    dragIndex.current = i;
+  };
+
+  const handleDragOver = (e: React.DragEvent, i: number) => {
+    e.preventDefault();
+    setOverIndex(i);
+  };
+
+  const handleDrop = (e: React.DragEvent, i: number) => {
+    e.preventDefault();
+    const from = dragIndex.current;
+    if (from === null || from === i) {
+      dragIndex.current = null;
+      setOverIndex(null);
+      return;
+    }
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(i, 0, moved);
+    dragIndex.current = null;
+    setOverIndex(null);
+    onReorder(next);
+  };
+
+  const handleDragEnd = () => {
+    dragIndex.current = null;
+    setOverIndex(null);
+  };
+
+  return (
+    <div className="space-y-1">
+      {items.map((item, i) => (
+        <div
+          key={item}
+          draggable
+          onDragStart={() => handleDragStart(i)}
+          onDragOver={(e) => handleDragOver(e, i)}
+          onDrop={(e) => handleDrop(e, i)}
+          onDragEnd={handleDragEnd}
+          className={cn(
+            'flex items-center gap-2 rounded px-2 py-1.5 bg-background border border-border select-none cursor-grab active:cursor-grabbing transition-all',
+            overIndex === i && dragIndex.current !== i && 'border-primary bg-accent'
+          )}
+        >
+          <GripVertical className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/50" />
+          <span className="text-[13px] text-foreground">{labels[item]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Props ───────────────────────────────────────────────────────────────────
 
 interface SidebarProps {
   contacts: Contact[];
@@ -100,14 +249,12 @@ interface SidebarProps {
   onNewMessage: () => void;
   lastMessageTimes: ConversationTimes;
   unreadCounts: Record<string, number>;
-  /** Tracks which conversations have unread messages that mention the user */
   mentions: Record<string, boolean>;
   showCracker: boolean;
   crackerRunning: boolean;
   onToggleCracker: () => void;
   onMarkAllRead: () => void;
   favorites: Favorite[];
-  /** Legacy global sort order, used only to seed per-section local preferences. */
   legacySortOrder?: SortOrder;
   isConversationNotificationsEnabled?: (type: 'channel' | 'contact', id: string) => boolean;
 }
@@ -119,23 +266,13 @@ type InitialSectionSortState = {
 
 function loadInitialSectionSortOrders(): InitialSectionSortState {
   const storedOrders = loadLocalStorageSidebarSectionSortOrders();
-  if (storedOrders) {
-    return { orders: storedOrders, source: 'section' };
-  }
-
+  if (storedOrders) return { orders: storedOrders, source: 'section' };
   const legacyOrder = loadLegacyLocalStorageSortOrder();
-  if (legacyOrder) {
-    return {
-      orders: buildSidebarSectionSortOrders(legacyOrder),
-      source: 'legacy',
-    };
-  }
-
-  return {
-    orders: buildSidebarSectionSortOrders(),
-    source: 'none',
-  };
+  if (legacyOrder) return { orders: buildSidebarSectionSortOrders(legacyOrder), source: 'legacy' };
+  return { orders: buildSidebarSectionSortOrders(), source: 'none' };
 }
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export function Sidebar({
   contacts,
@@ -155,6 +292,10 @@ export function Sidebar({
   isConversationNotificationsEnabled,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [sectionOrder, setSectionOrder] = useState<SidebarSection[]>(loadSectionOrder);
+  const [toolOrder, setToolOrder] = useState<ToolKey[]>(loadToolOrder);
+
   const initialSectionSortState = useMemo(loadInitialSectionSortOrders, []);
   const [sectionSortOrders, setSectionSortOrders] = useState(initialSectionSortState.orders);
   const initialCollapsedState = useMemo(loadCollapsedState, []);
@@ -173,9 +314,7 @@ export function Sidebar({
       sectionSortSourceRef.current = 'section';
       return;
     }
-
     if (sectionSortSourceRef.current !== 'none' || legacySortOrder === undefined) return;
-
     const seededOrders = buildSidebarSectionSortOrders(legacySortOrder);
     setSectionSortOrders(seededOrders);
     saveLocalStorageSidebarSectionSortOrders(seededOrders);
@@ -202,88 +341,59 @@ export function Sidebar({
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
-  // Get unread count for a conversation
-  const getUnreadCount = (type: 'channel' | 'contact', id: string): number => {
-    const key = getStateKey(type, id);
-    return unreadCounts[key] || 0;
-  };
+  const getUnreadCount = (type: 'channel' | 'contact', id: string): number =>
+    unreadCounts[getStateKey(type, id)] || 0;
 
-  // Check if a conversation has a mention
-  const hasMention = (type: 'channel' | 'contact', id: string): boolean => {
-    const key = getStateKey(type, id);
-    return mentions[key] || false;
-  };
+  const hasMention = (type: 'channel' | 'contact', id: string): boolean =>
+    mentions[getStateKey(type, id)] || false;
 
   const getLastMessageTime = useCallback(
-    (type: 'channel' | 'contact', id: string) => {
-      const key = getStateKey(type, id);
-      return lastMessageTimes[key] || 0;
-    },
+    (type: 'channel' | 'contact', id: string) => lastMessageTimes[getStateKey(type, id)] || 0,
     [lastMessageTimes]
   );
 
-  const getContactHeardTime = useCallback((contact: Contact): number => {
-    return Math.max(contact.last_seen ?? 0, contact.last_advert ?? 0);
-  }, []);
+  const getContactHeardTime = useCallback(
+    (contact: Contact): number => Math.max(contact.last_seen ?? 0, contact.last_advert ?? 0),
+    []
+  );
 
   const getContactRecentTime = useCallback(
     (contact: Contact): number => {
-      if (contact.type === CONTACT_TYPE_REPEATER) {
-        return getContactHeardTime(contact);
-      }
+      if (contact.type === CONTACT_TYPE_REPEATER) return getContactHeardTime(contact);
       return getLastMessageTime('contact', contact.public_key) || getContactHeardTime(contact);
     },
     [getContactHeardTime, getLastMessageTime]
   );
 
-  // Deduplicate channels by key only.
-  // Channel names are not unique; distinct keys must remain visible.
   const uniqueChannels = useMemo(
-    () =>
-      channels.reduce<Channel[]>((acc, channel) => {
-        if (!acc.some((c) => c.key === channel.key)) {
-          acc.push(channel);
-        }
-        return acc;
-      }, []),
+    () => channels.reduce<Channel[]>((acc, c) => (!acc.some((x) => x.key === c.key) ? [...acc, c] : acc), []),
     [channels]
   );
 
-  // Deduplicate contacts by public key, preferring ones with names
-  // Also filter out any contacts with empty public keys
   const uniqueContacts = useMemo(
     () =>
       contacts
         .filter((c) => c.public_key && c.public_key.length > 0)
         .sort((a, b) => {
-          // Sort contacts with names first
           if (a.name && !b.name) return -1;
           if (!a.name && b.name) return 1;
           return (a.name || '').localeCompare(b.name || '');
         })
-        .reduce<Contact[]>((acc, contact) => {
-          if (!acc.some((c) => c.public_key === contact.public_key)) {
-            acc.push(contact);
-          }
-          return acc;
-        }, []),
+        .reduce<Contact[]>((acc, c) => (!acc.some((x) => x.public_key === c.public_key) ? [...acc, c] : acc), []),
     [contacts]
   );
 
-  // Sort channels based on sort order, with Public always first
   const sortedChannels = useMemo(
     () =>
       [...uniqueChannels].sort((a, b) => {
-        // Public channel always sorts to the top
         if (isPublicChannelKey(a.key)) return -1;
         if (isPublicChannelKey(b.key)) return 1;
-
         if (sectionSortOrders.channels === 'recent') {
-          const timeA = getLastMessageTime('channel', a.key);
-          const timeB = getLastMessageTime('channel', b.key);
-          if (timeA && timeB) return timeB - timeA;
-          if (timeA && !timeB) return -1;
-          if (!timeA && timeB) return 1;
+          const tA = getLastMessageTime('channel', a.key);
+          const tB = getLastMessageTime('channel', b.key);
+          if (tA && tB) return tB - tA;
+          if (tA) return -1;
+          if (tB) return 1;
         }
         return a.name.localeCompare(b.name);
       }),
@@ -294,11 +404,11 @@ export function Sidebar({
     (items: Contact[], order: SortOrder) =>
       [...items].sort((a, b) => {
         if (order === 'recent') {
-          const timeA = getContactRecentTime(a);
-          const timeB = getContactRecentTime(b);
-          if (timeA && timeB) return timeB - timeA;
-          if (timeA && !timeB) return -1;
-          if (!timeA && timeB) return 1;
+          const tA = getContactRecentTime(a);
+          const tB = getContactRecentTime(b);
+          if (tA && tB) return tB - tA;
+          if (tA) return -1;
+          if (tB) return 1;
         }
         return (a.name || a.public_key).localeCompare(b.name || b.public_key);
       }),
@@ -309,11 +419,11 @@ export function Sidebar({
     (items: Contact[], order: SortOrder) =>
       [...items].sort((a, b) => {
         if (order === 'recent') {
-          const timeA = getContactHeardTime(a);
-          const timeB = getContactHeardTime(b);
-          if (timeA && timeB) return timeB - timeA;
-          if (timeA && !timeB) return -1;
-          if (!timeA && timeB) return 1;
+          const tA = getContactHeardTime(a);
+          const tB = getContactHeardTime(b);
+          if (tA && tB) return tB - tA;
+          if (tA) return -1;
+          if (tB) return 1;
         }
         return (a.name || a.public_key).localeCompare(b.name || b.public_key);
       }),
@@ -324,11 +434,7 @@ export function Sidebar({
     (item: FavoriteItem) =>
       item.type === 'channel'
         ? item.channel.name
-        : getContactDisplayName(
-            item.contact.name,
-            item.contact.public_key,
-            item.contact.last_advert
-          ),
+        : getContactDisplayName(item.contact.name, item.contact.public_key, item.contact.last_advert),
     []
   );
 
@@ -336,226 +442,113 @@ export function Sidebar({
     (items: FavoriteItem[], order: SortOrder) =>
       [...items].sort((a, b) => {
         if (order === 'recent') {
-          const timeA =
-            a.type === 'channel'
-              ? getLastMessageTime('channel', a.channel.key)
-              : getContactRecentTime(a.contact);
-          const timeB =
-            b.type === 'channel'
-              ? getLastMessageTime('channel', b.channel.key)
-              : getContactRecentTime(b.contact);
-          if (timeA && timeB) return timeB - timeA;
-          if (timeA && !timeB) return -1;
-          if (!timeA && timeB) return 1;
+          const tA = a.type === 'channel' ? getLastMessageTime('channel', a.channel.key) : getContactRecentTime(a.contact);
+          const tB = b.type === 'channel' ? getLastMessageTime('channel', b.channel.key) : getContactRecentTime(b.contact);
+          if (tA && tB) return tB - tA;
+          if (tA) return -1;
+          if (tB) return 1;
         }
-
         return getFavoriteItemName(a).localeCompare(getFavoriteItemName(b));
       }),
     [getContactRecentTime, getFavoriteItemName, getLastMessageTime]
   );
 
-  // Split non-repeater contacts and repeater contacts into separate sorted lists
   const sortedNonRepeaterContacts = useMemo(
-    () =>
-      sortContactsByOrder(
-        uniqueContacts.filter(
-          (c) => c.type !== CONTACT_TYPE_REPEATER && c.type !== CONTACT_TYPE_ROOM
-        ),
-        sectionSortOrders.contacts
-      ),
+    () => sortContactsByOrder(
+      uniqueContacts.filter((c) => c.type !== CONTACT_TYPE_REPEATER && c.type !== CONTACT_TYPE_ROOM),
+      sectionSortOrders.contacts
+    ),
     [uniqueContacts, sectionSortOrders.contacts, sortContactsByOrder]
   );
 
   const sortedRooms = useMemo(
-    () =>
-      sortContactsByOrder(
-        uniqueContacts.filter((c) => c.type === CONTACT_TYPE_ROOM),
-        sectionSortOrders.rooms
-      ),
+    () => sortContactsByOrder(uniqueContacts.filter((c) => c.type === CONTACT_TYPE_ROOM), sectionSortOrders.rooms),
     [uniqueContacts, sectionSortOrders.rooms, sortContactsByOrder]
   );
 
   const sortedRepeaters = useMemo(
-    () =>
-      sortRepeatersByOrder(
-        uniqueContacts.filter((c) => c.type === CONTACT_TYPE_REPEATER),
-        sectionSortOrders.repeaters
-      ),
+    () => sortRepeatersByOrder(uniqueContacts.filter((c) => c.type === CONTACT_TYPE_REPEATER), sectionSortOrders.repeaters),
     [uniqueContacts, sectionSortOrders.repeaters, sortRepeatersByOrder]
   );
 
-  // Filter by search query
   const query = searchQuery.toLowerCase().trim();
   const isSearching = query.length > 0;
 
   const filteredChannels = useMemo(
-    () =>
-      query
-        ? sortedChannels.filter(
-            (c) => c.name.toLowerCase().includes(query) || c.key.toLowerCase().includes(query)
-          )
-        : sortedChannels,
+    () => query ? sortedChannels.filter((c) => c.name.toLowerCase().includes(query) || c.key.toLowerCase().includes(query)) : sortedChannels,
     [sortedChannels, query]
   );
 
   const filteredNonRepeaterContacts = useMemo(
-    () =>
-      query
-        ? sortedNonRepeaterContacts.filter(
-            (c) =>
-              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
-          )
-        : sortedNonRepeaterContacts,
+    () => query ? sortedNonRepeaterContacts.filter((c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)) : sortedNonRepeaterContacts,
     [sortedNonRepeaterContacts, query]
   );
 
   const filteredRooms = useMemo(
-    () =>
-      query
-        ? sortedRooms.filter(
-            (c) =>
-              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
-          )
-        : sortedRooms,
+    () => query ? sortedRooms.filter((c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)) : sortedRooms,
     [sortedRooms, query]
   );
 
   const filteredRepeaters = useMemo(
-    () =>
-      query
-        ? sortedRepeaters.filter(
-            (c) =>
-              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
-          )
-        : sortedRepeaters,
+    () => query ? sortedRepeaters.filter((c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)) : sortedRepeaters,
     [sortedRepeaters, query]
   );
 
-  // Expand sections while searching; restore prior collapse state when search ends.
+  // Persist collapse state
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSE_STATE_KEY, JSON.stringify({
+      tools: toolsCollapsed, favorites: favoritesCollapsed, channels: channelsCollapsed,
+      contacts: contactsCollapsed, rooms: roomsCollapsed, repeaters: repeatersCollapsed,
+    }));
+  }, [toolsCollapsed, favoritesCollapsed, channelsCollapsed, contactsCollapsed, roomsCollapsed, repeatersCollapsed]);
+
+  // Expand all while searching, restore on clear
   useEffect(() => {
     if (isSearching) {
       if (!collapseSnapshotRef.current) {
         collapseSnapshotRef.current = {
-          tools: toolsCollapsed,
-          favorites: favoritesCollapsed,
-          channels: channelsCollapsed,
-          contacts: contactsCollapsed,
-          rooms: roomsCollapsed,
-          repeaters: repeatersCollapsed,
+          tools: toolsCollapsed, favorites: favoritesCollapsed, channels: channelsCollapsed,
+          contacts: contactsCollapsed, rooms: roomsCollapsed, repeaters: repeatersCollapsed,
         };
       }
-
-      if (
-        toolsCollapsed ||
-        favoritesCollapsed ||
-        channelsCollapsed ||
-        contactsCollapsed ||
-        roomsCollapsed ||
-        repeatersCollapsed
-      ) {
-        setToolsCollapsed(false);
-        setFavoritesCollapsed(false);
-        setChannelsCollapsed(false);
-        setContactsCollapsed(false);
-        setRoomsCollapsed(false);
-        setRepeatersCollapsed(false);
+      if (toolsCollapsed || favoritesCollapsed || channelsCollapsed || contactsCollapsed || roomsCollapsed || repeatersCollapsed) {
+        setToolsCollapsed(false); setFavoritesCollapsed(false); setChannelsCollapsed(false);
+        setContactsCollapsed(false); setRoomsCollapsed(false); setRepeatersCollapsed(false);
       }
       return;
     }
-
     if (collapseSnapshotRef.current) {
       const prev = collapseSnapshotRef.current;
       collapseSnapshotRef.current = null;
-      setToolsCollapsed(prev.tools);
-      setFavoritesCollapsed(prev.favorites);
-      setChannelsCollapsed(prev.channels);
-      setContactsCollapsed(prev.contacts);
-      setRoomsCollapsed(prev.rooms);
-      setRepeatersCollapsed(prev.repeaters);
+      setToolsCollapsed(prev.tools); setFavoritesCollapsed(prev.favorites); setChannelsCollapsed(prev.channels);
+      setContactsCollapsed(prev.contacts); setRoomsCollapsed(prev.rooms); setRepeatersCollapsed(prev.repeaters);
     }
-  }, [
-    isSearching,
-    toolsCollapsed,
-    favoritesCollapsed,
-    channelsCollapsed,
-    contactsCollapsed,
-    roomsCollapsed,
-    repeatersCollapsed,
-  ]);
+  }, [isSearching, toolsCollapsed, favoritesCollapsed, channelsCollapsed, contactsCollapsed, roomsCollapsed, repeatersCollapsed]);
 
-  useEffect(() => {
-    if (isSearching) return;
-
-    const state: CollapseState = {
-      tools: toolsCollapsed,
-      favorites: favoritesCollapsed,
-      channels: channelsCollapsed,
-      contacts: contactsCollapsed,
-      rooms: roomsCollapsed,
-      repeaters: repeatersCollapsed,
-    };
-
-    try {
-      localStorage.setItem(SIDEBAR_COLLAPSE_STATE_KEY, JSON.stringify(state));
-    } catch {
-      // Ignore localStorage write failures (e.g., disabled storage)
-    }
-  }, [
-    isSearching,
-    toolsCollapsed,
-    favoritesCollapsed,
-    channelsCollapsed,
-    contactsCollapsed,
-    roomsCollapsed,
-    repeatersCollapsed,
-  ]);
-
-  // Separate favorites from regular items, and build combined favorites list
-  const {
-    favoriteItems,
-    nonFavoriteChannels,
-    nonFavoriteContacts,
-    nonFavoriteRooms,
-    nonFavoriteRepeaters,
-  } = useMemo(() => {
-    const favChannels = filteredChannels.filter((c) => isFavorite(favorites, 'channel', c.key));
-    const favContacts = [
-      ...filteredNonRepeaterContacts,
-      ...filteredRooms,
-      ...filteredRepeaters,
-    ].filter((c) => isFavorite(favorites, 'contact', c.public_key));
-    const nonFavChannels = filteredChannels.filter((c) => !isFavorite(favorites, 'channel', c.key));
-    const nonFavContacts = filteredNonRepeaterContacts.filter(
-      (c) => !isFavorite(favorites, 'contact', c.public_key)
-    );
-    const nonFavRooms = filteredRooms.filter(
-      (c) => !isFavorite(favorites, 'contact', c.public_key)
-    );
-    const nonFavRepeaters = filteredRepeaters.filter(
-      (c) => !isFavorite(favorites, 'contact', c.public_key)
-    );
-
-    const items: FavoriteItem[] = [
-      ...favChannels.map((channel) => ({ type: 'channel' as const, channel })),
-      ...favContacts.map((contact) => ({ type: 'contact' as const, contact })),
-    ];
-
-    return {
-      favoriteItems: sortFavoriteItemsByOrder(items, sectionSortOrders.favorites),
-      nonFavoriteChannels: nonFavChannels,
-      nonFavoriteContacts: nonFavContacts,
-      nonFavoriteRooms: nonFavRooms,
-      nonFavoriteRepeaters: nonFavRepeaters,
-    };
-  }, [
-    filteredChannels,
-    filteredNonRepeaterContacts,
-    filteredRooms,
-    filteredRepeaters,
-    favorites,
-    sectionSortOrders.favorites,
-    sortFavoriteItemsByOrder,
-  ]);
+  const { favoriteItems, nonFavoriteChannels, nonFavoriteContacts, nonFavoriteRooms, nonFavoriteRepeaters } =
+    useMemo(() => {
+      const favChannels = filteredChannels.filter((c) => isFavorite(favorites, 'channel', c.key));
+      const nonFavChannels = filteredChannels.filter((c) => !isFavorite(favorites, 'channel', c.key));
+      const favContacts = filteredNonRepeaterContacts.filter((c) => isFavorite(favorites, 'contact', c.public_key));
+      const nonFavContacts = filteredNonRepeaterContacts.filter((c) => !isFavorite(favorites, 'contact', c.public_key));
+      const favRooms = filteredRooms.filter((c) => isFavorite(favorites, 'contact', c.public_key));
+      const nonFavRooms = filteredRooms.filter((c) => !isFavorite(favorites, 'contact', c.public_key));
+      const favRepeaters = filteredRepeaters.filter((c) => isFavorite(favorites, 'contact', c.public_key));
+      const nonFavRepeaters = filteredRepeaters.filter((c) => !isFavorite(favorites, 'contact', c.public_key));
+      const items: FavoriteItem[] = [
+        ...favChannels.map((channel) => ({ type: 'channel' as const, channel })),
+        ...favContacts.map((contact) => ({ type: 'contact' as const, contact })),
+        ...favRooms.map((contact) => ({ type: 'contact' as const, contact })),
+        ...favRepeaters.map((contact) => ({ type: 'contact' as const, contact })),
+      ];
+      return {
+        favoriteItems: sortFavoriteItemsByOrder(items, sectionSortOrders.favorites),
+        nonFavoriteChannels: nonFavChannels,
+        nonFavoriteContacts: nonFavContacts,
+        nonFavoriteRooms: nonFavRooms,
+        nonFavoriteRepeaters: nonFavRepeaters,
+      };
+    }, [filteredChannels, filteredNonRepeaterContacts, filteredRooms, filteredRepeaters, favorites, sectionSortOrders.favorites, sortFavoriteItemsByOrder]);
 
   const buildChannelRow = (channel: Channel, keyPrefix: string): ConversationRow => ({
     key: `${keyPrefix}-${channel.key}`,
@@ -574,17 +567,13 @@ export function Sidebar({
     name: getContactDisplayName(contact.name, contact.public_key, contact.last_advert),
     unreadCount: getUnreadCount('contact', contact.public_key),
     isMention: hasMention('contact', contact.public_key),
-    notificationsEnabled:
-      isConversationNotificationsEnabled?.('contact', contact.public_key) ?? false,
+    notificationsEnabled: isConversationNotificationsEnabled?.('contact', contact.public_key) ?? false,
     contact,
   });
 
   const renderConversationRow = (row: ConversationRow) => {
     const highlightUnread =
-      row.isMention ||
-      (row.type === 'contact' &&
-        row.contact?.type !== CONTACT_TYPE_REPEATER &&
-        row.unreadCount > 0);
+      row.isMention || (row.type === 'contact' && row.contact?.type !== CONTACT_TYPE_REPEATER && row.unreadCount > 0);
 
     return (
       <div
@@ -598,21 +587,10 @@ export function Sidebar({
         tabIndex={0}
         aria-current={isActive(row.type, row.id) ? 'page' : undefined}
         onKeyDown={handleKeyboardActivate}
-        onClick={() =>
-          handleSelectConversation({
-            type: row.type,
-            id: row.id,
-            name: row.name,
-          })
-        }
+        onClick={() => handleSelectConversation({ type: row.type, id: row.id, name: row.name })}
       >
         {row.type === 'contact' && row.contact && (
-          <ContactAvatar
-            name={row.contact.name}
-            publicKey={row.contact.public_key}
-            size={24}
-            contactType={row.contact.type}
-          />
+          <ContactAvatar name={row.contact.name} publicKey={row.contact.public_key} size={24} contactType={row.contact.type} />
         )}
         <span className="name flex-1 truncate text-[13px]">{row.name}</span>
         <span className="ml-auto flex items-center gap-1">
@@ -640,17 +618,9 @@ export function Sidebar({
   };
 
   const renderSidebarActionRow = ({
-    key,
-    active = false,
-    icon,
-    label,
-    onClick,
+    key, active = false, icon, label, onClick,
   }: {
-    key: string;
-    active?: boolean;
-    icon: React.ReactNode;
-    label: React.ReactNode;
-    onClick: () => void;
+    key: string; active?: boolean; icon: React.ReactNode; label: React.ReactNode; onClick: () => void;
   }) => (
     <div
       key={key}
@@ -664,9 +634,7 @@ export function Sidebar({
       onKeyDown={handleKeyboardActivate}
       onClick={onClick}
     >
-      <span className="sidebar-tool-icon text-muted-foreground" aria-hidden="true">
-        {icon}
-      </span>
+      <span className="sidebar-tool-icon text-muted-foreground" aria-hidden="true">{icon}</span>
       <span className="sidebar-tool-label flex-1 truncate text-muted-foreground">{label}</span>
     </div>
   );
@@ -677,9 +645,7 @@ export function Sidebar({
   const sectionHasMention = (rows: ConversationRow[]): boolean => rows.some((row) => row.isMention);
 
   const favoriteRows = favoriteItems.map((item) =>
-    item.type === 'channel'
-      ? buildChannelRow(item.channel, 'fav-chan')
-      : buildContactRow(item.contact, 'fav-contact')
+    item.type === 'channel' ? buildChannelRow(item.channel, 'fav-chan') : buildContactRow(item.contact, 'fav-contact')
   );
   const channelRows = nonFavoriteChannels.map((channel) => buildChannelRow(channel, 'chan'));
   const contactRows = nonFavoriteContacts.map((contact) => buildContactRow(contact, 'contact'));
@@ -693,89 +659,52 @@ export function Sidebar({
   const repeatersUnreadCount = getSectionUnreadCount(repeaterRows);
   const favoritesHasMention = sectionHasMention(favoriteRows);
   const channelsHasMention = sectionHasMention(channelRows);
-  const toolRows = !query
-    ? [
-        renderSidebarActionRow({
-          key: 'tool-raw',
-          active: isActive('raw', 'raw'),
-          icon: <Logs className="h-4 w-4" />,
-          label: 'Packet Feed',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'raw',
-              id: 'raw',
-              name: 'Raw Packet Feed',
-            }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-map',
-          active: isActive('map', 'map'),
-          icon: <Map className="h-4 w-4" />,
-          label: 'Node Map',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'map',
-              id: 'map',
-              name: 'Node Map',
-            }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-visualizer',
-          active: isActive('visualizer', 'visualizer'),
-          icon: <Waypoints className="h-4 w-4" />,
-          label: 'Mesh Visualizer',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'visualizer',
-              id: 'visualizer',
-              name: 'Mesh Visualizer',
-            }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-search',
-          active: isActive('search', 'search'),
-          icon: <SearchIcon className="h-4 w-4" />,
-          label: 'Message Search',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'search',
-              id: 'search',
-              name: 'Message Search',
-            }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-node',
-          active: isActive('node', 'node'),
-          icon: <BarChart2 className="h-4 w-4" />,
-          label: 'My Node',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'node',
-              id: 'node',
-              name: 'My Node',
-            }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-cracker',
-          active: showCracker,
-          icon: <LockOpen className="h-4 w-4" />,
-          label: (
-            <>
-              {showCracker ? 'Hide' : 'Show'} Room Finder
-              <span
-                className={cn(
-                  'ml-1 text-[11px]',
-                  crackerRunning ? 'text-primary' : 'text-muted-foreground'
-                )}
-              >
-                ({crackerRunning ? 'running' : 'idle'})
-              </span>
-            </>
-          ),
-          onClick: onToggleCracker,
-        }),
-      ]
-    : [];
+
+  // Tool definitions keyed by ToolKey
+  const toolDefinitions: Record<ToolKey, React.ReactNode> = {
+    'packet-feed': renderSidebarActionRow({
+      key: 'tool-raw', active: isActive('raw', 'raw'),
+      icon: <Logs className="h-4 w-4" />, label: 'Packet Feed',
+      onClick: () => handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
+    }),
+    'node-map': renderSidebarActionRow({
+      key: 'tool-map', active: isActive('map', 'map'),
+      icon: <Map className="h-4 w-4" />, label: 'Node Map',
+      onClick: () => handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
+    }),
+    'mesh-visualizer': renderSidebarActionRow({
+      key: 'tool-visualizer', active: isActive('visualizer', 'visualizer'),
+      icon: <Waypoints className="h-4 w-4" />, label: 'Mesh Visualizer',
+      onClick: () => handleSelectConversation({ type: 'visualizer', id: 'visualizer', name: 'Mesh Visualizer' }),
+    }),
+    'message-search': renderSidebarActionRow({
+      key: 'tool-search', active: isActive('search', 'search'),
+      icon: <SearchIcon className="h-4 w-4" />, label: 'Message Search',
+      onClick: () => handleSelectConversation({ type: 'search', id: 'search', name: 'Message Search' }),
+    }),
+    'my-node': renderSidebarActionRow({
+      key: 'tool-node', active: isActive('node', 'node'),
+      icon: <BarChart2 className="h-4 w-4" />, label: 'My Node',
+      onClick: () => handleSelectConversation({ type: 'node', id: 'node', name: 'My Node' }),
+    }),
+    'room-finder': renderSidebarActionRow({
+      key: 'tool-cracker', active: showCracker,
+      icon: <LockOpen className="h-4 w-4" />,
+      label: (
+        <>
+          {showCracker ? 'Hide' : 'Show'} Room Finder
+          <span className={cn('ml-1 text-[11px]', crackerRunning ? 'text-primary' : 'text-muted-foreground')}>
+            ({crackerRunning ? 'running' : 'idle'})
+          </span>
+        </>
+      ),
+      onClick: onToggleCracker,
+    }),
+  };
+
+  const toolRows = !query ? toolOrder.map((key) => toolDefinitions[key]) : [];
+
+  // ── Section header ──────────────────────────────────────────────────────────
 
   const renderSectionHeader = (
     title: string,
@@ -783,7 +712,8 @@ export function Sidebar({
     onToggle: () => void,
     sortSection: SidebarSortableSection | null = null,
     unreadCount = 0,
-    highlightUnread = false
+    highlightUnread = false,
+    onMarkRead?: () => void
   ) => {
     const effectiveCollapsed = isSearching ? false : collapsed;
     const sectionSortOrder = sortSection ? sectionSortOrders[sortSection] : null;
@@ -796,56 +726,106 @@ export function Sidebar({
             isSearching && 'cursor-default'
           )}
           aria-expanded={!effectiveCollapsed}
-          onClick={() => {
-            if (!isSearching) onToggle();
-          }}
+          onClick={() => { if (!isSearching) onToggle(); }}
           title={effectiveCollapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
-          {effectiveCollapsed ? (
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
+          {effectiveCollapsed
+            ? <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
           <span>{title}</span>
         </button>
-        {(sortSection || unreadCount > 0) && (
-          <div className="ml-auto flex items-center gap-1.5">
-            {sortSection && sectionSortOrder && (
-              <button
-                className="bg-transparent text-muted-foreground/60 px-1 py-0.5 text-[10px] rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => handleSortToggle(sortSection)}
-                aria-label={
-                  sectionSortOrder === 'alpha'
-                    ? `Sort ${title} by recent`
-                    : `Sort ${title} alphabetically`
-                }
-                title={
-                  sectionSortOrder === 'alpha'
-                    ? `Sort ${title} by recent`
-                    : `Sort ${title} alphabetically`
-                }
-              >
-                {sectionSortOrder === 'alpha' ? 'A-Z' : '⏱'}
-              </button>
-            )}
-            {unreadCount > 0 && (
-              <span
-                className={cn(
-                  'text-[10px] font-medium px-1.5 py-0.5 rounded-full',
-                  highlightUnread
-                    ? 'bg-badge-mention text-badge-mention-foreground'
-                    : 'bg-secondary text-muted-foreground'
-                )}
-                aria-label={`${unreadCount} unread`}
-              >
-                {unreadCount}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          {sortSection && sectionSortOrder && (
+            <button
+              className="bg-transparent text-muted-foreground/60 px-1 py-0.5 text-[10px] rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => handleSortToggle(sortSection)}
+              title={sectionSortOrder === 'alpha' ? `Sort ${title} by recent` : `Sort ${title} alphabetically`}
+            >
+              {sectionSortOrder === 'alpha' ? 'A-Z' : '⏱'}
+            </button>
+          )}
+          {onMarkRead && unreadCount > 0 && (
+            <button
+              className="text-muted-foreground/60 hover:text-foreground transition-colors rounded p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onMarkRead}
+              title="Mark all as read"
+              aria-label="Mark all as read"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {unreadCount > 0 && (
+            <span
+              className={cn(
+                'text-[10px] font-medium px-1.5 py-0.5 rounded-full',
+                highlightUnread ? 'bg-badge-mention text-badge-mention-foreground' : 'bg-secondary text-muted-foreground'
+              )}
+              aria-label={`${unreadCount} unread`}
+            >
+              {unreadCount}
+            </span>
+          )}
+        </div>
       </div>
     );
   };
+
+  // ── Section renderer ────────────────────────────────────────────────────────
+
+  const renderSection = (section: SidebarSection) => {
+    switch (section) {
+      case 'tools':
+        return toolRows.length > 0 ? (
+          <div key="tools">
+            {renderSectionHeader('Tools', toolsCollapsed, () => setToolsCollapsed((p) => !p))}
+            {(isSearching || !toolsCollapsed) && toolRows}
+          </div>
+        ) : null;
+      case 'favorites':
+        return favoriteItems.length > 0 ? (
+          <div key="favorites">
+            {renderSectionHeader('Favorites', favoritesCollapsed, () => setFavoritesCollapsed((p) => !p), 'favorites', favoritesUnreadCount, favoritesHasMention)}
+            {(isSearching || !favoritesCollapsed) && favoriteRows.map((row) => renderConversationRow(row))}
+          </div>
+        ) : null;
+      case 'channels':
+        return nonFavoriteChannels.length > 0 ? (
+          <div key="channels">
+            {renderSectionHeader('Channels', channelsCollapsed, () => setChannelsCollapsed((p) => !p), 'channels', channelsUnreadCount, channelsHasMention, onMarkAllRead)}
+            {(isSearching || !channelsCollapsed) && channelRows.map((row) => renderConversationRow(row))}
+          </div>
+        ) : null;
+      case 'contacts':
+        return nonFavoriteContacts.length > 0 ? (
+          <div key="contacts">
+            {renderSectionHeader('Contacts', contactsCollapsed, () => setContactsCollapsed((p) => !p), 'contacts', contactsUnreadCount, contactsUnreadCount > 0)}
+            {(isSearching || !contactsCollapsed) && contactRows.map((row) => renderConversationRow(row))}
+          </div>
+        ) : null;
+      case 'rooms':
+        return nonFavoriteRooms.length > 0 ? (
+          <div key="rooms">
+            {renderSectionHeader('Room Servers', roomsCollapsed, () => setRoomsCollapsed((p) => !p), 'rooms', roomsUnreadCount, roomsUnreadCount > 0)}
+            {(isSearching || !roomsCollapsed) && roomRows.map((row) => renderConversationRow(row))}
+          </div>
+        ) : null;
+      case 'repeaters':
+        return nonFavoriteRepeaters.length > 0 ? (
+          <div key="repeaters">
+            {renderSectionHeader('Repeaters', repeatersCollapsed, () => setRepeatersCollapsed((p) => !p), 'repeaters', repeatersUnreadCount)}
+            {(isSearching || !repeatersCollapsed) && repeaterRows.map((row) => renderConversationRow(row))}
+          </div>
+        ) : null;
+      default:
+        return null;
+    }
+  };
+
+  const isEmpty =
+    nonFavoriteContacts.length === 0 && nonFavoriteRooms.length === 0 &&
+    nonFavoriteChannels.length === 0 && nonFavoriteRepeaters.length === 0 && favoriteItems.length === 0;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <nav
@@ -865,7 +845,7 @@ export function Sidebar({
           />
           {searchQuery && (
             <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-lg leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               onClick={() => setSearchQuery('')}
               title="Clear search"
               aria-label="Clear search"
@@ -884,121 +864,75 @@ export function Sidebar({
         >
           <SquarePen className="h-4 w-4" />
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowSettings((p) => !p)}
+          title={showSettings ? 'Back to conversations' : 'Customize sidebar'}
+          aria-label={showSettings ? 'Back to conversations' : 'Customize sidebar'}
+          className={cn(
+            'h-7 w-7 shrink-0 p-0 transition-colors',
+            showSettings ? 'text-primary hover:text-primary' : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
       </div>
 
-      {/* List */}
-      <div className="flex-1 min-h-0 overflow-y-auto [contain:layout_paint]">
-        {/* Tools */}
-        {toolRows.length > 0 && (
-          <>
-            {renderSectionHeader('Tools', toolsCollapsed, () => setToolsCollapsed((prev) => !prev))}
-            {(isSearching || !toolsCollapsed) && toolRows}
-          </>
-        )}
-
-        {/* Mark All Read */}
-        {!query && Object.values(unreadCounts).some((c) => c > 0) && (
-          <div
-            className="px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            role="button"
-            tabIndex={0}
-            onKeyDown={handleKeyboardActivate}
-            onClick={onMarkAllRead}
-          >
-            <CheckCheck className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <span className="flex-1 truncate text-muted-foreground">Mark all as read</span>
+      {showSettings ? (
+        /* Settings panel */
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-5">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+              Section Order
+            </p>
+            <DragList
+              items={sectionOrder}
+              labels={SECTION_LABELS}
+              onReorder={(next) => {
+                setSectionOrder(next);
+                saveSectionOrder(next);
+              }}
+            />
           </div>
-        )}
 
-        {/* Favorites */}
-        {favoriteItems.length > 0 && (
-          <>
-            {renderSectionHeader(
-              'Favorites',
-              favoritesCollapsed,
-              () => setFavoritesCollapsed((prev) => !prev),
-              'favorites',
-              favoritesUnreadCount,
-              favoritesHasMention
-            )}
-            {(isSearching || !favoritesCollapsed) &&
-              favoriteRows.map((row) => renderConversationRow(row))}
-          </>
-        )}
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+              Tool Order
+            </p>
+            <DragList
+              items={toolOrder}
+              labels={TOOL_LABELS}
+              onReorder={(next) => {
+                setToolOrder(next);
+                saveToolOrder(next);
+              }}
+            />
+          </div>
 
-        {/* Channels */}
-        {nonFavoriteChannels.length > 0 && (
-          <>
-            {renderSectionHeader(
-              'Channels',
-              channelsCollapsed,
-              () => setChannelsCollapsed((prev) => !prev),
-              'channels',
-              channelsUnreadCount,
-              channelsHasMention
-            )}
-            {(isSearching || !channelsCollapsed) &&
-              channelRows.map((row) => renderConversationRow(row))}
-          </>
-        )}
-
-        {/* Contacts */}
-        {nonFavoriteContacts.length > 0 && (
-          <>
-            {renderSectionHeader(
-              'Contacts',
-              contactsCollapsed,
-              () => setContactsCollapsed((prev) => !prev),
-              'contacts',
-              contactsUnreadCount,
-              contactsUnreadCount > 0
-            )}
-            {(isSearching || !contactsCollapsed) &&
-              contactRows.map((row) => renderConversationRow(row))}
-          </>
-        )}
-
-        {/* Repeaters */}
-        {nonFavoriteRepeaters.length > 0 && (
-          <>
-            {renderSectionHeader(
-              'Repeaters',
-              repeatersCollapsed,
-              () => setRepeatersCollapsed((prev) => !prev),
-              'repeaters',
-              repeatersUnreadCount
-            )}
-            {(isSearching || !repeatersCollapsed) &&
-              repeaterRows.map((row) => renderConversationRow(row))}
-          </>
-        )}
-
-        {/* Room Servers */}
-        {nonFavoriteRooms.length > 0 && (
-          <>
-            {renderSectionHeader(
-              'Room Servers',
-              roomsCollapsed,
-              () => setRoomsCollapsed((prev) => !prev),
-              'rooms',
-              roomsUnreadCount,
-              roomsUnreadCount > 0
-            )}
-            {(isSearching || !roomsCollapsed) && roomRows.map((row) => renderConversationRow(row))}
-          </>
-        )}
-
-        {/* Empty state */}
-        {nonFavoriteContacts.length === 0 &&
-          nonFavoriteRooms.length === 0 &&
-          nonFavoriteChannels.length === 0 &&
-          nonFavoriteRepeaters.length === 0 &&
-          favoriteItems.length === 0 && (
+          <button
+            onClick={() => {
+              setSectionOrder([...ALL_SECTIONS]);
+              setToolOrder([...ALL_TOOL_KEYS]);
+              localStorage.removeItem(SIDEBAR_SECTION_ORDER_KEY);
+              localStorage.removeItem(SIDEBAR_TOOL_ORDER_KEY);
+            }}
+            className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1"
+          >
+            Reset to defaults
+          </button>
+        </div>
+      ) : (
+        /* Main list */
+        <div className="flex-1 min-h-0 overflow-y-auto [contain:layout_paint]">
+          {sectionOrder.map((section) => renderSection(section))}
+          {isEmpty && (
             <div className="p-5 text-center text-muted-foreground">
               {query ? 'No matches found' : 'No conversations yet'}
             </div>
           )}
-      </div>
+        </div>
+      )}
     </nav>
   );
 }
