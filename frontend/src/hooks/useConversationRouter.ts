@@ -91,11 +91,16 @@ export function useConversationRouter({
       hasSetDefaultConversation.current = true;
       return;
     }	
-	if (hashConv?.type === 'node') {
-	   setActiveConversationState({ type: 'node', id: 'node', name: 'My Node' });
-	   hasSetDefaultConversation.current = true;
-	   return;
-	}
+    if (hashConv?.type === 'node') {
+      setActiveConversationState({ type: 'node', id: 'node', name: 'My Node' });
+      hasSetDefaultConversation.current = true;
+      return;
+    }
+    if (hashConv?.type === 'mesh-health') {
+      setActiveConversationState({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' });
+      hasSetDefaultConversation.current = true;
+      return;
+    }
     // Handle channel hash (ID-first with legacy-name fallback)
     if (hashConv?.type === 'channel') {
       const channel = resolveChannelFromHashToken(hashConv.name, channels);
@@ -114,7 +119,7 @@ export function useConversationRouter({
       const lastViewed = getLastViewedConversation();
       if (
         lastViewed &&
-        (lastViewed.type === 'raw' || lastViewed.type === 'map' || lastViewed.type === 'visualizer'|| lastViewed.type === 'node')
+        (lastViewed.type === 'raw' || lastViewed.type === 'map' || lastViewed.type === 'visualizer' || lastViewed.type === 'node' || lastViewed.type === 'mesh-health')
       ) {
         setActiveConversationState(lastViewed);
         hasSetDefaultConversation.current = true;

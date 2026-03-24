@@ -2,11 +2,11 @@
  * MeshHealthView.tsx
  *
  * Mesh health monitoring page — shows advert frequency alerts for contacts
- * that are advertising too often, plus a full node-DB style contacts table.
+ * that are advertising too often, plus a sortable, paginated contacts table.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { Activity, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, AlertTriangle, ChevronDown, ChevronUp, ChevronsUpDown, RefreshCw } from 'lucide-react';
 import type { RadioConfig } from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -41,6 +41,9 @@ interface MeshHealthResponse {
   contacts: MeshHealthContact[];
 }
 
+type SortKey = 'name' | 'advert_count' | 'last_seen' | 'first_seen' | 'min_path_len' | 'distance' | 'status';
+type SortDir = 'asc' | 'desc';
+
 // ─── Time windows ───────────────────────────────────────────────────────────
 
 interface TimeWindow {
@@ -50,14 +53,15 @@ interface TimeWindow {
 }
 
 const TIME_WINDOWS: TimeWindow[] = [
-  { key: '1h',  label: '1h',  hours: 1  },
-  { key: '6h',  label: '6h',  hours: 6  },
-  { key: '12h', label: '12h', hours: 12 },
-  { key: '24h', label: '24h', hours: 24 },
+  { key: '1h',  label: '1h',  hours: 1   },
+  { key: '6h',  label: '6h',  hours: 6   },
+  { key: '12h', label: '12h', hours: 12  },
+  { key: '24h', label: '24h', hours: 24  },
   { key: '7d',  label: '7d',  hours: 168 },
 ];
 
 const DEFAULT_WINDOW = TIME_WINDOWS[2]; // 12h default
+const PAGE_SIZE = 50;
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -100,6 +104,13 @@ function StatTile({ label, value, sub }: { label: string; value: string | number
   );
 }
 
+function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
+  if (col !== sortKey) return <ChevronsUpDown className="ml-1 inline h-3 w-3 opacity-40" />;
+  return sortDir === 'asc'
+    ? <ChevronUp className="ml-1 inline h-3 w-3" />
+    : <ChevronDown className="ml-1 inline h-3 w-3" />;
+}
+
 // ─── Main component ─────────────────────────────────────────────────────────
 
 export function MeshHealthView({ config }: Props) {
@@ -109,45 +120,104 @@ export function MeshHealthView({ config }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
 
-  // Tick nowSec every 60s to trigger periodic refreshes
+  const [sortKey, setSortKey] = useState<SortKey>('advert_count');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState(0);
+
+  // Tick nowSec every 60s for periodic refresh
   useEffect(() => {
     const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  const fetchHealth = useCallback(
-    (window: TimeWindow) => {
-      const endTs = Math.floor(Date.now() / 1000);
-      const startTs = endTs - window.hours * 3600;
-      setLoading(true);
-      setError(null);
-      fetch(`/api/packets/mesh-health?start_ts=${startTs}&end_ts=${endTs}`)
-        .then((r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.json() as Promise<MeshHealthResponse>;
-        })
-        .then((d) => {
-          setData(d);
-          setLoading(false);
-        })
-        .catch((err: unknown) => {
-          setError(err instanceof Error ? err.message : 'Failed to load');
-          setLoading(false);
-        });
-    },
-    []
-  );
+  const fetchHealth = useCallback((window: TimeWindow) => {
+    const endTs = Math.floor(Date.now() / 1000);
+    const startTs = endTs - window.hours * 3600;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/packets/mesh-health?start_ts=${startTs}&end_ts=${endTs}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<MeshHealthResponse>;
+      })
+      .then((d) => { setData(d); setLoading(false); })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load');
+        setLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     fetchHealth(selectedWindow);
+    setPage(0);
   }, [selectedWindow, nowSec, fetchHealth]);
+
+  // Reset page when sort changes
+  useEffect(() => { setPage(0); }, [sortKey, sortDir]);
+
+  const handleSort = (col: SortKey) => {
+    if (col === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(col);
+      setSortDir(col === 'name' ? 'asc' : 'desc');
+    }
+  };
+
+  // Pre-compute distances once per data load
+  const contactsWithDist = useMemo(() => {
+    if (!data) return [];
+    const nowSecLocal = Math.floor(Date.now() / 1000);
+    return data.contacts.map((n) => ({
+      ...n,
+      distKm:
+        config?.lat != null && config?.lon != null && n.lat != null && n.lon != null
+          ? haversineKm(config.lat, config.lon, n.lat, n.lon)
+          : null,
+      isActive: n.last_seen != null && nowSecLocal - n.last_seen < 3600,
+    }));
+  }, [data, config]);
+
+  const sorted = useMemo(() => {
+    const arr = [...contactsWithDist];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case 'name': {
+          const na = (a.name ?? a.public_key).toLowerCase();
+          const nb = (b.name ?? b.public_key).toLowerCase();
+          return dir * na.localeCompare(nb);
+        }
+        case 'advert_count':
+          return dir * (a.advert_count - b.advert_count);
+        case 'last_seen':
+          return dir * ((a.last_seen ?? 0) - (b.last_seen ?? 0));
+        case 'first_seen':
+          return dir * ((a.first_seen ?? 0) - (b.first_seen ?? 0));
+        case 'min_path_len':
+          return dir * ((a.min_path_len ?? 999) - (b.min_path_len ?? 999));
+        case 'distance':
+          return dir * ((a.distKm ?? Infinity) - (b.distKm ?? Infinity));
+        case 'status':
+          return dir * ((a.isActive ? 0 : 1) - (b.isActive ? 0 : 1));
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [contactsWithDist, sortKey, sortDir]);
+
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  const paginated = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const highAlerts = data?.alerts.filter((a) => a.level === 'HIGH') ?? [];
   const mediumAlerts = data?.alerts.filter((a) => a.level === 'MEDIUM') ?? [];
 
+  const thClass = 'px-2 py-1.5 font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors';
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Header */}
+      {/* Page header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-muted-foreground" />
@@ -195,13 +265,13 @@ export function MeshHealthView({ config }: Props) {
               <StatTile label="Contacts Heard" value={data.total_contacts} sub={`last ${selectedWindow.label}`} />
               <StatTile label="HIGH Alerts" value={data.high_alert_count} sub="> 8 adverts" />
               <StatTile label="MEDIUM Alerts" value={data.medium_alert_count} sub="> 2 adverts" />
-              <StatTile label="Window" value={`${selectedWindow.label}`} sub={`${data.window_hours.toFixed(1)}h`} />
+              <StatTile label="Window" value={selectedWindow.label} sub={`${data.window_hours.toFixed(1)}h`} />
             </div>
           )}
           {loading && !data && (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {[0,1,2,3].map((i) => (
-                <div key={i} className="h-16 rounded border border-border bg-background animate-pulse" />
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-16 animate-pulse rounded border border-border bg-background" />
               ))}
             </div>
           )}
@@ -212,12 +282,12 @@ export function MeshHealthView({ config }: Props) {
               <div className="border-b border-destructive/30 bg-destructive/10 px-3 py-2 flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
                 <span className="text-sm font-semibold text-destructive">HIGH — Advertising Too Frequently</span>
-                <span className="ml-auto text-[10px] text-destructive/70">{highAlerts.length} node{highAlerts.length !== 1 ? 's' : ''}</span>
+                <span className="ml-auto text-[10px] text-destructive/70">
+                  {highAlerts.length} node{highAlerts.length !== 1 ? 's' : ''}
+                </span>
               </div>
               <div className="divide-y divide-border">
-                {highAlerts.map((a) => (
-                  <AlertRow key={a.public_key} alert={a} />
-                ))}
+                {highAlerts.map((a) => <AlertRow key={a.public_key} alert={a} />)}
               </div>
             </div>
           )}
@@ -228,12 +298,12 @@ export function MeshHealthView({ config }: Props) {
               <div className="border-b border-yellow-500/30 bg-yellow-500/10 px-3 py-2 flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
                 <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">MEDIUM — Above Normal Advert Rate</span>
-                <span className="ml-auto text-[10px] text-yellow-600/70 dark:text-yellow-400/70">{mediumAlerts.length} node{mediumAlerts.length !== 1 ? 's' : ''}</span>
+                <span className="ml-auto text-[10px] text-yellow-600/70 dark:text-yellow-400/70">
+                  {mediumAlerts.length} node{mediumAlerts.length !== 1 ? 's' : ''}
+                </span>
               </div>
               <div className="divide-y divide-border">
-                {mediumAlerts.map((a) => (
-                  <AlertRow key={a.public_key} alert={a} />
-                ))}
+                {mediumAlerts.map((a) => <AlertRow key={a.public_key} alert={a} />)}
               </div>
             </div>
           )}
@@ -249,36 +319,66 @@ export function MeshHealthView({ config }: Props) {
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <div className="border-b border-border px-3 py-2 flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-foreground">All Contacts Heard</span>
-                <span className="text-[10px] text-muted-foreground">{data.contacts.length} nodes · last {selectedWindow.label}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {sorted.length} nodes · last {selectedWindow.label}
+                  {totalPages > 1 && ` · page ${page + 1} of ${totalPages}`}
+                </span>
               </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-background">
                       <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground w-8">ID</th>
-                      <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground">Name</th>
-                      <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground">Adverts</th>
-                      <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground">Last Heard</th>
-                      <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground hidden sm:table-cell">First Heard</th>
-                      <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground hidden md:table-cell">Hops</th>
-                      <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground hidden md:table-cell">Distance</th>
-                      <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground">Status</th>
+                      <th
+                        className={`${thClass} text-left`}
+                        onClick={() => handleSort('name')}
+                      >
+                        Name <SortIcon col="name" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
+                      <th
+                        className={`${thClass} text-right`}
+                        onClick={() => handleSort('advert_count')}
+                      >
+                        Adverts <SortIcon col="advert_count" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
+                      <th
+                        className={`${thClass} text-right`}
+                        onClick={() => handleSort('last_seen')}
+                      >
+                        Last Heard <SortIcon col="last_seen" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
+                      <th
+                        className={`${thClass} text-right hidden sm:table-cell`}
+                        onClick={() => handleSort('first_seen')}
+                      >
+                        First Heard <SortIcon col="first_seen" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
+                      <th
+                        className={`${thClass} text-right hidden md:table-cell`}
+                        onClick={() => handleSort('min_path_len')}
+                      >
+                        Hops <SortIcon col="min_path_len" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
+                      <th
+                        className={`${thClass} text-right hidden md:table-cell`}
+                        onClick={() => handleSort('distance')}
+                      >
+                        Distance <SortIcon col="distance" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
+                      <th
+                        className={`${thClass} text-right`}
+                        onClick={() => handleSort('status')}
+                      >
+                        Status <SortIcon col="status" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.contacts.map((n) => {
+                    {paginated.map((n) => {
                       const shortId = n.public_key.slice(0, 4).toUpperCase();
-                      const nowSecLocal = Math.floor(Date.now() / 1000);
-                      const isActive = n.last_seen != null && nowSecLocal - n.last_seen < 3600;
                       const isHighAlert = n.advert_count > 8;
                       const isMedAlert = !isHighAlert && n.advert_count > 2;
-                      const distKm =
-                        config?.lat != null &&
-                        config?.lon != null &&
-                        n.lat != null &&
-                        n.lon != null
-                          ? haversineKm(config.lat, config.lon, n.lat, n.lon)
-                          : null;
                       return (
                         <tr
                           key={n.public_key}
@@ -289,15 +389,11 @@ export function MeshHealthView({ config }: Props) {
                             {n.name ?? n.public_key.slice(0, 12)}
                           </td>
                           <td className="px-2 py-1.5 text-right tabular-nums">
-                            <span
-                              className={
-                                isHighAlert
-                                  ? 'font-semibold text-destructive'
-                                  : isMedAlert
-                                  ? 'font-semibold text-yellow-600 dark:text-yellow-400'
-                                  : 'text-muted-foreground'
-                              }
-                            >
+                            <span className={
+                              isHighAlert ? 'font-semibold text-destructive'
+                              : isMedAlert ? 'font-semibold text-yellow-600 dark:text-yellow-400'
+                              : 'text-muted-foreground'
+                            }>
                               {n.advert_count}
                             </span>
                           </td>
@@ -311,17 +407,15 @@ export function MeshHealthView({ config }: Props) {
                             {n.min_path_len != null ? n.min_path_len : '—'}
                           </td>
                           <td className="px-2 py-1.5 text-right text-muted-foreground tabular-nums hidden md:table-cell">
-                            {distKm != null ? `${distKm.toFixed(0)} km` : '—'}
+                            {n.distKm != null ? `${n.distKm.toFixed(0)} km` : '—'}
                           </td>
                           <td className="px-2 py-1.5 text-right">
-                            <span
-                              className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                                isActive
-                                  ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                                  : 'bg-muted text-muted-foreground'
-                              }`}
-                            >
-                              {isActive ? 'ACTIVE' : 'INACTIVE'}
+                            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              n.isActive
+                                ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                                : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {n.isActive ? 'ACTIVE' : 'INACTIVE'}
                             </span>
                           </td>
                         </tr>
@@ -330,6 +424,60 @@ export function MeshHealthView({ config }: Props) {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="border-t border-border px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-muted-foreground">
+                    {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, sorted.length)} of {sorted.length}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPage(0)}
+                      disabled={page === 0}
+                      className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30"
+                    >
+                      «
+                    </button>
+                    <button
+                      onClick={() => setPage((p) => p - 1)}
+                      disabled={page === 0}
+                      className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30"
+                    >
+                      ‹ Prev
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i)
+                      .filter((i) => Math.abs(i - page) <= 2)
+                      .map((i) => (
+                        <button
+                          key={i}
+                          onClick={() => setPage(i)}
+                          className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                            i === page
+                              ? 'bg-primary text-primary-foreground font-medium'
+                              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    <button
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={page >= totalPages - 1}
+                      className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30"
+                    >
+                      Next ›
+                    </button>
+                    <button
+                      onClick={() => setPage(totalPages - 1)}
+                      disabled={page >= totalPages - 1}
+                      className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30"
+                    >
+                      »
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -356,19 +504,15 @@ function AlertRow({ alert }: { alert: MeshHealthAlert }) {
       <span className="flex-1 truncate font-medium text-foreground text-xs">
         {alert.name ?? alert.public_key.slice(0, 12)}
       </span>
-      <span className="text-xs tabular-nums text-muted-foreground">
-        {alert.advert_count} adverts
-      </span>
+      <span className="text-xs tabular-nums text-muted-foreground">{alert.advert_count} adverts</span>
       <span className="text-xs tabular-nums text-muted-foreground hidden sm:inline">
         {alert.adverts_per_hour.toFixed(1)}/hr
       </span>
-      <span
-        className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-          isHigh
-            ? 'bg-destructive/15 text-destructive'
-            : 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300'
-        }`}
-      >
+      <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+        isHigh
+          ? 'bg-destructive/15 text-destructive'
+          : 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300'
+      }`}>
         {alert.level}
       </span>
     </div>
