@@ -318,7 +318,7 @@ export function MeshHealthView({ config }: Props) {
           {data && data.contacts.length > 0 && (
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <div className="border-b border-border px-3 py-2 flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-foreground">All Contacts Heard</span>
+                <span className="text-sm font-semibold text-foreground">All Advertised Contacts Heard (In Selected Time-Span)</span>
                 <span className="text-[10px] text-muted-foreground">
                   {sorted.length} nodes · last {selectedWindow.label}
                   {totalPages > 1 && ` · page ${page + 1} of ${totalPages}`}
