@@ -14,6 +14,8 @@ import {
   useConversationNavigation,
   useRealtimeAppState,
   useBrowserNotifications,
+  useFaviconBadge,
+  useUnreadTitle,
   useRawPacketStatsSession,
 } from './hooks';
 import { AppShell } from './components/AppShell';
@@ -271,6 +273,8 @@ export function App() {
     markAllRead,
     refreshUnreads,
   } = useUnreadCounts(channels, contacts, activeConversation);
+  useFaviconBadge(unreadCounts, mentions, favorites);
+  useUnreadTitle(unreadCounts, favorites);
 
   useEffect(() => {
     if (activeConversation?.type !== 'channel') {
