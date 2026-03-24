@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  AlertCircle,
+  AlertTriangle,
   BarChart2,
   Bell,
   CheckCheck,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   GripVertical,
@@ -310,6 +313,25 @@ export function Sidebar({
   const [repeatersCollapsed, setRepeatersCollapsed] = useState(initialCollapsedState.repeaters);
   const collapseSnapshotRef = useRef<CollapseState | null>(null);
   const sectionSortSourceRef = useRef(initialSectionSortState.source);
+
+  const [meshHealthStatus, setMeshHealthStatus] = useState<'ok' | 'medium' | 'high' | null>(null);
+
+  useEffect(() => {
+    const fetchMeshHealth = () => {
+      const now = Math.floor(Date.now() / 1000);
+      fetch(`/api/packets/mesh-health?start_ts=${now - 3600}&end_ts=${now}`)
+        .then((r) => r.json())
+        .then((data: { high_alert_count: number; medium_alert_count: number }) => {
+          if (data.high_alert_count > 0) setMeshHealthStatus('high');
+          else if (data.medium_alert_count > 0) setMeshHealthStatus('medium');
+          else setMeshHealthStatus('ok');
+        })
+        .catch(() => setMeshHealthStatus(null));
+    };
+    fetchMeshHealth();
+    const id = setInterval(fetchMeshHealth, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (sectionSortSourceRef.current === 'legacy') {
@@ -650,6 +672,34 @@ export function Sidebar({
   const favoriteRows = favoriteItems.map((item) =>
     item.type === 'channel' ? buildChannelRow(item.channel, 'fav-chan') : buildContactRow(item.contact, 'fav-contact')
   );
+
+  const favChannelRows = favoriteItems
+    .filter((item): item is { type: 'channel'; channel: Channel } => item.type === 'channel')
+    .map((item) => buildChannelRow(item.channel, 'fav-chan'));
+
+  const favContactRows = favoriteItems
+    .filter(
+      (item): item is { type: 'contact'; contact: Contact } =>
+        item.type === 'contact' &&
+        item.contact.type !== CONTACT_TYPE_REPEATER &&
+        item.contact.type !== CONTACT_TYPE_ROOM
+    )
+    .map((item) => buildContactRow(item.contact, 'fav-contact'));
+
+  const favRoomRows = favoriteItems
+    .filter(
+      (item): item is { type: 'contact'; contact: Contact } =>
+        item.type === 'contact' && item.contact.type === CONTACT_TYPE_ROOM
+    )
+    .map((item) => buildContactRow(item.contact, 'fav-room'));
+
+  const favRepeaterRows = favoriteItems
+    .filter(
+      (item): item is { type: 'contact'; contact: Contact } =>
+        item.type === 'contact' && item.contact.type === CONTACT_TYPE_REPEATER
+    )
+    .map((item) => buildContactRow(item.contact, 'fav-repeater'));
+
   const channelRows = nonFavoriteChannels.map((channel) => buildChannelRow(channel, 'chan'));
   const contactRows = nonFavoriteContacts.map((contact) => buildContactRow(contact, 'contact'));
   const roomRows = nonFavoriteRooms.map((contact) => buildContactRow(contact, 'room'));
@@ -692,7 +742,21 @@ export function Sidebar({
     }),
     'mesh-health': renderSidebarActionRow({
       key: 'tool-mesh-health', active: isActive('mesh-health', 'mesh-health'),
-      icon: <Activity className="h-4 w-4" />, label: 'Mesh Health',
+      icon: <Activity className="h-4 w-4" />,
+      label: (
+        <span className="flex items-center justify-between w-full">
+          <span>Mesh Health</span>
+          {meshHealthStatus === 'ok' && (
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+          )}
+          {meshHealthStatus === 'medium' && (
+            <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
+          )}
+          {meshHealthStatus === 'high' && (
+            <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+          )}
+        </span>
+      ),
       onClick: () => handleSelectConversation({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' }),
     }),
     'room-finder': renderSidebarActionRow({
@@ -721,7 +785,8 @@ export function Sidebar({
     sortSection: SidebarSortableSection | null = null,
     unreadCount = 0,
     highlightUnread = false,
-    onMarkRead?: () => void
+    onMarkRead?: () => void,
+    itemCount?: number
   ) => {
     const effectiveCollapsed = isSearching ? false : collapsed;
     const sectionSortOrder = sortSection ? sectionSortOrders[sortSection] : null;
@@ -740,7 +805,7 @@ export function Sidebar({
           {effectiveCollapsed
             ? <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
-          <span>{title}</span>
+          <span>{title}{itemCount !== undefined && itemCount > 0 ? ` (${itemCount})` : ''}</span>
         </button>
         <div className="ml-auto flex items-center gap-1.5">
           {sortSection && sectionSortOrder && (
@@ -792,35 +857,75 @@ export function Sidebar({
       case 'favorites':
         return favoriteItems.length > 0 ? (
           <div key="favorites">
-            {renderSectionHeader('Favorites', favoritesCollapsed, () => setFavoritesCollapsed((p) => !p), 'favorites', favoritesUnreadCount, favoritesHasMention)}
-            {(isSearching || !favoritesCollapsed) && favoriteRows.map((row) => renderConversationRow(row))}
+            {renderSectionHeader(
+              'Favorites', favoritesCollapsed,
+              () => setFavoritesCollapsed((p) => !p),
+              'favorites', favoritesUnreadCount, favoritesHasMention,
+              undefined, favoriteItems.length
+            )}
+            {(isSearching || !favoritesCollapsed) && (
+              <>
+                {favChannelRows.length > 0 && (
+                  <>
+                    <div className="px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold select-none">
+                      Channels
+                    </div>
+                    {favChannelRows.map((row) => renderConversationRow(row))}
+                  </>
+                )}
+                {favContactRows.length > 0 && (
+                  <>
+                    <div className="px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold select-none">
+                      Contacts
+                    </div>
+                    {favContactRows.map((row) => renderConversationRow(row))}
+                  </>
+                )}
+                {favRoomRows.length > 0 && (
+                  <>
+                    <div className="px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold select-none">
+                      Room Servers
+                    </div>
+                    {favRoomRows.map((row) => renderConversationRow(row))}
+                  </>
+                )}
+                {favRepeaterRows.length > 0 && (
+                  <>
+                    <div className="px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold select-none">
+                      Repeaters
+                    </div>
+                    {favRepeaterRows.map((row) => renderConversationRow(row))}
+                  </>
+                )}
+              </>
+            )}
           </div>
         ) : null;
       case 'channels':
         return nonFavoriteChannels.length > 0 ? (
           <div key="channels">
-            {renderSectionHeader('Channels', channelsCollapsed, () => setChannelsCollapsed((p) => !p), 'channels', channelsUnreadCount, channelsHasMention, onMarkAllRead)}
+            {renderSectionHeader('Channels', channelsCollapsed, () => setChannelsCollapsed((p) => !p), 'channels', channelsUnreadCount, channelsHasMention, onMarkAllRead, filteredChannels.length)}
             {(isSearching || !channelsCollapsed) && channelRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
       case 'contacts':
         return nonFavoriteContacts.length > 0 ? (
           <div key="contacts">
-            {renderSectionHeader('Contacts', contactsCollapsed, () => setContactsCollapsed((p) => !p), 'contacts', contactsUnreadCount, contactsUnreadCount > 0)}
+            {renderSectionHeader('Contacts', contactsCollapsed, () => setContactsCollapsed((p) => !p), 'contacts', contactsUnreadCount, contactsUnreadCount > 0, undefined, filteredNonRepeaterContacts.length)}
             {(isSearching || !contactsCollapsed) && contactRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
       case 'rooms':
         return nonFavoriteRooms.length > 0 ? (
           <div key="rooms">
-            {renderSectionHeader('Room Servers', roomsCollapsed, () => setRoomsCollapsed((p) => !p), 'rooms', roomsUnreadCount, roomsUnreadCount > 0)}
+            {renderSectionHeader('Room Servers', roomsCollapsed, () => setRoomsCollapsed((p) => !p), 'rooms', roomsUnreadCount, roomsUnreadCount > 0, undefined, filteredRooms.length)}
             {(isSearching || !roomsCollapsed) && roomRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
       case 'repeaters':
         return nonFavoriteRepeaters.length > 0 ? (
           <div key="repeaters">
-            {renderSectionHeader('Repeaters', repeatersCollapsed, () => setRepeatersCollapsed((p) => !p), 'repeaters', repeatersUnreadCount)}
+            {renderSectionHeader('Repeaters', repeatersCollapsed, () => setRepeatersCollapsed((p) => !p), 'repeaters', repeatersUnreadCount, false, undefined, filteredRepeaters.length)}
             {(isSearching || !repeatersCollapsed) && repeaterRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
