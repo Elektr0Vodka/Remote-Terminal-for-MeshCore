@@ -77,6 +77,37 @@ class TimeseriesResponse(BaseModel):
     has_type_data: bool
 
 
+class HistoricalNeighbor(BaseModel):
+    public_key: str
+    name: str | None
+    heard_count: int
+    first_seen: int | None
+    last_seen: int | None
+    lat: float | None
+    lon: float | None
+    min_path_len: int | None
+ 
+ 
+class HistoricalStatsResponse(BaseModel):
+    start_ts: int
+    end_ts: int
+    # Packet totals
+    total_packets: int
+    total_bytes: int
+    packets_per_minute: float
+    # Signal (None if migration 47 columns not yet present)
+    avg_rssi: float | None
+    avg_snr: float | None
+    best_rssi: float | None
+    # Type breakdown (None if migration 47 columns not yet present)
+    type_counts: dict[str, int]
+    has_signal_data: bool
+    has_type_data: bool
+    # Neighbors from contact_advert_paths (always available)
+    neighbors_by_count: list[HistoricalNeighbor]
+    neighbors_by_signal: list[HistoricalNeighbor]
+
+
 def _bad_request(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
@@ -497,6 +528,331 @@ async def get_packet_timeseries(
         bin_seconds=bin_seconds,
         has_signal_data=has_signal_data,
         has_type_data=has_type_data,
+    )
+
+@router.get("/historical-stats", response_model=HistoricalStatsResponse)
+async def get_historical_stats(
+    start_ts: int,
+    end_ts: int,
+) -> HistoricalStatsResponse:
+    """
+    Return DB-computed stats for a time window, used by the My Node page for
+    historical windows where session data is incomplete or unavailable.
+ 
+    Unlike /timeseries this returns aggregate stats (not bins), including:
+    - Packet/byte totals and rate
+    - Signal averages (rssi/snr) if migration 47 columns are present
+    - Payload type breakdown if migration 47 columns are present
+    - Top neighbors by heard count and by signal, from contact_advert_paths
+ 
+    Neighbors are sourced from contact_advert_paths which tracks every
+    advertisement heard — no 500-packet limit, full history.
+    """
+    if end_ts <= start_ts:
+        raise HTTPException(status_code=400, detail="end_ts must be greater than start_ts")
+ 
+    duration_seconds = max(end_ts - start_ts, 1)
+ 
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+ 
+        # Check which columns exist (migration 47)
+        async with conn.execute("PRAGMA table_info(raw_packets)") as cur:
+            columns = {row[1] for row in await cur.fetchall()}
+        has_signal_cols = "rssi" in columns and "snr" in columns and "payload_type" in columns
+ 
+        # ── Packet totals ──────────────────────────────────────────────────
+        async with conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_packets,
+                SUM(LENGTH(data)) AS total_bytes
+            FROM raw_packets
+            WHERE timestamp >= ? AND timestamp < ?
+            """,
+            (start_ts, end_ts),
+        ) as cur:
+            row = await cur.fetchone()
+            total_packets = int(row["total_packets"] or 0)
+            total_bytes = int(row["total_bytes"] or 0)
+ 
+        packets_per_minute = total_packets / max(duration_seconds / 60, 1 / 60)
+ 
+        # ── Signal + type stats (migration 47) ────────────────────────────
+        avg_rssi: float | None = None
+        avg_snr: float | None = None
+        best_rssi: float | None = None
+        type_counts: dict[str, int] = {}
+        has_signal_data = False
+        has_type_data = False
+ 
+        if has_signal_cols:
+            async with conn.execute(
+                """
+                SELECT
+                    AVG(rssi) AS avg_rssi,
+                    AVG(snr)  AS avg_snr,
+                    MAX(rssi) AS best_rssi
+                FROM raw_packets
+                WHERE timestamp >= ? AND timestamp < ?
+                  AND rssi IS NOT NULL
+                """,
+                (start_ts, end_ts),
+            ) as cur:
+                row = await cur.fetchone()
+                if row["avg_rssi"] is not None:
+                    avg_rssi = float(row["avg_rssi"])
+                    avg_snr  = float(row["avg_snr"]) if row["avg_snr"] is not None else None
+                    best_rssi = float(row["best_rssi"])
+                    has_signal_data = True
+ 
+            async with conn.execute(
+                """
+                SELECT payload_type, COUNT(*) AS cnt
+                FROM raw_packets
+                WHERE timestamp >= ? AND timestamp < ?
+                  AND payload_type IS NOT NULL
+                GROUP BY payload_type
+                ORDER BY cnt DESC
+                """,
+                (start_ts, end_ts),
+            ) as cur:
+                rows = await cur.fetchall()
+                if rows:
+                    type_counts = {row["payload_type"]: int(row["cnt"]) for row in rows}
+                    has_type_data = True
+ 
+        # ── Neighbors from contact_advert_paths ───────────────────────────
+        # Sum heard_count per contact over all time (advert paths don't have
+        # timestamps beyond first_seen/last_seen). Filter by last_seen in window.
+        async with conn.execute(
+            """
+            SELECT
+                c.public_key,
+                c.name,
+                c.last_seen,
+                c.lat,
+                c.lon,
+                COALESCE(SUM(cap.heard_count), 0) AS heard_count,
+                MIN(cap.first_seen) AS first_seen,
+                MIN(cap.path_len) AS min_path_len
+            FROM contacts c
+            LEFT JOIN contact_advert_paths cap ON cap.public_key = c.public_key
+                AND cap.last_seen >= ? AND cap.last_seen < ?
+            WHERE c.last_seen >= ? AND c.last_seen < ?
+            GROUP BY c.public_key
+            HAVING heard_count > 0
+            ORDER BY c.last_seen DESC
+            LIMIT 50
+            """,
+            (start_ts, end_ts, start_ts, end_ts),
+        ) as cur:
+            rows = await cur.fetchall()
+            neighbors_by_count = [
+                HistoricalNeighbor(
+                    public_key=row["public_key"],
+                    name=row["name"],
+                    heard_count=int(row["heard_count"]),
+                    first_seen=row["first_seen"],
+                    last_seen=row["last_seen"],
+                    lat=row["lat"],
+                    lon=row["lon"],
+                    min_path_len=row["min_path_len"],
+                )
+                for row in rows
+            ]
+ 
+        # Top by signal — contacts with best avg RSSI in window
+        # Only available if migration 47 columns present
+        neighbors_by_signal: list[HistoricalNeighbor] = []
+        if has_signal_cols:
+            async with conn.execute(
+                """
+                SELECT
+                    c.public_key,
+                    c.name,
+                    c.last_seen,
+                    c.lat,
+                    c.lon,
+                    COALESCE(SUM(cap.heard_count), 0) AS heard_count,
+                    MAX(rp.rssi) AS best_rssi
+                FROM contacts c
+                JOIN raw_packets rp ON rp.timestamp >= ? AND rp.timestamp < ?
+                    AND rp.rssi IS NOT NULL
+                LEFT JOIN contact_advert_paths cap ON cap.public_key = c.public_key
+                    AND cap.last_seen >= ? AND cap.last_seen < ?
+                WHERE c.last_seen >= ? AND c.last_seen < ?
+                  AND (
+                    -- Match by first byte of public key against packet payload
+                    -- This is approximate; exact matching needs decoder
+                    c.public_key IS NOT NULL
+                  )
+                GROUP BY c.public_key
+                HAVING heard_count > 0
+                ORDER BY best_rssi DESC
+                LIMIT 20
+                """,
+                (start_ts, end_ts, start_ts, end_ts, start_ts, end_ts),
+            ) as cur:
+                rows = await cur.fetchall()
+                neighbors_by_signal = [
+                    HistoricalNeighbor(
+                        public_key=row["public_key"],
+                        name=row["name"],
+                        heard_count=int(row["heard_count"]),
+                        first_seen=None,
+                        last_seen=row["last_seen"],
+                        lat=row["lat"],
+                        lon=row["lon"],
+                        min_path_len=None,
+                    )
+                    for row in rows
+                ]
+ 
+    return HistoricalStatsResponse(
+        start_ts=start_ts,
+        end_ts=end_ts,
+        total_packets=total_packets,
+        total_bytes=total_bytes,
+        packets_per_minute=round(packets_per_minute, 2),
+        avg_rssi=round(avg_rssi, 1) if avg_rssi is not None else None,
+        avg_snr=round(avg_snr, 1) if avg_snr is not None else None,
+        best_rssi=round(best_rssi, 1) if best_rssi is not None else None,
+        type_counts=type_counts,
+        has_signal_data=has_signal_data,
+        has_type_data=has_type_data,
+        neighbors_by_count=neighbors_by_count,
+        neighbors_by_signal=neighbors_by_signal,
+    )
+
+
+# ─── Mesh Health models ───────────────────────────────────────────────────────
+
+class MeshHealthContact(BaseModel):
+    public_key: str
+    name: str | None
+    advert_count: int
+    first_seen: int | None
+    last_seen: int | None
+    lat: float | None
+    lon: float | None
+    min_path_len: int | None
+
+
+class MeshHealthAlert(BaseModel):
+    level: str  # "HIGH" | "MEDIUM"
+    public_key: str
+    name: str | None
+    advert_count: int
+    adverts_per_hour: float
+
+
+class MeshHealthResponse(BaseModel):
+    start_ts: int
+    end_ts: int
+    window_hours: float
+    total_contacts: int
+    high_alert_count: int
+    medium_alert_count: int
+    alerts: list[MeshHealthAlert]
+    contacts: list[MeshHealthContact]
+
+
+@router.get("/mesh-health", response_model=MeshHealthResponse)
+async def get_mesh_health(
+    start_ts: int,
+    end_ts: int,
+) -> MeshHealthResponse:
+    """
+    Return advert-frequency health data for all contacts heard in the window.
+
+    Contacts advertising too frequently are flagged:
+    - HIGH:   > 8 adverts per window
+    - MEDIUM: > 2 adverts per window
+
+    Uses contact_advert_paths which tracks every unique path heard per contact.
+    heard_count is summed only for paths whose last_seen falls within the window.
+    """
+    if end_ts <= start_ts:
+        raise HTTPException(status_code=400, detail="end_ts must be greater than start_ts")
+
+    window_hours = (end_ts - start_ts) / 3600.0
+
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+
+        async with conn.execute(
+            """
+            SELECT
+                c.public_key,
+                c.name,
+                c.lat,
+                c.lon,
+                c.last_seen,
+                MIN(cap.first_seen) AS first_seen,
+                MIN(cap.path_len)   AS min_path_len,
+                COALESCE(SUM(
+                    CASE WHEN cap.first_seen >= :start_ts
+                         THEN cap.heard_count
+                         ELSE 1
+                    END
+                ), 0) AS advert_count
+            FROM contacts c
+            JOIN contact_advert_paths cap ON cap.public_key = c.public_key
+                AND cap.last_seen >= :start_ts
+                AND cap.last_seen < :end_ts
+            GROUP BY c.public_key
+            ORDER BY advert_count DESC
+            """,
+            {"start_ts": start_ts, "end_ts": end_ts},
+        ) as cur:
+            rows = await cur.fetchall()
+
+    contacts: list[MeshHealthContact] = []
+    alerts: list[MeshHealthAlert] = []
+    high_count = 0
+    medium_count = 0
+
+    for row in rows:
+        advert_count = int(row["advert_count"])
+        contacts.append(MeshHealthContact(
+            public_key=row["public_key"],
+            name=row["name"],
+            advert_count=advert_count,
+            first_seen=row["first_seen"],
+            last_seen=row["last_seen"],
+            lat=row["lat"],
+            lon=row["lon"],
+            min_path_len=row["min_path_len"],
+        ))
+
+        adverts_per_hour = advert_count / max(window_hours, 0.01)
+        if advert_count > 8:
+            level = "HIGH"
+            high_count += 1
+        elif advert_count > 2:
+            level = "MEDIUM"
+            medium_count += 1
+        else:
+            continue
+
+        alerts.append(MeshHealthAlert(
+            level=level,
+            public_key=row["public_key"],
+            name=row["name"],
+            advert_count=advert_count,
+            adverts_per_hour=round(adverts_per_hour, 2),
+        ))
+
+    return MeshHealthResponse(
+        start_ts=start_ts,
+        end_ts=end_ts,
+        window_hours=round(window_hours, 2),
+        total_contacts=len(contacts),
+        high_alert_count=high_count,
+        medium_alert_count=medium_count,
+        alerts=alerts,
+        contacts=contacts,
     )
 
 

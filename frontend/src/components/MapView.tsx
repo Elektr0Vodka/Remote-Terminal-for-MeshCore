@@ -1,9 +1,10 @@
-import { Fragment, useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.heat';
 import type { Contact } from '../types';
 import { formatTime } from '../utils/messageParser';
 import { isValidLocation } from '../utils/pathUtils';
@@ -77,6 +78,85 @@ function buildClusterIcon(cluster: any): L.DivIcon {
   const size = count < 10 ? 32 : count < 100 ? 38 : 44;
   const html = `<div style="width:${size}px;height:${size}px;border-radius:50%;background:hsl(220 70% 45% / 0.85);border:2px solid #f8fafc;display:flex;align-items:center;justify-content:center;color:#fff;font-size:${size < 38 ? 11 : 13}px;font-weight:700;font-family:sans-serif;box-shadow:0 2px 6px rgba(0,0,0,0.4);">${count}</div>`;
   return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+}
+
+// ─── Heatmap layer ────────────────────────────────────────────────────────────
+
+interface HeatPoint { lat: number; lon: number; intensity: number; }
+
+function HeatmapLayer({ points }: { points: HeatPoint[] }) {
+  const map = useMap();
+  const heatRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!points.length) return;
+
+    const data = points.map((p) => [p.lat, p.lon, p.intensity] as [number, number, number]);
+
+    if (!heatRef.current) {
+      heatRef.current = (L as any).heatLayer(data, {
+        radius: 35,
+        blur: 25,
+        maxZoom: 10,
+        max: 1.0,
+        gradient: { 0.2: '#0ea5e9', 0.4: '#22c55e', 0.6: '#eab308', 0.8: '#f97316', 1.0: '#ef4444' },
+        minOpacity: 0.4,
+      }).addTo(map);
+    } else {
+      heatRef.current.setLatLngs(data);
+      heatRef.current.redraw();
+    }
+
+    return () => {
+      if (heatRef.current) {
+        heatRef.current.remove();
+        heatRef.current = null;
+      }
+    };
+  }, [map, points]);
+
+  return null;
+}
+
+// ─── Tile layers ──────────────────────────────────────────────────────────────
+
+type TileLayerKey = 'osm' | 'dark' | 'light' | 'satellite' | 'topo';
+
+const TILE_LAYERS: Record<TileLayerKey, { label: string; url: string; attribution: string }> = {
+  osm: {
+    label: 'OSM',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  },
+  dark: {
+    label: 'Dark',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  },
+  light: {
+    label: 'Light',
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  },
+  satellite: {
+    label: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>',
+  },
+  topo: {
+    label: 'Topo',
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://opentopomap.org/">OpenTopoMap</a>',
+  },
+};
+
+const TILE_PREF_KEY = 'remoteterm-map-tile';
+function loadTilePref(): TileLayerKey {
+  try { const r = localStorage.getItem(TILE_PREF_KEY); return (r as TileLayerKey) ?? 'osm'; }
+  catch { return 'osm'; }
+}
+function saveTilePref(v: TileLayerKey): void {
+  try { localStorage.setItem(TILE_PREF_KEY, v); } catch {}
 }
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
@@ -153,9 +233,16 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
   );
   const toggleType = (k: ContactTypeKey) => setVisibleTypes((p) => ({ ...p, [k]: !p[k] }));
 
-  // ── Cluster toggle (default ON) ─────────────────────────────────────────────
+  // ── Cluster toggle ──────────────────────────────────────────────────────────
   const [clustered, setClustered] = useState(loadClusterPref);
   const handleClusterToggle = () => setClustered((p) => { saveClusterPref(!p); return !p; });
+
+  // ── Heatmap toggle ──────────────────────────────────────────────────────────
+  const [heatmap, setHeatmap] = useState(false);
+
+  // ── Tile layer ──────────────────────────────────────────────────────────────
+  const [tileKey, setTileKey] = useState<TileLayerKey>(loadTilePref);
+  const handleTileChange = (key: TileLayerKey) => { setTileKey(key); saveTilePref(key); };
 
   // ── Filtered contacts ───────────────────────────────────────────────────────
   const mappableContacts = useMemo(() => contacts.filter((c) => {
@@ -170,11 +257,32 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
     [focusedKey, mappableContacts]
   );
 
-  const includesFocusedOutsideWindow =
-    focusedContact != null &&
-    (focusedContact.last_seen == null ||
-      focusedContact.last_seen < effectiveStart ||
-      focusedContact.last_seen > effectiveEnd);
+  // ── Heatmap data — intensity based on packet heard count ─────────────────
+  const [heatRawData, setHeatRawData] = useState<{ lat: number; lon: number; count: number }[]>([]);
+  const [heatLoading, setHeatLoading] = useState(false);
+
+  useEffect(() => {
+    if (!heatmap) return;
+    setHeatLoading(true);
+    fetch('/api/contacts/heatmap')
+      .then((r) => r.json())
+      .then((data) => { setHeatRawData(data); setHeatLoading(false); })
+      .catch(() => setHeatLoading(false));
+  }, [heatmap]);
+
+  const heatPoints = useMemo((): HeatPoint[] => {
+    if (!heatmap || !heatRawData.length) return [];
+    const maxCount = Math.max(...heatRawData.map((d) => d.count), 1);
+    // Filter to only contacts in the current time window + type filter
+    const mappableKeys = new Set(mappableContacts.map((c) => `${c.lat},${c.lon}`));
+    return heatRawData
+      .filter((d) => mappableKeys.has(`${d.lat},${d.lon}`))
+      .map((d) => ({
+        lat: d.lat,
+        lon: d.lon,
+        intensity: Math.max(0.05, d.count / maxCount),
+      }));
+  }, [heatmap, heatRawData, mappableContacts]);
 
   // ── Marker refs ─────────────────────────────────────────────────────────────
   const markerRefs = useRef<Record<string, L.Marker | null>>({});
@@ -192,7 +300,6 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
   const isFullRange = activePreset === 'All';
   const activeTypeCount = ALL_TYPE_KEYS.filter((k) => visibleTypes[k]).length;
 
-  // Build marker elements
   const markerElements = mappableContacts.map((contact) => {
     const typeKey = getTypeKey(contact.type);
     const cfg = CONTACT_TYPE_CONFIG[typeKey];
@@ -203,23 +310,22 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
     const lastHeardLabel = contact.last_seen != null ? formatTime(contact.last_seen) : 'Never heard by this server';
 
     return (
-      <Fragment key={contact.public_key}>
-        <Marker
-          ref={(ref) => setMarkerRef(contact.public_key, ref)}
-          position={[contact.lat!, contact.lon!]}
-          icon={icon}
-        >
-          <Popup>
-            <div className="text-sm">
-              <div className="font-medium flex items-center gap-1">
-                <span aria-hidden="true">{cfg.emoji}</span>{displayName}
-              </div>
-              <div className="text-xs text-gray-500 mt-1">{cfg.label} · Last heard: {lastHeardLabel}</div>
-              <div className="text-xs text-gray-400 mt-1 font-mono">{contact.lat!.toFixed(5)}, {contact.lon!.toFixed(5)}</div>
+      <Marker
+        key={contact.public_key}
+        ref={(ref) => setMarkerRef(contact.public_key, ref)}
+        position={[contact.lat!, contact.lon!]}
+        icon={icon}
+      >
+        <Popup>
+          <div className="text-sm">
+            <div className="font-medium flex items-center gap-1">
+              <span aria-hidden="true">{cfg.emoji}</span>{displayName}
             </div>
-          </Popup>
-        </Marker>
-      </Fragment>
+            <div className="text-xs text-gray-500 mt-1">{cfg.label} · Last heard: {lastHeardLabel}</div>
+            <div className="text-xs text-gray-400 mt-1 font-mono">{contact.lat!.toFixed(5)}, {contact.lon!.toFixed(5)}</div>
+          </div>
+        </Popup>
+      </Marker>
     );
   });
 
@@ -232,25 +338,37 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
         <span>
           Showing {mappableContacts.length} contact{mappableContacts.length !== 1 ? 's' : ''}
           {isFullRange ? ' (all time)' : ` · last ${activePreset}`}
-          {includesFocusedOutsideWindow ? ' plus focused' : ''}
           {activeTypeCount < ALL_TYPE_KEYS.length ? ` · ${activeTypeCount}/${ALL_TYPE_KEYS.length} types` : ''}
+          {heatmap ? ' · heatmap' : ''}
+          {heatmap && heatLoading ? ' · loading…' : ''}
         </span>
-        <div className="flex items-center gap-3">
-          {([
-            { label: '<1h',   color: MAP_RECENCY_COLORS.recent },
-            { label: '<1d',   color: MAP_RECENCY_COLORS.today  },
-            { label: '<3d',   color: MAP_RECENCY_COLORS.stale  },
-            { label: 'older', color: MAP_RECENCY_COLORS.old    },
-          ] as const).map(({ label, color }) => (
-            <span key={label} className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full inline-block border border-[#0f172a]" style={{ backgroundColor: color }} />
-              {label}
-            </span>
-          ))}
-        </div>
+        {!heatmap && (
+          <div className="flex items-center gap-3">
+            {([
+              { label: '<1h',   color: MAP_RECENCY_COLORS.recent },
+              { label: '<1d',   color: MAP_RECENCY_COLORS.today  },
+              { label: '<3d',   color: MAP_RECENCY_COLORS.stale  },
+              { label: 'older', color: MAP_RECENCY_COLORS.old    },
+            ] as const).map(({ label, color }) => (
+              <span key={label} className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full inline-block border border-[#0f172a]" style={{ backgroundColor: color }} />
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+        {heatmap && (
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span>Low</span>
+            <span className="w-20 h-2 rounded" style={{
+              background: 'linear-gradient(to right, #0ea5e9, #22c55e, #eab308, #f97316, #ef4444)'
+            }} />
+            <span>High</span>
+          </div>
+        )}
       </div>
 
-      {/* Type toggles + cluster button */}
+      {/* Type toggles + cluster + heatmap buttons */}
       <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center gap-2 flex-wrap">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Show:</span>
         {ALL_TYPE_KEYS.map((key) => {
@@ -280,22 +398,51 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
           </button>
         )}
         <div className="flex-1" />
-        <button onClick={handleClusterToggle}
-          title={clustered ? 'Disable clustering' : 'Enable clustering'}
+
+        {/* Cluster toggle — hidden in heatmap mode */}
+        {!heatmap && (
+          <button onClick={handleClusterToggle}
+            title={clustered ? 'Disable clustering' : 'Enable clustering'}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
+              clustered ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground'
+            }`}>
+            <span className="text-base leading-none">🗂️</span>
+            <span>Cluster</span>
+          </button>
+        )}
+
+        {/* Heatmap toggle */}
+        <button onClick={() => setHeatmap((p) => !p)}
+          title={heatmap ? 'Switch to markers' : 'Switch to heatmap'}
           className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
-            clustered ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground'
+            heatmap ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground'
           }`}>
-          <span className="text-base leading-none">🗂️</span>
-          <span>Cluster</span>
+          <span className="text-base leading-none">🌡️</span>
+          <span>Heatmap</span>
         </button>
+
+        {/* Tile layer picker */}
+        <div className="flex items-center gap-1 ml-1 border-l border-border pl-2">
+          {(Object.keys(TILE_LAYERS) as TileLayerKey[]).map((key) => (
+            <button key={key}
+              onClick={() => handleTileChange(key)}
+              title={TILE_LAYERS[key].label}
+              className={`px-2 py-0.5 text-[10px] rounded transition-colors border ${
+                tileKey === key
+                  ? 'bg-primary/10 border-primary/40 text-foreground font-medium'
+                  : 'bg-muted border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+              }`}>
+              {TILE_LAYERS[key].label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Time window presets */}
       <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center gap-1.5 flex-wrap">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Period:</span>
         {TIME_PRESETS.map(({ label }) => (
-          <button key={label}
-            onClick={() => setActivePreset(label)}
+          <button key={label} onClick={() => setActivePreset(label)}
             className={`px-2 py-0.5 text-[10px] rounded transition-colors ${activePreset === label
               ? 'bg-primary text-primary-foreground font-medium'
               : 'bg-background border border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
@@ -308,16 +455,23 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
       <div className="flex-1 relative" style={{ zIndex: 0 }} role="img" aria-label="Map showing mesh node locations">
         <MapContainer center={[20, 0]} zoom={2} className="h-full w-full" style={{ background: '#1a1a2e' }}>
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution={TILE_LAYERS[tileKey].attribution}
+            url={TILE_LAYERS[tileKey].url}
           />
           <MapBoundsHandler contacts={mappableContacts} focusedContact={focusedContact} />
-          {clustered ? (
-            <MarkerClusterGroup iconCreateFunction={buildClusterIcon} maxClusterRadius={60} disableClusteringAtZoom={14} showCoverageOnHover={false} chunkedLoading>
-              {markerElements}
-            </MarkerClusterGroup>
-          ) : (
-            markerElements
+
+          {/* Heatmap mode — no markers */}
+          {heatmap && <HeatmapLayer points={heatPoints} />}
+
+          {/* Marker mode */}
+          {!heatmap && (
+            clustered ? (
+              <MarkerClusterGroup iconCreateFunction={buildClusterIcon} maxClusterRadius={60} disableClusteringAtZoom={14} showCoverageOnHover={false} chunkedLoading>
+                {markerElements}
+              </MarkerClusterGroup>
+            ) : (
+              markerElements
+            )
           )}
         </MapContainer>
       </div>

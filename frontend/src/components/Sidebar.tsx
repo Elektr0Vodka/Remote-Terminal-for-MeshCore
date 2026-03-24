@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   BarChart2,
   Bell,
   CheckCheck,
@@ -111,6 +112,7 @@ type ToolKey =
   | 'mesh-visualizer'
   | 'message-search'
   | 'my-node'
+  | 'mesh-health'
   | 'room-finder';
 
 const TOOL_LABELS: Record<ToolKey, string> = {
@@ -119,11 +121,12 @@ const TOOL_LABELS: Record<ToolKey, string> = {
   'mesh-visualizer': 'Mesh Visualizer',
   'message-search': 'Message Search',
   'my-node': 'My Node',
+  'mesh-health': 'Mesh Health',
   'room-finder': 'Room Finder',
 };
 
 const ALL_TOOL_KEYS: ToolKey[] = [
-  'packet-feed', 'node-map', 'mesh-visualizer', 'message-search', 'my-node', 'room-finder',
+  'packet-feed', 'node-map', 'mesh-visualizer', 'message-search', 'my-node', 'mesh-health', 'room-finder',
 ];
 
 const SIDEBAR_TOOL_ORDER_KEY = 'remoteterm-sidebar-tool-order';
@@ -337,7 +340,7 @@ export function Sidebar({
   };
 
   const isActive = (
-    type: 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node',
+    type: 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health',
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
@@ -686,6 +689,11 @@ export function Sidebar({
       key: 'tool-node', active: isActive('node', 'node'),
       icon: <BarChart2 className="h-4 w-4" />, label: 'My Node',
       onClick: () => handleSelectConversation({ type: 'node', id: 'node', name: 'My Node' }),
+    }),
+    'mesh-health': renderSidebarActionRow({
+      key: 'tool-mesh-health', active: isActive('mesh-health', 'mesh-health'),
+      icon: <Activity className="h-4 w-4" />, label: 'Mesh Health',
+      onClick: () => handleSelectConversation({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' }),
     }),
     'room-finder': renderSidebarActionRow({
       key: 'tool-cracker', active: showCracker,

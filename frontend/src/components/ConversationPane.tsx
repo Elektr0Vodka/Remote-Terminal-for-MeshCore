@@ -28,6 +28,7 @@ const VisualizerView = lazy(() =>
   import('./VisualizerView').then((m) => ({ default: m.VisualizerView }))
 );
 const MyNodeView = lazy(() => import('./MyNodeView'));
+const MeshHealthView = lazy(() => import('./MeshHealthView').then((m) => ({ default: m.MeshHealthView })));
 
 interface ConversationPaneProps {
   activeConversation: Conversation | null;
@@ -209,6 +210,14 @@ export function ConversationPane({
           rawPacketStatsSession={rawPacketStatsSession}
           contacts={contacts}
         />
+      </Suspense>
+    );
+  }
+
+  if (activeConversation.type === 'mesh-health') {
+    return (
+      <Suspense fallback={<LoadingPane label="Loading mesh health..." />}>
+        <MeshHealthView config={config} />
       </Suspense>
     );
   }

@@ -1,6 +1,10 @@
 import asyncio
 import logging
 import random
+import aiosqlite
+
+from app.database import db
+
 from contextlib import suppress
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -254,6 +258,43 @@ async def get_contact_analytics(
         raise HTTPException(status_code=400, detail="name is required")
     return await _build_name_only_contact_analytics(normalized_name)
 
+@router.get("/heatmap")
+async def get_contacts_heatmap() -> list[dict]:
+    """
+    Return per-contact packet heard counts with coordinates for heatmap rendering.
+ 
+    Sums heard_count from contact_advert_paths per contact, joined with the
+    contacts table for lat/lon. Only returns contacts with valid GPS coordinates.
+ 
+    Response: [{ lat, lon, count }]
+    """
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            """
+            SELECT
+                c.lat,
+                c.lon,
+                COALESCE(SUM(cap.heard_count), 1) AS count
+            FROM contacts c
+            LEFT JOIN contact_advert_paths cap ON cap.public_key = c.public_key
+            WHERE
+                c.lat IS NOT NULL
+                AND c.lon IS NOT NULL
+                AND c.lat != 0
+                AND c.lon != 0
+                AND ABS(c.lat) <= 90
+                AND ABS(c.lon) <= 180
+            GROUP BY c.public_key
+            ORDER BY count DESC
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+ 
+    return [
+        {"lat": row["lat"], "lon": row["lon"], "count": int(row["count"])}
+        for row in rows
+    ]
 
 @router.post("", response_model=Contact)
 async def create_contact(

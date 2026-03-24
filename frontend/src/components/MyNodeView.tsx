@@ -38,9 +38,36 @@ interface TimeWindow {
   useLive: boolean;
 }
 
+interface HistoricalNeighbor {
+  public_key: string;
+  name: string | null;
+  heard_count: number;
+  first_seen: number | null;
+  last_seen: number | null;
+  lat: number | null;
+  lon: number | null;
+  min_path_len: number | null;
+}
+ 
+interface HistoricalStatsResponse {
+  start_ts: number;
+  end_ts: number;
+  total_packets: number;
+  total_bytes: number;
+  packets_per_minute: number;
+  avg_rssi: number | null;
+  avg_snr: number | null;
+  best_rssi: number | null;
+  type_counts: Record<string, number>;
+  has_signal_data: boolean;
+  has_type_data: boolean;
+  neighbors_by_count: HistoricalNeighbor[];
+  neighbors_by_signal: HistoricalNeighbor[];
+}
+
 const TIME_WINDOWS: TimeWindow[] = [
   { key: '20m',    label: '20m', seconds: 20 * 60,              useLive: true  },
-  { key: '1h',     label: '1h',  seconds: 60 * 60,              useLive: true  },
+  { key: '1h',     label: '1h',  seconds: 60 * 60,              useLive: false },
   { key: '6h',     label: '6h',  seconds: 6 * 60 * 60,          useLive: false },
   { key: '1d',     label: '1d',  seconds: 24 * 60 * 60,         useLive: false },
   { key: '7d',     label: '7d',  seconds: 7 * 24 * 60 * 60,     useLive: false },
@@ -128,35 +155,54 @@ function fmtWindowLabel(windowKey: string, customStart: string, customEnd: strin
 function fmtPct(rate: number): string { return `${Math.round(rate * 100)}%`; }
 function fmtRssi(v: number | null): string { return v == null ? '—' : `${Math.round(v)} dBm`; }
 
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 // ─── Packet type colours ────────────────────────────────────────────────────
+// Hardcoded HSL values (~28° steps around the hue wheel) so colours are vivid
+// and distinct regardless of which theme is active.
 
 const NAMED_TYPE_COLORS: Record<string, string> = {
-  ADVERT:     'hsl(var(--primary))',
-  GROUP_TEXT: 'hsl(var(--info))',
-  GROUPTEXT:  'hsl(var(--info))',
-  PRIV_MSG:   'hsl(var(--warning))',
-  TEXTMESSAGE:'hsl(var(--warning))',
-  ACK:        'hsl(var(--success))',
-  FLOOD:      'hsl(var(--chart-1, 220 70% 50%))',
-  PATH:       'hsl(var(--chart-2, 160 60% 45%))',
-  TRACE:      'hsl(var(--chart-3, 30 80% 55%))',
-  SENSOR:     'hsl(var(--chart-4, 280 65% 60%))',
-  REPEATER:   'hsl(var(--chart-5, 340 75% 55%))',
-  DISCOVERY:  'hsl(var(--destructive))',
-  TIME:       'hsl(var(--muted-foreground))',
+  // All PayloadType enum values by exact name
+  REQUEST:      'hsl(4,   70%, 54%)',   // red
+  RESPONSE:     'hsl(28,  82%, 54%)',   // orange
+  TEXT_MESSAGE: 'hsl(48,  85%, 46%)',   // amber
+  ACK:          'hsl(135, 60%, 44%)',   // green
+  ADVERT:       'hsl(192, 78%, 46%)',   // cyan
+  GROUP_TEXT:   'hsl(255, 65%, 60%)',   // violet
+  GROUP_DATA:   'hsl(310, 62%, 56%)',   // magenta
+  ANON_REQUEST: 'hsl(336, 70%, 56%)',   // rose
+  PATH:         'hsl(158, 62%, 42%)',   // teal-green
+  TRACE:        'hsl(22,  80%, 52%)',   // burnt orange
+  MULTIPART:    'hsl(222, 68%, 58%)',   // indigo-blue
+  CONTROL:      'hsl(282, 58%, 54%)',   // purple
+  RAW_CUSTOM:   'hsl(82,  58%, 44%)',   // lime
+  // Legacy / alternate spellings that may appear in older data
+  GROUPTEXT:    'hsl(255, 65%, 60%)',
+  TEXTMESSAGE:  'hsl(48,  85%, 46%)',
 };
 
+// Fallback palette for any unknown future types — 8 evenly-spaced hues
 const FALLBACK_COLORS = [
-  'hsl(var(--chart-1, 220 70% 50%))',
-  'hsl(var(--chart-2, 160 60% 45%))',
-  'hsl(var(--chart-3, 30 80% 55%))',
-  'hsl(var(--chart-4, 280 65% 60%))',
-  'hsl(var(--chart-5, 340 75% 55%))',
+  'hsl(0,   65%, 52%)',
+  'hsl(45,  78%, 48%)',
+  'hsl(90,  55%, 44%)',
+  'hsl(135, 58%, 44%)',
+  'hsl(180, 68%, 42%)',
+  'hsl(225, 65%, 56%)',
+  'hsl(270, 60%, 56%)',
+  'hsl(315, 62%, 54%)',
 ];
 
 function typeColor(t: string): string {
+  const upper = t.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  if (upper in NAMED_TYPE_COLORS) return NAMED_TYPE_COLORS[upper];
+  // Partial-match fallback for any prefixed/suffixed variants
   for (const [k, v] of Object.entries(NAMED_TYPE_COLORS)) {
-    if (t.toUpperCase().includes(k)) return v;
+    if (upper.includes(k) || k.includes(upper)) return v;
   }
   let hash = 0;
   for (let i = 0; i < t.length; i++) hash = (hash * 31 + t.charCodeAt(i)) >>> 0;
@@ -440,7 +486,6 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
   const [stats, setStats] = useState<StatisticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showMore, setShowMore] = useState(false);
   const loadedAt = useRef(0);
 
   // Time window
@@ -519,7 +564,44 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
       setHistoricalBins(null);
     } finally { setHistoricalLoading(false); }
   }, []);
+  // Trigger DB timeseries fetch for non-live windows; clear bins when switching back to live
+  useEffect(() => {
+    if (selectedWindow.useLive) {
+      setHistoricalBins(null);
+      return;
+    }
+    if (selectedWindow.key === 'custom') return; // custom uses the Apply button
+    const endTs = nowSec;
+    const startTs = selectedWindow.seconds !== null ? endTs - selectedWindow.seconds : 0;
+    void fetchHistorical(startTs, endTs);
+  }, [selectedWindow.key, selectedWindow.useLive, nowSec, fetchHistorical]);
 
+	  const [historicalStats, setHistoricalStats] = useState<HistoricalStatsResponse | null>(null);
+	  const [historicalStatsLoading, setHistoricalStatsLoading] = useState(false);
+	  const [historicalStatsError, setHistoricalStatsError] = useState<string | null>(null);
+	 
+	  // Fetch DB historical stats whenever the time window changes (uses nowSec which ticks every 30s)
+	  useEffect(() => {
+		const windowDef = TIME_WINDOWS.find((w) => w.label === selectedWindow.label);
+		if (!windowDef) return;
+
+		const endTs = nowSec;
+		const startTs = windowDef.seconds !== null ? endTs - windowDef.seconds : 0;
+
+		setHistoricalStatsLoading(true);
+		setHistoricalStatsError(null);
+
+		fetch(`/api/packets/historical-stats?start_ts=${startTs}&end_ts=${endTs}`)
+		  .then((r) => r.json())
+		  .then((data: HistoricalStatsResponse) => {
+			setHistoricalStats(data);
+			setHistoricalStatsLoading(false);
+		  })
+		  .catch((err) => {
+			setHistoricalStatsError(err instanceof Error ? err.message : 'Failed to load');
+			setHistoricalStatsLoading(false);
+		  });
+	  }, [selectedWindow.label, nowSec]);
   // ── Derived ───────────────────────────────────────────────────────────────
   const windowSeconds = useMemo((): number => {
     if (selectedWindow.key === 'custom' && customStart && customEnd)
@@ -670,38 +752,42 @@ const resolvedStrongest = useMemo(() =>
         {!loading && config && (
           <>
             {/* ── Identity ── */}
-            <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border-2 border-primary bg-card">
-                <svg className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-                </svg>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-base font-semibold text-foreground">{config.name || 'Unnamed Node'}</h1>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium text-primary">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />Connected
-                  </span>
-                  <span className="inline-block rounded border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">This device</span>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background">
+                  <svg className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                  </svg>
                 </div>
-                <p className="mt-0.5 select-all break-all font-mono text-[10px] text-muted-foreground">{config.public_key}</p>
-                <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
-                  <span className="font-mono">{config.radio.freq} MHz / SF{config.radio.sf} / BW{config.radio.bw} / CR{config.radio.cr}</span>
-                  {health?.radio_device_info?.firmware_version && <span>fw {health.radio_device_info.firmware_version}</span>}
-                  {config.lat != null && config.lon != null && (
-                    <a href={`https://www.openstreetmap.org/?mlat=${config.lat}&mlon=${config.lon}&zoom=13`} target="_blank" rel="noopener noreferrer" className="transition hover:text-foreground">
-                      {config.lat.toFixed(4)}, {config.lon.toFixed(4)} ↗
-                    </a>
-                  )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-base font-semibold text-foreground">{config.name || 'Unnamed Node'}</h1>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-xs font-medium text-primary">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />Connected
+                    </span>
+                    <span className="inline-block rounded border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">This device</span>
+                  </div>
+                  <p className="mt-0.5 select-all break-all font-mono text-[10px] text-muted-foreground">{config.public_key}</p>
+                  <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+                    <span className="font-mono">{config.radio.freq} MHz / SF{config.radio.sf} / BW{config.radio.bw} / CR{config.radio.cr}</span>
+                    {health?.radio_device_info?.firmware_version && <span>fw {health.radio_device_info.firmware_version}</span>}
+                    {config.lat != null && config.lon != null && (
+                      <a href={`https://www.openstreetmap.org/?mlat=${config.lat}&mlon=${config.lon}&zoom=13`} target="_blank" rel="noopener noreferrer" className="transition hover:text-foreground">
+                        {config.lat.toFixed(4)}, {config.lon.toFixed(4)} ↗
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* ── Session stats tiles ── */}
             {sessionSnapshot.packetCount > 0 && (
-              <div>
-                <SectionTitle>Session Stats</SectionTitle>
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="border-b border-border px-3 py-2">
+                  <span className="text-sm font-semibold text-foreground">Session Stats</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-4">
                   <StatTile label="Packets / min" value={sessionSnapshot.packetsPerMinute.toFixed(1)} sub={`${sessionSnapshot.packetCount.toLocaleString()} total`} />
                   <StatTile label="Decrypt Rate" value={fmtPct(sessionSnapshot.decryptRate)} sub={`${sessionSnapshot.decryptedCount.toLocaleString()} / ${sessionSnapshot.packetCount.toLocaleString()}`} />
                   <StatTile label="Unique Sources" value={sessionSnapshot.uniqueSources} sub="distinct senders" />
@@ -796,17 +882,53 @@ const resolvedStrongest = useMemo(() =>
               )}
             </div>
 
+            {/* ── DB Historical Stats ── */}
+            {(historicalStats || historicalStatsLoading || historicalStatsError) && (
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="border-b border-border px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span className="text-sm font-semibold text-foreground">DB Stats — {liveStats.windowLabel}</span>
+                    {historicalStatsLoading && <span className="text-[10px] text-muted-foreground animate-pulse">Loading…</span>}
+                    {historicalStatsError && <span className="text-[10px] text-destructive">{historicalStatsError}</span>}
+                  </div>
+                </div>
+
+                {historicalStats && (
+                  <div className="p-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                      <StatTile label="Packets" value={historicalStats.total_packets.toLocaleString()} sub={`${historicalStats.packets_per_minute.toFixed(2)} /min`} />
+                      <StatTile label="Bytes" value={fmtBytes(historicalStats.total_bytes)} sub={historicalStats.total_bytes.toLocaleString() + ' B'} />
+                      <StatTile label="Best RSSI" value={fmtRssi(historicalStats.best_rssi)} sub={historicalStats.avg_rssi != null ? `avg ${fmtRssi(historicalStats.avg_rssi)}` : undefined} />
+                    </div>
+
+                    {historicalStats.has_type_data && (
+                      <HBarSection
+                        title="Packet Types (DB)"
+                        items={Object.entries(historicalStats.type_counts)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([label, count]) => ({
+                            label,
+                            count,
+                            share: historicalStats.total_packets > 0 ? count / historicalStats.total_packets : 0,
+                          }))}
+                        colorFn={typeColor}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Session breakdowns (from rawPacketStats) ── */}
             {sessionSnapshot.packetCount > 0 && (
-              <div className="rounded-lg border border-border bg-card p-3 space-y-4">
-                <div className="flex items-center justify-between">
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="border-b border-border px-3 py-2 flex items-center justify-between">
                   <span className="text-sm font-semibold text-foreground">Session Breakdown</span>
                   <span className="text-[10px] text-muted-foreground">
                     {sessionSnapshot.packetCount.toLocaleString()} packets · {relTime(Math.floor(rawPacketStatsSession.sessionStartedAt / 1000))}
                   </span>
                 </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 p-3 md:grid-cols-2">
                   <HBarSection
                     title="Packet Types"
                     items={sessionSnapshot.payloadBreakdown}
@@ -859,91 +981,100 @@ const resolvedStrongest = useMemo(() =>
             {/* ── Neighbors ── */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {/* Most active */}
-              <div className="rounded-lg border border-border bg-card p-3">
-                <SectionTitle>Direct Neighbors — Most Active</SectionTitle>
-                <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by packet count.</p>
-                {resolvedMostActive.length === 0 ? (
-                  <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors heard yet</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {resolvedMostActive.map((n) => (
-                      <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
-                        <div className="min-w-0">
-                          <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
-                          <div className="text-[10px] text-muted-foreground">{n.count.toLocaleString()} packets</div>
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="border-b border-border px-3 py-2">
+                  <span className="text-sm font-semibold text-foreground">Direct Neighbors — Most Active</span>
+                </div>
+                <div className="p-3">
+                  <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by packet count.</p>
+                  {resolvedMostActive.length === 0 ? (
+                    <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors heard yet</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {resolvedMostActive.map((n) => (
+                        <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
+                            <div className="text-[10px] text-muted-foreground">{n.count.toLocaleString()} packets</div>
+                          </div>
+                          <span className="flex-shrink-0 text-xs text-muted-foreground">{fmtRssi(n.bestRssi)}</span>
                         </div>
-                        <span className="flex-shrink-0 text-xs text-muted-foreground">{fmtRssi(n.bestRssi)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Strongest signal */}
-              <div className="rounded-lg border border-border bg-card p-3">
-                <SectionTitle>Direct Neighbors — Strongest Signal</SectionTitle>
-                <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by best RSSI.</p>
-                {resolvedStrongest.length === 0 ? (
-                  <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors with RSSI data yet</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {resolvedStrongest.map((n) => (
-                      <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
-                        <div className="min-w-0">
-                          <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
-                          <div className="text-[10px] text-muted-foreground">{relTime(n.lastSeen)}</div>
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="border-b border-border px-3 py-2">
+                  <span className="text-sm font-semibold text-foreground">Direct Neighbors — Strongest Signal</span>
+                </div>
+                <div className="p-3">
+                  <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by best RSSI.</p>
+                  {resolvedStrongest.length === 0 ? (
+                    <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors with RSSI data yet</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {resolvedStrongest.map((n) => (
+                        <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
+                            <div className="text-[10px] text-muted-foreground">{relTime(n.lastSeen)}</div>
+                          </div>
+                          <span className="flex-shrink-0 text-xs font-medium text-foreground">{fmtRssi(n.bestRssi)}</span>
                         </div>
-                        <span className="flex-shrink-0 text-xs font-medium text-foreground">{fmtRssi(n.bestRssi)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
             {/* ── Details ── */}
-            <div className="rounded-lg border border-border bg-card p-3">
-              <SectionTitle>Details</SectionTitle>
-              <KV label="ID" value={config.public_key} mono />
-              <KV label="Frequency" value={`${config.radio.freq} MHz`} />
-              <KV label="Bandwidth" value={`${config.radio.bw} kHz`} />
-              <KV label="Spreading Factor" value={`SF${config.radio.sf}`} />
-              <KV label="Coding Rate" value={`CR${config.radio.cr}`} />
-              <KV label="TX Power" value={`${config.tx_power} dBm (max ${config.max_tx_power} dBm)`} />
-              <KV label="Path Hash Mode" value={config.path_hash_mode === 0 ? '1-byte' : config.path_hash_mode === 1 ? '2-byte' : '3-byte'} />
-              {config.lat != null && config.lon != null && <KV label="Location" value={`${config.lat.toFixed(5)}, ${config.lon.toFixed(5)}`} />}
-              {health?.radio_device_info?.model && <KV label="Model" value={health.radio_device_info.model} />}
-              {health?.radio_device_info?.firmware_version && <KV label="Firmware" value={health.radio_device_info.firmware_version} mono />}
-              {health?.connection_info && <KV label="Connection" value={health.connection_info} mono />}
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <div className="border-b border-border px-3 py-2">
+                <span className="text-sm font-semibold text-foreground">Details</span>
+              </div>
+              <div className="p-3">
+                <KV label="ID" value={config.public_key} mono />
+                <KV label="Frequency" value={`${config.radio.freq} MHz`} />
+                <KV label="Bandwidth" value={`${config.radio.bw} kHz`} />
+                <KV label="Spreading Factor" value={`SF${config.radio.sf}`} />
+                <KV label="Coding Rate" value={`CR${config.radio.cr}`} />
+                <KV label="TX Power" value={`${config.tx_power} dBm (max ${config.max_tx_power} dBm)`} />
+                <KV label="Path Hash Mode" value={config.path_hash_mode === 0 ? '1-byte' : config.path_hash_mode === 1 ? '2-byte' : '3-byte'} />
+                {config.lat != null && config.lon != null && <KV label="Location" value={`${config.lat.toFixed(5)}, ${config.lon.toFixed(5)}`} />}
+                {health?.radio_device_info?.model && <KV label="Model" value={health.radio_device_info.model} />}
+                {health?.radio_device_info?.firmware_version && <KV label="Firmware" value={health.radio_device_info.firmware_version} mono />}
+                {health?.connection_info && <KV label="Connection" value={health.connection_info} mono />}
+              </div>
             </div>
 
-            {/* ── More toggle ── */}
-            <button onClick={() => setShowMore((p) => !p)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card py-2 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground">
-              {showMore ? 'Less' : 'More'}
-              <svg className={`h-3.5 w-3.5 transition-transform ${showMore ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {showMore && stats && (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <SectionTitle>Network Totals</SectionTitle>
-                  <KV label="Total Packets" value={stats.total_packets.toLocaleString()} />
-                  <KV label="Decrypted" value={`${stats.decrypted_packets.toLocaleString()} (${stats.total_packets > 0 ? Math.round(stats.decrypted_packets / stats.total_packets * 100) : 0}%)`} />
-                  <KV label="Undecrypted" value={stats.undecrypted_packets.toLocaleString()} />
-                  <KV label="Direct Messages" value={stats.total_dms.toLocaleString()} />
-                  <KV label="Channel Messages" value={stats.total_channel_messages.toLocaleString()} />
-                  <KV label="Sent" value={stats.total_outgoing.toLocaleString()} />
-                  <KV label="Contacts" value={stats.contact_count} />
-                  <KV label="Repeaters" value={stats.repeater_count} />
-                  <KV label="Channels" value={stats.channel_count} />
+            {stats && (
+              <>
+                <div className="rounded-lg border border-border bg-card overflow-hidden">
+                  <div className="border-b border-border px-3 py-2">
+                    <span className="text-sm font-semibold text-foreground">Network Totals</span>
+                  </div>
+                  <div className="p-3">
+                    <KV label="Total Packets" value={stats.total_packets.toLocaleString()} />
+                    <KV label="Decrypted" value={`${stats.decrypted_packets.toLocaleString()} (${stats.total_packets > 0 ? Math.round(stats.decrypted_packets / stats.total_packets * 100) : 0}%)`} />
+                    <KV label="Undecrypted" value={stats.undecrypted_packets.toLocaleString()} />
+                    <KV label="Direct Messages" value={stats.total_dms.toLocaleString()} />
+                    <KV label="Channel Messages" value={stats.total_channel_messages.toLocaleString()} />
+                    <KV label="Sent" value={stats.total_outgoing.toLocaleString()} />
+                    <KV label="Contacts" value={stats.contact_count} />
+                    <KV label="Repeaters" value={stats.repeater_count} />
+                    <KV label="Channels" value={stats.channel_count} />
+                  </div>
                 </div>
 
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <SectionTitle>Nodes Heard</SectionTitle>
-                  <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-border bg-card overflow-hidden">
+                  <div className="border-b border-border px-3 py-2">
+                    <span className="text-sm font-semibold text-foreground">Nodes Heard</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 p-3">
                     {[
                       { label: 'Last Hour', c: stats.contacts_heard.last_hour, r: stats.repeaters_heard.last_hour },
                       { label: 'Last 24h', c: stats.contacts_heard.last_24_hours, r: stats.repeaters_heard.last_24_hours },
@@ -959,9 +1090,11 @@ const resolvedStrongest = useMemo(() =>
                 </div>
 
                 {stats.busiest_channels_24h.length > 0 && (
-                  <div className="rounded-lg border border-border bg-card p-3">
-                    <SectionTitle>Busiest Channels (last 24h)</SectionTitle>
-                    <div className="space-y-1">
+                  <div className="rounded-lg border border-border bg-card overflow-hidden">
+                    <div className="border-b border-border px-3 py-2">
+                      <span className="text-sm font-semibold text-foreground">Busiest Channels (last 24h)</span>
+                    </div>
+                    <div className="p-3 space-y-1">
                       {stats.busiest_channels_24h.map((ch) => {
                         const maxCount = stats.busiest_channels_24h[0].message_count;
                         const pct = maxCount > 0 ? (ch.message_count / maxCount) * 100 : 0;
@@ -980,14 +1113,18 @@ const resolvedStrongest = useMemo(() =>
                 )}
 
                 {stats.path_hash_width_24h.total_packets > 0 && (
-                  <div className="rounded-lg border border-border bg-card p-3">
-                    <SectionTitle>Path Hash Width (last 24h)</SectionTitle>
-                    <KV label="1-byte hops" value={`${stats.path_hash_width_24h.single_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.single_byte.toLocaleString()} pkts`} />
-                    <KV label="2-byte hops" value={`${stats.path_hash_width_24h.double_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.double_byte.toLocaleString()} pkts`} />
-                    <KV label="3-byte hops" value={`${stats.path_hash_width_24h.triple_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.triple_byte.toLocaleString()} pkts`} />
+                  <div className="rounded-lg border border-border bg-card overflow-hidden">
+                    <div className="border-b border-border px-3 py-2">
+                      <span className="text-sm font-semibold text-foreground">Path Hash Width (last 24h)</span>
+                    </div>
+                    <div className="p-3">
+                      <KV label="1-byte hops" value={`${stats.path_hash_width_24h.single_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.single_byte.toLocaleString()} pkts`} />
+                      <KV label="2-byte hops" value={`${stats.path_hash_width_24h.double_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.double_byte.toLocaleString()} pkts`} />
+                      <KV label="3-byte hops" value={`${stats.path_hash_width_24h.triple_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.triple_byte.toLocaleString()} pkts`} />
+                    </div>
                   </div>
                 )}
-              </div>
+              </>
             )}
 
             <p className="pb-2 text-center text-[10px] text-muted-foreground">

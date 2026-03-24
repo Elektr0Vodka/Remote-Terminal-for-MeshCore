@@ -180,10 +180,9 @@ export function useRealtimeAppState({
 		  .then((r) => r.json())
 		  .then((data: RawPacket[]) => {
 				if (Array.isArray(data) && data.length > 0) {
-			   setRawPackets(data);
-			   data.forEach((packet) => recordRawPacketObservation?.(packet));
-			   } else {
-			   setRawPackets([]);
+                setRawPackets(data);
+                } else {
+			    setRawPackets([]);
 			}
        })
        .catch(() => setRawPackets([]));
