@@ -216,6 +216,10 @@ app/
 
 ### Packets
 - `GET /packets/undecrypted/count`
+- `GET /packets/recent` — most recent raw packets (default 500, max 2000), oldest-first; seeds the packet feed on client mount/reconnect
+- `GET /packets/timeseries` — time-binned packet counts, byte totals, signal averages, and payload-type breakdowns (`start_ts`, `end_ts`, `bin_count`); used by MyNodeView for historical chart windows
+- `GET /packets/historical-stats` — aggregate window stats: totals, rates, signal averages, type breakdown, top neighbors from `contact_advert_paths`; used by MyNodeView for DB-backed stat cards
+- `GET /packets/mesh-health` — advert-frequency health for all contacts heard in a window; flags HIGH (>8 adverts/window) and MEDIUM (>2 adverts/window) nodes; used by MeshHealthView
 - `POST /packets/decrypt/historical`
 - `POST /packets/maintenance`
 

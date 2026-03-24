@@ -348,6 +348,10 @@ All endpoints are prefixed with `/api` (e.g., `/api/health`).
 | POST | `/api/messages/channel` | Send channel message |
 | POST | `/api/messages/channel/{message_id}/resend` | Resend channel message (default: byte-perfect within 30s; `?new_timestamp=true`: fresh timestamp, no time limit, creates new message row) |
 | GET | `/api/packets/undecrypted/count` | Count of undecrypted packets |
+| GET | `/api/packets/recent` | Most recent raw packets (default 500, max 2000), oldest-first — used to seed the packet feed on mount |
+| GET | `/api/packets/timeseries` | Time-binned packet counts, byte totals, signal averages, and type breakdowns for a window (`start_ts`, `end_ts`, `bin_count`) |
+| GET | `/api/packets/historical-stats` | Aggregate DB stats for a window: totals, signal averages, type breakdown, top neighbors from `contact_advert_paths` |
+| GET | `/api/packets/mesh-health` | Advert-frequency health per contact in a window; flags HIGH (>8 adverts) and MEDIUM (>2 adverts) nodes |
 | POST | `/api/packets/decrypt/historical` | Decrypt stored packets |
 | POST | `/api/packets/maintenance` | Delete old packets and vacuum |
 | GET | `/api/read-state/unreads` | Server-computed unread counts, mentions, last message times, and `last_read_ats` boundaries |
@@ -474,7 +478,7 @@ Byte-perfect channel retries are user-triggered via `POST /api/messages/channel/
 
 The vendored MeshCore Python reader's `LOG_DATA` advert path assumes the decoded advert payload always contains at least 101 bytes of advert body and reads the flags byte with `pk_buf.read(1)[0]` without a length guard. If a malformed or truncated RF log frame slips through, `MessageReader.handle_rx()` can fail with `IndexError: index out of range` from `meshcore/reader.py` while parsing payload type `0x04` (advert).
 
-This does not indicate database corruption or a message-store bug. It is a parser-hardening gap in `meshcore_py`: the reader does not fully mirror firmware-side packet/path validation before attempting advert decode. The practical effect is usually a one-off asyncio task failure for that packet while later packets continue processing normally.
+This does not indicate database corruption or a message-store bug. It is a parser-hardening gap in `meshcore_py`. The `_capture_handle_rx` wrapper in `services/radio_lifecycle.py` now catches `IndexError`/`ValueError` from the reader and logs at DEBUG level so the error no longer surfaces as an unhandled task exception. Later packets continue processing normally.
 
 ### Channel-message dedup intentionally treats same-name/same-text/same-second channel sends as indistinguishable because they are
 
