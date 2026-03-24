@@ -91,7 +91,17 @@ async def run_post_connect_setup(radio_manager) -> None:
 
                     if len(data) > 0 and data[0] == PacketType.DEVICE_INFO.value:
                         _captured_frame.append(bytes(data))
-                    return await _original_handle_rx(data)
+                    try:
+                        return await _original_handle_rx(data)
+                    except (IndexError, ValueError) as exc:
+                        # meshcore_py reader can crash on malformed/truncated advert
+                        # packets (path byte read without length guard). Log and
+                        # continue — later packets are unaffected.
+                        logger.debug(
+                            "meshcore reader failed to parse %d-byte packet: %s",
+                            len(data),
+                            exc,
+                        )
 
                 reader.handle_rx = _capture_handle_rx
                 radio_manager.device_info_loaded = False
