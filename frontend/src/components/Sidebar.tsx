@@ -764,7 +764,7 @@ export function Sidebar({
       icon: <LockOpen className="h-4 w-4" />,
       label: (
         <>
-          {showCracker ? 'Hide' : 'Show'} Room Finder
+          {showCracker ? 'Hide' : 'Show'} Channel Finder
           <span className={cn('ml-1 text-[11px]', crackerRunning ? 'text-primary' : 'text-muted-foreground')}>
             ({crackerRunning ? 'running' : 'idle'})
           </span>
@@ -775,8 +775,6 @@ export function Sidebar({
   };
 
   const toolRows = !query ? toolOrder.map((key) => toolDefinitions[key]) : [];
-
-  // ── Section header ──────────────────────────────────────────────────────────
 
   const renderSectionHeader = (
     title: string,

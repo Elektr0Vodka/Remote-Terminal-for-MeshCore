@@ -7,7 +7,7 @@ Backend server + browser interface for MeshCore mesh radio networks. Connect you
 * Run multiple Python bots that can analyze messages and respond to DMs and channels
 * Monitor unlimited contacts and channels (radio limits don't apply -- packets are decrypted server-side)
 * Access your radio remotely over your network or VPN
-* Search for hashtag room names for channels you don't have keys for yet
+* Search for hashtag channel names for channels you don't have keys for yet
 * Forward packets to MQTT, LetsMesh, MeshRank, SQS, Apprise, etc.
 * Use the more recent 1.14 firmwares which support multibyte pathing
 * Visualize the mesh as a map or node set, view repeater stats, and more!
@@ -40,8 +40,6 @@ If you plan to contribute, read [CONTRIBUTING.md](CONTRIBUTING.md).
 - Node.js LTS or current (20, 22, 24, 25) if you're not using a prebuilt release
 - [UV](https://astral.sh/uv) package manager: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - MeshCore radio connected via USB serial, TCP, or BLE
-
-If you are on a low-resource system and do not want to build the frontend locally, download the release zip named `remoteterm-prebuilt-frontend-vX.X.X-<short hash>.zip`. That bundle includes `frontend/prebuilt`, so you can run the app without doing a frontend build from source.
 
 <details>
 <summary>Finding your serial port</summary>
@@ -110,6 +108,8 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 The release bundle includes `frontend/prebuilt`, so it does not require a local frontend build.
+
+Alternatively, if you have already cloned the repo, you can fetch just the prebuilt frontend into your working tree without downloading the full release zip via `python3 scripts/fetch_prebuilt_frontend.py`.
 
 ## Path 2: Docker
 
