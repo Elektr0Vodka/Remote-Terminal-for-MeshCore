@@ -53,14 +53,16 @@ interface TimeWindow {
 }
 
 const TIME_WINDOWS: TimeWindow[] = [
+  { key: '30m',  label: '30m',  hours: 0.5   },
   { key: '1h',  label: '1h',  hours: 1   },
+  { key: '3h',  label: '3h',  hours: 3   },
   { key: '6h',  label: '6h',  hours: 6   },
   { key: '12h', label: '12h', hours: 12  },
   { key: '24h', label: '24h', hours: 24  },
   { key: '7d',  label: '7d',  hours: 168 },
 ];
 
-const DEFAULT_WINDOW = TIME_WINDOWS[2]; // 12h default
+const DEFAULT_WINDOW = TIME_WINDOWS[0]; // 0 = 30m default
 const PAGE_SIZE = 50;
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -174,9 +176,9 @@ export function MeshHealthView({ config }: Props) {
         config?.lat != null && config?.lon != null && n.lat != null && n.lon != null
           ? haversineKm(config.lat, config.lon, n.lat, n.lon)
           : null,
-      isActive: n.last_seen != null && nowSecLocal - n.last_seen < 3600,
+      isActive: n.last_seen != null && nowSecLocal - n.last_seen < selectedWindow.hours * 3600,
     }));
-  }, [data, config]);
+  }, [data, config, selectedWindow]);
 
   const sorted = useMemo(() => {
     const arr = [...contactsWithDist];

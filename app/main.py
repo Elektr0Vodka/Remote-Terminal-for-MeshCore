@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -40,6 +41,9 @@ from app.routers import (
 from app.security import add_optional_basic_auth_middleware
 from app.services.radio_runtime import radio_runtime as radio_manager
 from app.version_info import get_app_build_info
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 setup_logging()
 logger = logging.getLogger(__name__)
