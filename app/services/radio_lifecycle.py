@@ -4,6 +4,35 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
+# Patch MessageReader.handle_rx at class level so every instance - including
+# those created on reconnect - is protected from IndexError/ValueError thrown
+# by meshcore_py when parsing malformed or truncated advert packets.
+# serial_cx.py and tcp_cx.py both call:
+#   asyncio.create_task(self.reader.handle_rx(self.inframe))
+# which means an uncaught exception escapes as an unretieved Task error.
+# Patching the class ensures the guard is always in place.
+import struct
+
+try:
+    from meshcore.reader import MessageReader as _MessageReader
+
+    _original_cls_handle_rx = _MessageReader.handle_rx
+
+    async def _safe_handle_rx(self, data: bytearray) -> None:  # type: ignore[misc]
+        try:
+            return await _original_cls_handle_rx(self, data)
+        except (IndexError, ValueError, struct.error) as exc:
+            logger.debug(
+                "meshcore reader failed to parse %d-byte packet (malformed advert): %s",
+                len(data),
+                exc,
+            )
+
+    _MessageReader.handle_rx = _safe_handle_rx  # type: ignore[method-assign]
+    logger.debug("Applied class-level guard to MessageReader.handle_rx")
+except Exception as _patch_exc:  # noqa: BLE001
+    logger.warning("Could not patch MessageReader.handle_rx: %s", _patch_exc)
+
 POST_CONNECT_SETUP_TIMEOUT_SECONDS = 300
 POST_CONNECT_SETUP_MAX_ATTEMPTS = 2
 
@@ -91,17 +120,7 @@ async def run_post_connect_setup(radio_manager) -> None:
 
                     if len(data) > 0 and data[0] == PacketType.DEVICE_INFO.value:
                         _captured_frame.append(bytes(data))
-                    try:
-                        return await _original_handle_rx(data)
-                    except (IndexError, ValueError) as exc:
-                        # meshcore_py reader can crash on malformed/truncated advert
-                        # packets (path byte read without length guard). Log and
-                        # continue — later packets are unaffected.
-                        logger.debug(
-                            "meshcore reader failed to parse %d-byte packet: %s",
-                            len(data),
-                            exc,
-                        )
+                    return await _original_handle_rx(data)
 
                 reader.handle_rx = _capture_handle_rx
                 radio_manager.device_info_loaded = False
