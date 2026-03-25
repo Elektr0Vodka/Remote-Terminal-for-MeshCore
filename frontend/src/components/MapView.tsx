@@ -23,10 +23,10 @@ const CONTACT_TYPE_SENSOR  = 4;
 
 type ContactTypeKey = 'unknown' | 'client' | 'repeater' | 'room' | 'sensor';
 
-const CONTACT_TYPE_CONFIG: Record<ContactTypeKey, { label: string; value: number; emoji: string }> = {
+const CONTACT_TYPE_CONFIG: Record<ContactTypeKey, { label: string; value: number; emoji: string; small?: boolean }> = {
   unknown:  { label: 'Unknown',  value: CONTACT_TYPE_UNKNOWN,  emoji: '❓' },
   client:   { label: 'Client',   value: CONTACT_TYPE_CLIENT,   emoji: '📟' },
-  repeater: { label: 'Repeater', value: CONTACT_TYPE_REPEATER, emoji: '🛜' },
+  repeater: { label: 'Repeater', value: CONTACT_TYPE_REPEATER, emoji: '📶', small: true },
   room:     { label: 'Room',     value: CONTACT_TYPE_ROOM,     emoji: '🏠' },
   sensor:   { label: 'Sensor',   value: CONTACT_TYPE_SENSOR,   emoji: '📡' },
 };
@@ -57,17 +57,154 @@ function getMarkerColor(lastSeen: number | null | undefined): string {
 
 // ─── Emoji DivIcon ────────────────────────────────────────────────────────────
 
-function buildIcon(emoji: string, color: string, focused = false): L.DivIcon {
+type HealthLevel = 'HIGH' | 'MEDIUM' | null;
+
+function buildIcon(emoji: string, color: string, focused = false, health: HealthLevel = null, small = false): L.DivIcon {
+  const w = small ? 20 : 28;
+  const h = small ? 22 : 32;
+  const fontSize = small ? '14px' : '22px';
+  const dotSize = small ? '5px' : '8px';
+  const opacity = small ? 'opacity:0.75;' : '';
+
   const ring = focused
     ? `<div style="position:absolute;inset:-3px;border-radius:50%;border:2px dashed #ffffff;pointer-events:none;"></div>`
     : '';
+  const healthRing = health === 'HIGH'
+    ? `<div style="position:absolute;inset:-5px;border-radius:50%;border:2.5px solid #dc2626;pointer-events:none;"></div>`
+    : health === 'MEDIUM'
+    ? `<div style="position:absolute;inset:-5px;border-radius:50%;border:2px dashed #d97706;pointer-events:none;"></div>`
+    : '';
   const html = `
-    <div style="position:relative;width:28px;height:32px;display:flex;flex-direction:column;align-items:center;gap:1px;">
+    <div style="position:relative;width:${w}px;height:${h}px;display:flex;flex-direction:column;align-items:center;gap:1px;${opacity}">
+      ${healthRing}
       ${ring}
-      <span style="font-size:22px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">${emoji}</span>
-      <span style="width:8px;height:8px;border-radius:50%;background:${color};border:1.5px solid #0f172a;flex-shrink:0;"></span>
+      <span style="font-size:${fontSize};line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));">${emoji}</span>
+      <span style="width:${dotSize};height:${dotSize};border-radius:50%;background:${color};border:1.5px solid #0f172a;flex-shrink:0;"></span>
     </div>`;
-  return L.divIcon({ html, className: '', iconSize: [28, 32], iconAnchor: [14, 32], popupAnchor: [0, -34] });
+  return L.divIcon({ html, className: '', iconSize: [w, h], iconAnchor: [w / 2, h], popupAnchor: [0, -(h + 6)] });
+}
+
+// ─── Map popup with editable notes and owner ID ───────────────────────────────
+
+function MapPopupContent({
+  contact,
+  contacts,
+  cfg,
+  displayName,
+  lastHeardLabel,
+  health,
+}: {
+  contact: import('../types').Contact;
+  contacts: import('../types').Contact[];
+  cfg: { label: string; emoji: string };
+  displayName: string;
+  lastHeardLabel: string;
+  health: HealthLevel;
+}) {
+  const [notes, setNotes] = useState<string>(contact.notes ?? '');
+  const [ownerId, setOwnerId] = useState<string>(contact.owner_id ?? '');
+  const [saving, setSaving] = useState(false);
+  const [savingOwner, setSavingOwner] = useState(false);
+
+  const saveNotes = (value: string) => {
+    if (value === (contact.notes ?? '')) return;
+    setSaving(true);
+    fetch(`/api/contacts/${contact.public_key}/notes`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: value || null }),
+    })
+      .finally(() => setSaving(false));
+  };
+
+  const saveOwnerId = (value: string) => {
+    const trimmed = value.trim().toLowerCase() || null;
+    if (trimmed === (contact.owner_id ?? null)) return;
+    setSavingOwner(true);
+    fetch(`/api/contacts/${contact.public_key}/owner-id`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner_id: trimmed }),
+    })
+      .finally(() => setSavingOwner(false));
+  };
+
+  // Look up the companion contact name if owner_id matches a known contact
+  const ownerContact = useMemo(() => {
+    const id = (contact.owner_id ?? '').toLowerCase();
+    if (!id) return null;
+    return contacts.find((c) => c.public_key.toLowerCase() === id || c.public_key.toLowerCase().startsWith(id)) ?? null;
+  }, [contact.owner_id, contacts]);
+
+  // Also find the companion node that has this contact's key as its owner_id
+  const companionOf = useMemo(() => {
+    const pk = contact.public_key.toLowerCase();
+    return contacts.find((c) => (c.owner_id ?? '').toLowerCase() === pk) ?? null;
+  }, [contact.public_key, contacts]);
+
+  return (
+    <div className="text-sm min-w-[200px]">
+      <div className="font-medium flex items-center gap-1 flex-wrap">
+        <span aria-hidden="true">{cfg.emoji}</span>{displayName}
+        {health === 'HIGH' && (
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-red-100 text-red-700">HIGH ADVERT</span>
+        )}
+        {health === 'MEDIUM' && (
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-yellow-100 text-yellow-700">MED ADVERT</span>
+        )}
+      </div>
+      <div className="text-xs text-gray-500 mt-1">{cfg.label}</div>
+      <div className="text-xs text-gray-500">Last heard: {lastHeardLabel}</div>
+      {contact.first_seen != null && (
+        <div className="text-xs text-gray-400">First heard: {formatTime(contact.first_seen)}</div>
+      )}
+      <div className="text-xs text-gray-400 mt-0.5 font-mono">{contact.lat!.toFixed(5)}, {contact.lon!.toFixed(5)}</div>
+
+      {/* Owner / companion links */}
+      {ownerContact && (
+        <div className="text-xs text-blue-600 mt-1">
+          Owner: <span className="font-medium">{ownerContact.name ?? ownerContact.public_key.slice(0, 12)}</span>
+        </div>
+      )}
+      {companionOf && (
+        <div className="text-xs text-purple-600 mt-1">
+          Companion of: <span className="font-medium">{companionOf.name ?? companionOf.public_key.slice(0, 12)}</span>
+        </div>
+      )}
+
+      {/* Owner ID field */}
+      <div className="mt-2">
+        <div className="text-[10px] text-gray-400 mb-0.5 font-medium uppercase tracking-wide">
+          Owner ID (companion radio) {savingOwner && <span className="normal-case font-normal">(saving...)</span>}
+        </div>
+        <input
+          type="text"
+          value={ownerId}
+          onChange={(e) => setOwnerId(e.target.value)}
+          onBlur={(e) => saveOwnerId(e.target.value)}
+          placeholder="Public key prefix or full key..."
+          className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:border-blue-400 font-mono"
+          style={{ minWidth: '160px' }}
+        />
+      </div>
+
+      {/* Notes field */}
+      <div className="mt-2">
+        <div className="text-[10px] text-gray-400 mb-0.5 font-medium uppercase tracking-wide">
+          Notes {saving && <span className="normal-case font-normal">(saving...)</span>}
+        </div>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={(e) => saveNotes(e.target.value)}
+          placeholder="Add a note..."
+          rows={2}
+          className="w-full resize-none rounded border border-gray-200 px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:border-blue-400"
+          style={{ minWidth: '160px' }}
+        />
+      </div>
+    </div>
+  );
 }
 
 // ─── Custom cluster icon ──────────────────────────────────────────────────────
@@ -257,6 +394,26 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
     [focusedKey, mappableContacts]
   );
 
+  // ── Advert health warnings (for map highlight rings) ─────────────────────
+  const [advertWarnings, setAdvertWarnings] = useState<Map<string, HealthLevel>>(new Map());
+  useEffect(() => {
+    const doFetch = () => {
+      fetch('/api/packets/advert-warnings')
+        .then((r) => r.json() as Promise<{ warnings: Array<{ public_key: string; level: string }> }>)
+        .then((d) => {
+          const m = new Map<string, HealthLevel>();
+          for (const w of d.warnings ?? []) {
+            m.set(w.public_key, w.level as HealthLevel);
+          }
+          setAdvertWarnings(m);
+        })
+        .catch(() => {/* non-critical */});
+    };
+    doFetch();
+    const id = setInterval(doFetch, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Heatmap data — intensity based on packet heard count ─────────────────
   const [heatRawData, setHeatRawData] = useState<{ lat: number; lon: number; count: number }[]>([]);
   const [heatLoading, setHeatLoading] = useState(false);
@@ -305,7 +462,8 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
     const cfg = CONTACT_TYPE_CONFIG[typeKey];
     const color = getMarkerColor(contact.last_seen);
     const focused = contact.public_key === focusedKey;
-    const icon = buildIcon(cfg.emoji, color, focused);
+    const health = advertWarnings.get(contact.public_key) ?? null;
+    const icon = buildIcon(cfg.emoji, color, focused, health, cfg.small ?? false);
     const displayName = contact.name || contact.public_key.slice(0, 12);
     const lastHeardLabel = contact.last_seen != null ? formatTime(contact.last_seen) : 'Never heard by this server';
 
@@ -317,13 +475,14 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
         icon={icon}
       >
         <Popup>
-          <div className="text-sm">
-            <div className="font-medium flex items-center gap-1">
-              <span aria-hidden="true">{cfg.emoji}</span>{displayName}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">{cfg.label} · Last heard: {lastHeardLabel}</div>
-            <div className="text-xs text-gray-400 mt-1 font-mono">{contact.lat!.toFixed(5)}, {contact.lon!.toFixed(5)}</div>
-          </div>
+          <MapPopupContent
+            contact={contact}
+            contacts={contacts}
+            cfg={cfg}
+            displayName={displayName}
+            lastHeardLabel={lastHeardLabel}
+            health={health}
+          />
         </Popup>
       </Marker>
     );

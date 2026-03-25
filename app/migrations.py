@@ -365,6 +365,26 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_047_add_raw_packet_signal_columns(conn)
         await set_version(conn, 47)
         applied += 1
+    if version < 48:
+        logger.info("Applying migration 48: add show_warning_ticker to app_settings")
+        await _migrate_048_add_show_warning_ticker(conn)
+        await set_version(conn, 48)
+        applied += 1
+    if version < 49:
+        logger.info("Applying migration 49: add notes to contacts")
+        await _migrate_049_add_contact_notes(conn)
+        await set_version(conn, 49)
+        applied += 1
+    if version < 50:
+        logger.info("Applying migration 50: add best_rssi/best_snr to contact_advert_paths")
+        await _migrate_050_add_advert_path_signal(conn)
+        await set_version(conn, 50)
+        applied += 1
+    if version < 51:
+        logger.info("Applying migration 51: add owner_id to contacts")
+        await _migrate_051_add_contact_owner_id(conn)
+        await set_version(conn, 51)
+        applied += 1
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -2899,4 +2919,64 @@ async def _migrate_047_add_raw_packet_signal_columns(conn: aiosqlite.Connection)
                 logger.debug("raw_packets.%s already exists, skipping", column)
             else:
                 raise
+    await conn.commit()
+
+async def _migrate_048_add_show_warning_ticker(conn: aiosqlite.Connection) -> None:
+    """Add show_warning_ticker column to app_settings (default: enabled)."""
+    try:
+        await conn.execute(
+            "ALTER TABLE app_settings ADD COLUMN show_warning_ticker INTEGER NOT NULL DEFAULT 1"
+        )
+    except Exception as e:
+        if "duplicate column name" in str(e).lower():
+            logger.debug("app_settings.show_warning_ticker already exists, skipping")
+        else:
+            raise
+    await conn.commit()
+
+
+async def _migrate_049_add_contact_notes(conn: aiosqlite.Connection) -> None:
+    """Add notes column to contacts for user-editable map node notes."""
+    try:
+        await conn.execute("ALTER TABLE contacts ADD COLUMN notes TEXT")
+    except Exception as e:
+        if "duplicate column name" in str(e).lower():
+            logger.debug("contacts.notes already exists, skipping")
+        else:
+            raise
+    await conn.commit()
+
+
+async def _migrate_050_add_advert_path_signal(conn: aiosqlite.Connection) -> None:
+    """Add best_rssi and best_snr columns to contact_advert_paths.
+
+    These track the strongest signal ever observed on each unique advert path,
+    allowing historical signal quality analysis and map display.
+    """
+    for col, col_type in [("best_rssi", "REAL"), ("best_snr", "REAL")]:
+        try:
+            await conn.execute(
+                f"ALTER TABLE contact_advert_paths ADD COLUMN {col} {col_type}"
+            )
+        except Exception as e:
+            if "duplicate column name" in str(e).lower():
+                logger.debug("contact_advert_paths.%s already exists, skipping", col)
+            else:
+                raise
+    await conn.commit()
+
+
+async def _migrate_051_add_contact_owner_id(conn: aiosqlite.Connection) -> None:
+    """Add owner_id column to contacts for companion/owner radio identification.
+
+    Stores the public key of the node that owns this contact (e.g. a companion
+    app paired with a radio).  Used by the map to auto-resolve companion names.
+    """
+    try:
+        await conn.execute("ALTER TABLE contacts ADD COLUMN owner_id TEXT")
+    except Exception as e:
+        if "duplicate column name" in str(e).lower():
+            logger.debug("contacts.owner_id already exists, skipping")
+        else:
+            raise
     await conn.commit()

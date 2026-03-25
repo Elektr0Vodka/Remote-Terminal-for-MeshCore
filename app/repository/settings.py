@@ -28,7 +28,7 @@ class AppSettingsRepository:
             SELECT max_radio_contacts, favorites, auto_decrypt_dm_on_advert,
                    sidebar_sort_order, last_message_times, preferences_migrated,
                    advert_interval, last_advert_time, flood_scope,
-                   blocked_keys, blocked_names
+                   blocked_keys, blocked_names, show_warning_ticker
             FROM app_settings WHERE id = 1
             """
         )
@@ -97,6 +97,7 @@ class AppSettingsRepository:
             flood_scope=row["flood_scope"] or "",
             blocked_keys=blocked_keys,
             blocked_names=blocked_names,
+            show_warning_ticker=bool(row["show_warning_ticker"] if row["show_warning_ticker"] is not None else 1),
         )
 
     @staticmethod
@@ -112,6 +113,7 @@ class AppSettingsRepository:
         flood_scope: str | None = None,
         blocked_keys: list[str] | None = None,
         blocked_names: list[str] | None = None,
+        show_warning_ticker: bool | None = None,
     ) -> AppSettings:
         """Update app settings. Only provided fields are updated."""
         updates = []
@@ -161,6 +163,10 @@ class AppSettingsRepository:
         if blocked_names is not None:
             updates.append("blocked_names = ?")
             params.append(json.dumps(blocked_names))
+
+        if show_warning_ticker is not None:
+            updates.append("show_warning_ticker = ?")
+            params.append(1 if show_warning_ticker else 0)
 
         if updates:
             query = f"UPDATE app_settings SET {', '.join(updates)} WHERE id = 1"

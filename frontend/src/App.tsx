@@ -483,6 +483,7 @@ export function App() {
         );
       }
     },
+    onSelectConversation: handleSelectConversationWithTargetReset,
   };
   const searchProps = {
     contacts,
@@ -605,6 +606,7 @@ export function App() {
         newMessageModalProps={newMessageModalProps}
         contactInfoPaneProps={contactInfoPaneProps}
         channelInfoPaneProps={channelInfoPaneProps}
+        showWarningTicker={appSettings?.show_warning_ticker ?? true}
       />
     </DistanceUnitProvider>
   );

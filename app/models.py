@@ -98,6 +98,8 @@ class Contact(BaseModel):
     effective_route_source: Literal["override", "direct", "flood"] = "flood"
     direct_route: ContactRoute | None = None
     route_override: ContactRoute | None = None
+    notes: str | None = None
+    owner_id: str | None = None
 
     def model_post_init(self, __context) -> None:
         direct_path, direct_path_len, direct_path_hash_mode = normalize_contact_route(
@@ -246,6 +248,12 @@ class ContactAdvertPath(BaseModel):
     first_seen: int = Field(description="Unix timestamp of first observation")
     last_seen: int = Field(description="Unix timestamp of most recent observation")
     heard_count: int = Field(description="Number of times this unique path was heard")
+    best_rssi: float | None = Field(
+        default=None, description="Best (highest) RSSI observed on this path, in dBm"
+    )
+    best_snr: float | None = Field(
+        default=None, description="Best (highest) SNR observed on this path, in dB"
+    )
 
 
 class ContactAdvertPathSummary(BaseModel):
@@ -782,6 +790,10 @@ class AppSettings(BaseModel):
     blocked_names: list[str] = Field(
         default_factory=list,
         description="Display names whose messages are hidden from the UI",
+    )
+    show_warning_ticker: bool = Field(
+        default=True,
+        description="Show the scrolling advert-health warning ticker in the top bar",
     )
 
 

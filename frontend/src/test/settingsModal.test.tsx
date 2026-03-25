@@ -63,6 +63,7 @@ const baseSettings: AppSettings = {
   flood_scope: '',
   blocked_keys: [],
   blocked_names: [],
+  show_warning_ticker: true,
 };
 
 function renderModal(overrides?: {

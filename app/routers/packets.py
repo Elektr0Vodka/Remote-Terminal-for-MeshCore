@@ -86,8 +86,15 @@ class HistoricalNeighbor(BaseModel):
     lat: float | None
     lon: float | None
     min_path_len: int | None
- 
- 
+    best_rssi: float | None = None
+
+
+class HistoricalBusiestChannel(BaseModel):
+    channel_key: str
+    channel_name: str | None
+    message_count: int
+
+
 class HistoricalStatsResponse(BaseModel):
     start_ts: int
     end_ts: int
@@ -106,6 +113,8 @@ class HistoricalStatsResponse(BaseModel):
     # Neighbors from contact_advert_paths (always available)
     neighbors_by_count: list[HistoricalNeighbor]
     neighbors_by_signal: list[HistoricalNeighbor]
+    # Busiest channels in the window (from messages table)
+    busiest_channels: list[HistoricalBusiestChannel] = Field(default_factory=list)
 
 
 def _bad_request(detail: str) -> HTTPException:
@@ -635,14 +644,15 @@ async def get_historical_stats(
                 c.lon,
                 COALESCE(SUM(cap.heard_count), 0) AS heard_count,
                 MIN(cap.first_seen) AS first_seen,
-                MIN(cap.path_len) AS min_path_len
+                MIN(cap.path_len) AS min_path_len,
+                MAX(cap.best_rssi) AS best_rssi
             FROM contacts c
             LEFT JOIN contact_advert_paths cap ON cap.public_key = c.public_key
                 AND cap.last_seen >= ? AND cap.last_seen < ?
             WHERE c.last_seen >= ? AND c.last_seen < ?
             GROUP BY c.public_key
             HAVING heard_count > 0
-            ORDER BY c.last_seen DESC
+            ORDER BY heard_count DESC
             LIMIT 50
             """,
             (start_ts, end_ts, start_ts, end_ts),
@@ -658,57 +668,79 @@ async def get_historical_stats(
                     lat=row["lat"],
                     lon=row["lon"],
                     min_path_len=row["min_path_len"],
+                    best_rssi=float(row["best_rssi"]) if row["best_rssi"] is not None else None,
                 )
                 for row in rows
             ]
- 
-        # Top by signal — contacts with best avg RSSI in window
-        # Only available if migration 47 columns present
+
+        # Top by signal — contacts with best RSSI from stored advert path signal data
         neighbors_by_signal: list[HistoricalNeighbor] = []
-        if has_signal_cols:
-            async with conn.execute(
-                """
-                SELECT
-                    c.public_key,
-                    c.name,
-                    c.last_seen,
-                    c.lat,
-                    c.lon,
-                    COALESCE(SUM(cap.heard_count), 0) AS heard_count,
-                    MAX(rp.rssi) AS best_rssi
-                FROM contacts c
-                JOIN raw_packets rp ON rp.timestamp >= ? AND rp.timestamp < ?
-                    AND rp.rssi IS NOT NULL
-                LEFT JOIN contact_advert_paths cap ON cap.public_key = c.public_key
-                    AND cap.last_seen >= ? AND cap.last_seen < ?
-                WHERE c.last_seen >= ? AND c.last_seen < ?
-                  AND (
-                    -- Match by first byte of public key against packet payload
-                    -- This is approximate; exact matching needs decoder
-                    c.public_key IS NOT NULL
-                  )
-                GROUP BY c.public_key
-                HAVING heard_count > 0
-                ORDER BY best_rssi DESC
-                LIMIT 20
-                """,
-                (start_ts, end_ts, start_ts, end_ts, start_ts, end_ts),
-            ) as cur:
-                rows = await cur.fetchall()
-                neighbors_by_signal = [
-                    HistoricalNeighbor(
-                        public_key=row["public_key"],
-                        name=row["name"],
-                        heard_count=int(row["heard_count"]),
-                        first_seen=None,
-                        last_seen=row["last_seen"],
-                        lat=row["lat"],
-                        lon=row["lon"],
-                        min_path_len=None,
-                    )
-                    for row in rows
-                ]
- 
+        async with conn.execute(
+            """
+            SELECT
+                c.public_key,
+                c.name,
+                c.last_seen,
+                c.lat,
+                c.lon,
+                COALESCE(SUM(cap.heard_count), 0) AS heard_count,
+                MAX(cap.best_rssi) AS best_rssi
+            FROM contacts c
+            JOIN contact_advert_paths cap ON cap.public_key = c.public_key
+                AND cap.last_seen >= ? AND cap.last_seen < ?
+                AND cap.best_rssi IS NOT NULL
+            WHERE c.last_seen >= ? AND c.last_seen < ?
+            GROUP BY c.public_key
+            HAVING heard_count > 0
+            ORDER BY best_rssi DESC
+            LIMIT 20
+            """,
+            (start_ts, end_ts, start_ts, end_ts),
+        ) as cur:
+            rows = await cur.fetchall()
+            neighbors_by_signal = [
+                HistoricalNeighbor(
+                    public_key=row["public_key"],
+                    name=row["name"],
+                    heard_count=int(row["heard_count"]),
+                    first_seen=None,
+                    last_seen=row["last_seen"],
+                    lat=row["lat"],
+                    lon=row["lon"],
+                    min_path_len=None,
+                    best_rssi=float(row["best_rssi"]) if row["best_rssi"] is not None else None,
+                )
+                for row in rows
+            ]
+
+        # Busiest channels in the window (from messages table)
+        busiest_channels: list[HistoricalBusiestChannel] = []
+        async with conn.execute(
+            """
+            SELECT
+                m.conversation_key,
+                ch.name AS channel_name,
+                COUNT(*) AS message_count
+            FROM messages m
+            LEFT JOIN channels ch ON ch.key = m.conversation_key
+            WHERE m.type = 'CHAN'
+              AND m.received_at >= ? AND m.received_at < ?
+            GROUP BY m.conversation_key
+            ORDER BY message_count DESC
+            LIMIT 10
+            """,
+            (start_ts, end_ts),
+        ) as cur:
+            rows = await cur.fetchall()
+            busiest_channels = [
+                HistoricalBusiestChannel(
+                    channel_key=row["conversation_key"],
+                    channel_name=row["channel_name"],
+                    message_count=int(row["message_count"]),
+                )
+                for row in rows
+            ]
+
     return HistoricalStatsResponse(
         start_ts=start_ts,
         end_ts=end_ts,
@@ -723,6 +755,7 @@ async def get_historical_stats(
         has_type_data=has_type_data,
         neighbors_by_count=neighbors_by_count,
         neighbors_by_signal=neighbors_by_signal,
+        busiest_channels=busiest_channels,
     )
 
 
@@ -854,6 +887,74 @@ async def get_mesh_health(
         alerts=alerts,
         contacts=contacts,
     )
+
+
+@router.get("/first-timestamp")
+async def get_first_packet_timestamp() -> dict:
+    """Return the Unix timestamp of the very first packet ever stored in the DB.
+
+    Used by the Packet Feed page to show a true 'Monitoring since' time
+    instead of the current process/session start time.
+    Returns { first_timestamp: int | null } — null when the DB is empty.
+    """
+    async with aiosqlite.connect(db.db_path) as conn:
+        async with conn.execute("SELECT MIN(timestamp) FROM raw_packets") as cur:
+            row = await cur.fetchone()
+    first_ts = row[0] if row and row[0] is not None else None
+    return {"first_timestamp": first_ts}
+
+
+@router.get("/advert-warnings")
+async def get_advert_warnings() -> dict:
+    """Return a lightweight list of active advert-health warnings (last 1 h).
+
+    Used by the top-bar warning ticker.  Only HIGH (> 8) and MEDIUM (> 2)
+    advert-count nodes are included.  The query is intentionally cheap —
+    a single aggregation over contact_advert_paths with a 1-hour lookback.
+    """
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        end_ts = int(__import__("time").time())
+        start_ts = end_ts - 3600  # last 1 hour
+        async with conn.execute(
+            """
+            SELECT
+                c.public_key,
+                c.name,
+                c.lat,
+                c.lon,
+                COALESCE(SUM(
+                    CASE WHEN cap.first_seen >= :start_ts
+                         THEN cap.heard_count
+                         ELSE 1
+                    END
+                ), 0) AS advert_count
+            FROM contacts c
+            JOIN contact_advert_paths cap ON cap.public_key = c.public_key
+                AND cap.last_seen >= :start_ts
+                AND cap.last_seen < :end_ts
+            GROUP BY c.public_key
+            HAVING advert_count > 2
+            ORDER BY advert_count DESC
+            LIMIT 50
+            """,
+            {"start_ts": start_ts, "end_ts": end_ts},
+        ) as cur:
+            rows = await cur.fetchall()
+
+    warnings = []
+    for row in rows:
+        advert_count = int(row["advert_count"])
+        level = "HIGH" if advert_count > 8 else "MEDIUM"
+        warnings.append({
+            "public_key": row["public_key"],
+            "name": row["name"],
+            "level": level,
+            "advert_count": advert_count,
+            "lat": row["lat"],
+            "lon": row["lon"],
+        })
+    return {"warnings": warnings, "generated_at": end_ts}
 
 
 # NOTE: This route MUST remain last in the file. FastAPI matches routes in

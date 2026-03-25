@@ -324,7 +324,7 @@ async def process_raw_packet(
             result.update(decrypt_result)
  
     elif payload_type == PayloadType.ADVERT:
-        await _process_advertisement(raw_bytes, ts, packet_info)
+        await _process_advertisement(raw_bytes, ts, packet_info, rssi=rssi, snr=snr)
  
     elif payload_type == PayloadType.TEXT_MESSAGE:
         decrypt_result = await _process_direct_message(raw_bytes, packet_id, ts, packet_info)
@@ -417,6 +417,8 @@ async def _process_advertisement(
     raw_bytes: bytes,
     timestamp: int,
     packet_info: PacketInfo | None = None,
+    rssi: int | float | None = None,
+    snr: float | None = None,
 ) -> None:
     """
     Process an advertisement packet.
@@ -465,6 +467,8 @@ async def _process_advertisement(
         timestamp=timestamp,
         max_paths=10,
         hop_count=new_path_len,
+        rssi=rssi,
+        snr=snr,
     )
 
     contact_upsert = ContactUpsert(

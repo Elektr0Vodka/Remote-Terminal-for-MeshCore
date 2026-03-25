@@ -47,8 +47,15 @@ interface HistoricalNeighbor {
   lat: number | null;
   lon: number | null;
   min_path_len: number | null;
+  best_rssi?: number | null;
 }
- 
+
+interface HistoricalBusiestChannel {
+  channel_key: string;
+  channel_name: string | null;
+  message_count: number;
+}
+
 interface HistoricalStatsResponse {
   start_ts: number;
   end_ts: number;
@@ -63,6 +70,7 @@ interface HistoricalStatsResponse {
   has_type_data: boolean;
   neighbors_by_count: HistoricalNeighbor[];
   neighbors_by_signal: HistoricalNeighbor[];
+  busiest_channels?: HistoricalBusiestChannel[];
 }
 
 const TIME_WINDOWS: TimeWindow[] = [
@@ -914,6 +922,27 @@ const resolvedStrongest = useMemo(() =>
                         colorFn={typeColor}
                       />
                     )}
+
+                    {historicalStats.busiest_channels && historicalStats.busiest_channels.length > 0 && (
+                      <div>
+                        <SectionTitle>Busiest Channels</SectionTitle>
+                        <div className="space-y-1">
+                          {historicalStats.busiest_channels.map((ch) => {
+                            const maxCount = historicalStats.busiest_channels![0].message_count;
+                            const pct = maxCount > 0 ? (ch.message_count / maxCount) * 100 : 0;
+                            return (
+                              <div key={ch.channel_key} className="flex items-center gap-2">
+                                <span className="w-28 flex-shrink-0 truncate text-xs text-foreground">{ch.channel_name ?? ch.channel_key.slice(0, 10)}</span>
+                                <div className="flex-1 overflow-hidden rounded-full bg-muted h-1.5">
+                                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className="w-14 flex-shrink-0 text-right tabular-nums text-[10px] text-muted-foreground">{ch.message_count.toLocaleString()} msgs</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -982,50 +1011,104 @@ const resolvedStrongest = useMemo(() =>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {/* Most active */}
               <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <div className="border-b border-border px-3 py-2">
-                  <span className="text-sm font-semibold text-foreground">Direct Neighbors — Most Active</span>
+                <div className="border-b border-border px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-foreground">Neighbors — Most Active</span>
+                  <span className="text-[10px] text-muted-foreground">{selectedWindow.useLive ? 'Live session' : liveStats.windowLabel}</span>
                 </div>
                 <div className="p-3">
-                  <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by packet count.</p>
-                  {resolvedMostActive.length === 0 ? (
-                    <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors heard yet</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {resolvedMostActive.map((n) => (
-                        <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
-                          <div className="min-w-0">
-                            <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
-                            <div className="text-[10px] text-muted-foreground">{n.count.toLocaleString()} packets</div>
-                          </div>
-                          <span className="flex-shrink-0 text-xs text-muted-foreground">{fmtRssi(n.bestRssi)}</span>
+                  {selectedWindow.useLive ? (
+                    <>
+                      <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by packet count.</p>
+                      {resolvedMostActive.length === 0 ? (
+                        <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors heard yet</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {resolvedMostActive.map((n) => (
+                            <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
+                              <div className="min-w-0">
+                                <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
+                                <div className="text-[10px] text-muted-foreground">{n.count.toLocaleString()} packets</div>
+                              </div>
+                              <span className="flex-shrink-0 text-xs text-muted-foreground">{fmtRssi(n.bestRssi)}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard via advertisements in window, by count.</p>
+                      {!historicalStats || historicalStats.neighbors_by_count.length === 0 ? (
+                        <p className="py-3 text-center text-xs italic text-muted-foreground">{historicalStatsLoading ? 'Loading…' : 'No neighbor data for this window'}</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {historicalStats.neighbors_by_count.slice(0, 10).map((n) => {
+                            const displayName = n.name || n.public_key.slice(0, 12);
+                            return (
+                              <div key={n.public_key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
+                                <div className="min-w-0">
+                                  <div className="truncate text-xs font-medium text-foreground">{displayName}</div>
+                                  <div className="text-[10px] text-muted-foreground">{n.heard_count.toLocaleString()} adverts{n.min_path_len != null ? ` · ${n.min_path_len === 0 ? 'direct' : `${n.min_path_len} hop`}` : ''}</div>
+                                </div>
+                                <span className="flex-shrink-0 text-xs text-muted-foreground">{fmtRssi(n.best_rssi ?? null)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
 
               {/* Strongest signal */}
               <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <div className="border-b border-border px-3 py-2">
-                  <span className="text-sm font-semibold text-foreground">Direct Neighbors — Strongest Signal</span>
+                <div className="border-b border-border px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-foreground">Neighbors — Strongest Signal</span>
+                  <span className="text-[10px] text-muted-foreground">{selectedWindow.useLive ? 'Live session' : liveStats.windowLabel}</span>
                 </div>
                 <div className="p-3">
-                  <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by best RSSI.</p>
-                  {resolvedStrongest.length === 0 ? (
-                    <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors with RSSI data yet</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {resolvedStrongest.map((n) => (
-                        <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
-                          <div className="min-w-0">
-                            <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
-                            <div className="text-[10px] text-muted-foreground">{relTime(n.lastSeen)}</div>
-                          </div>
-                          <span className="flex-shrink-0 text-xs font-medium text-foreground">{fmtRssi(n.bestRssi)}</span>
+                  {selectedWindow.useLive ? (
+                    <>
+                      <p className="mb-2 text-[11px] text-muted-foreground">Nodes heard directly (0-hop) this session, by best RSSI.</p>
+                      {resolvedStrongest.length === 0 ? (
+                        <p className="py-3 text-center text-xs italic text-muted-foreground">No direct neighbors with RSSI data yet</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {resolvedStrongest.map((n) => (
+                            <div key={n.key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
+                              <div className="min-w-0">
+                                <div className="truncate text-xs font-medium text-foreground">{n.label}</div>
+                                <div className="text-[10px] text-muted-foreground">{relTime(n.lastSeen)}</div>
+                              </div>
+                              <span className="flex-shrink-0 text-xs font-medium text-foreground">{fmtRssi(n.bestRssi)}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="mb-2 text-[11px] text-muted-foreground">Nodes with strongest advert signal in window.</p>
+                      {!historicalStats || historicalStats.neighbors_by_signal.length === 0 ? (
+                        <p className="py-3 text-center text-xs italic text-muted-foreground">{historicalStatsLoading ? 'Loading…' : 'No signal data for this window'}</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {historicalStats.neighbors_by_signal.slice(0, 10).map((n) => {
+                            const displayName = n.name || n.public_key.slice(0, 12);
+                            return (
+                              <div key={n.public_key} className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1.5">
+                                <div className="min-w-0">
+                                  <div className="truncate text-xs font-medium text-foreground">{displayName}</div>
+                                  <div className="text-[10px] text-muted-foreground">{relTime(n.last_seen)}</div>
+                                </div>
+                                <span className="flex-shrink-0 text-xs font-medium text-foreground">{fmtRssi(n.best_rssi ?? null)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

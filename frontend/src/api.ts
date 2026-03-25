@@ -81,6 +81,15 @@ interface DecryptResult {
   message: string;
 }
 
+export interface AdvertWarning {
+  public_key: string;
+  name: string | null;
+  level: 'HIGH' | 'MEDIUM';
+  advert_count: number;
+  lat: number | null;
+  lon: number | null;
+}
+
 export const api = {
   // Health
   getHealth: () => fetchJson<HealthStatus>('/health'),
@@ -249,6 +258,9 @@ export const api = {
 
   // Packets
   getPacket: (packetId: number) => fetchJson<RawPacket>(`/packets/${packetId}`),
+  getFirstPacketTimestamp: () => fetchJson<{ first_timestamp: number | null }>('/packets/first-timestamp'),
+  getAdvertWarnings: () =>
+    fetchJson<{ warnings: AdvertWarning[]; generated_at: number }>('/packets/advert-warnings'),
   getUndecryptedPacketCount: () => fetchJson<{ count: number }>('/packets/undecrypted/count'),
   decryptHistoricalPackets: (params: {
     key_type: 'channel' | 'contact';

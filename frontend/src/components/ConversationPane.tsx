@@ -68,6 +68,7 @@ interface ConversationPaneProps {
   onDismissUnreadMarker: () => void;
   onSendMessage: (text: string) => Promise<void>;
   onToggleNotifications: () => void;
+  onSelectConversation?: (conversation: Conversation) => void;
 }
 
 function LoadingPane({ label }: { label: string }) {
@@ -133,6 +134,7 @@ export function ConversationPane({
   onDismissUnreadMarker,
   onSendMessage,
   onToggleNotifications,
+  onSelectConversation,
 }: ConversationPaneProps) {
   const [roomAuthenticated, setRoomAuthenticated] = useState(false);
   const activeContactIsRepeater = useMemo(() => {
@@ -217,7 +219,15 @@ export function ConversationPane({
   if (activeConversation.type === 'mesh-health') {
     return (
       <Suspense fallback={<LoadingPane label="Loading mesh health..." />}>
-        <MeshHealthView config={config} />
+        <MeshHealthView
+          config={config}
+          onNavigateToMap={(focusKey?: string) => {
+            if (focusKey) window.location.hash = `map/focus/${focusKey}`;
+            // Use the passed-in select handler from props to properly update React state
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (onSelectConversation as any)?.({ type: 'map', id: 'map', name: 'Map' });
+          }}
+        />
       </Suspense>
     );
   }

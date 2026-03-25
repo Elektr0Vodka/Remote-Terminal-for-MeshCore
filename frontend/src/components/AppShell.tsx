@@ -2,6 +2,7 @@ import { lazy, Suspense, useRef, type ComponentProps } from 'react';
 import { useSwipeable } from 'react-swipeable';
 
 import { StatusBar } from './StatusBar';
+import { WarningTicker } from './WarningTicker';
 import { Sidebar } from './Sidebar';
 import { ConversationPane } from './ConversationPane';
 import { NewMessageModal } from './NewMessageModal';
@@ -63,6 +64,7 @@ interface AppShellProps {
   newMessageModalProps: NewMessageModalProps;
   contactInfoPaneProps: ContactInfoPaneProps;
   channelInfoPaneProps: ChannelInfoPaneProps;
+  showWarningTicker?: boolean;
 }
 
 export function AppShell({
@@ -89,6 +91,7 @@ export function AppShell({
   newMessageModalProps,
   contactInfoPaneProps,
   channelInfoPaneProps,
+  showWarningTicker = true,
 }: AppShellProps) {
   const swipeHandlers = useSwipeable({
     onSwipedRight: ({ initial }) => {
@@ -198,6 +201,8 @@ export function AppShell({
         onSettingsClick={onToggleSettingsView}
         onMenuClick={showSettings ? undefined : () => onSidebarOpenChange(true)}
       />
+
+      <WarningTicker enabled={showWarningTicker} />
 
       <div className="flex flex-1 overflow-hidden">
         <div className="hidden md:block min-h-0 overflow-hidden">{activeSidebarContent}</div>

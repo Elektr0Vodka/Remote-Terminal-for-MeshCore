@@ -48,6 +48,10 @@ class AppSettingsUpdate(BaseModel):
         default=None,
         description="Display names whose messages are hidden from the UI",
     )
+    show_warning_ticker: bool | None = Field(
+        default=None,
+        description="Show the scrolling advert-health warning ticker in the top bar",
+    )
 
 
 class BlockKeyRequest(BaseModel):
@@ -121,6 +125,8 @@ async def update_settings(update: AppSettingsUpdate) -> AppSettings:
         kwargs["blocked_keys"] = [k.lower() for k in update.blocked_keys]
     if update.blocked_names is not None:
         kwargs["blocked_names"] = update.blocked_names
+    if update.show_warning_ticker is not None:
+        kwargs["show_warning_ticker"] = update.show_warning_ticker
 
     # Flood scope
     flood_scope_changed = False

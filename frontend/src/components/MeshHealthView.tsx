@@ -5,8 +5,8 @@
  * that are advertising too often, plus a sortable, paginated contacts table.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, ChevronDown, ChevronUp, ChevronsUpDown, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, AlertTriangle, ChevronDown, ChevronUp, ChevronsUpDown, Map, RefreshCw } from 'lucide-react';
 import type { RadioConfig } from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -50,16 +50,17 @@ interface TimeWindow {
   key: string;
   label: string;
   hours: number;
+  autoRefresh: boolean; // true = refresh every 30s; false = manual only
 }
 
 const TIME_WINDOWS: TimeWindow[] = [
-  { key: '30m',  label: '30m',  hours: 0.5   },
-  { key: '1h',  label: '1h',  hours: 1   },
-  { key: '3h',  label: '3h',  hours: 3   },
-  { key: '6h',  label: '6h',  hours: 6   },
-  { key: '12h', label: '12h', hours: 12  },
-  { key: '24h', label: '24h', hours: 24  },
-  { key: '7d',  label: '7d',  hours: 168 },
+  { key: '30m', label: '30m', hours: 0.5,  autoRefresh: true  },
+  { key: '1h',  label: '1h',  hours: 1,    autoRefresh: true  },
+  { key: '3h',  label: '3h',  hours: 3,    autoRefresh: false },
+  { key: '6h',  label: '6h',  hours: 6,    autoRefresh: false },
+  { key: '12h', label: '12h', hours: 12,   autoRefresh: false },
+  { key: '24h', label: '24h', hours: 24,   autoRefresh: false },
+  { key: '7d',  label: '7d',  hours: 168,  autoRefresh: false },
 ];
 
 const DEFAULT_WINDOW = TIME_WINDOWS[0]; // 0 = 30m default
@@ -69,6 +70,7 @@ const PAGE_SIZE = 50;
 
 interface Props {
   config: RadioConfig | null;
+  onNavigateToMap?: (focusKey?: string) => void;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -115,28 +117,26 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 
 // ─── Main component ─────────────────────────────────────────────────────────
 
-export function MeshHealthView({ config }: Props) {
+export function MeshHealthView({ config, onNavigateToMap }: Props) {
   const [selectedWindow, setSelectedWindow] = useState<TimeWindow>(DEFAULT_WINDOW);
   const [data, setData] = useState<MeshHealthResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  const [, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
 
   const [sortKey, setSortKey] = useState<SortKey>('advert_count');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(0);
 
-  // Tick nowSec every 60s for periodic refresh
-  useEffect(() => {
-    const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const lastFetchRef = useRef<number>(0);
 
-  const fetchHealth = useCallback((window: TimeWindow) => {
+  const fetchHealth = useCallback((win: TimeWindow) => {
     const endTs = Math.floor(Date.now() / 1000);
-    const startTs = endTs - window.hours * 3600;
+    const startTs = endTs - win.hours * 3600;
+    lastFetchRef.current = endTs;
     setLoading(true);
     setError(null);
+    setNowSec(endTs);
     fetch(`/api/packets/mesh-health?start_ts=${startTs}&end_ts=${endTs}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -149,10 +149,21 @@ export function MeshHealthView({ config }: Props) {
       });
   }, []);
 
+  // Initial fetch and window-change fetch
   useEffect(() => {
     fetchHealth(selectedWindow);
     setPage(0);
-  }, [selectedWindow, nowSec, fetchHealth]);
+  }, [selectedWindow, fetchHealth]);
+
+  // Auto-refresh: only for short windows (30m/1h), minimum 30s between refreshes
+  useEffect(() => {
+    if (!selectedWindow.autoRefresh) return;
+    const id = setInterval(() => {
+      const age = Math.floor(Date.now() / 1000) - lastFetchRef.current;
+      if (age >= 30) fetchHealth(selectedWindow);
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [selectedWindow, fetchHealth]);
 
   // Reset page when sort changes
   useEffect(() => { setPage(0); }, [sortKey, sortDir]);
@@ -225,14 +236,21 @@ export function MeshHealthView({ config }: Props) {
           <Activity className="h-4 w-4 text-muted-foreground" />
           <h2 className="font-semibold text-base">Mesh Health</h2>
         </div>
-        <button
-          onClick={() => fetchHealth(selectedWindow)}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
-        >
-          <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {selectedWindow.autoRefresh ? (
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">auto-refresh 30s</span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">manual refresh only</span>
+          )}
+          <button
+            onClick={() => fetchHealth(selectedWindow)}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -283,13 +301,16 @@ export function MeshHealthView({ config }: Props) {
             <div className="rounded-lg border border-destructive/40 bg-card overflow-hidden">
               <div className="border-b border-destructive/30 bg-destructive/10 px-3 py-2 flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                <span className="text-sm font-semibold text-destructive">HIGH — Advertising Too Frequently</span>
+                <span className="text-sm font-semibold text-destructive">HIGH - Advertising Too Frequently</span>
                 <span className="ml-auto text-[10px] text-destructive/70">
                   {highAlerts.length} node{highAlerts.length !== 1 ? 's' : ''}
                 </span>
               </div>
               <div className="divide-y divide-border">
-                {highAlerts.map((a) => <AlertRow key={a.public_key} alert={a} />)}
+                {highAlerts.map((a) => {
+                  const contact = data?.contacts.find((c) => c.public_key === a.public_key);
+                  return <AlertRow key={a.public_key} alert={a} lat={contact?.lat} lon={contact?.lon} onNavigateToMap={onNavigateToMap} />;
+                })}
               </div>
             </div>
           )}
@@ -299,13 +320,16 @@ export function MeshHealthView({ config }: Props) {
             <div className="rounded-lg border border-yellow-500/40 bg-card overflow-hidden">
               <div className="border-b border-yellow-500/30 bg-yellow-500/10 px-3 py-2 flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
-                <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">MEDIUM — Above Normal Advert Rate</span>
+                <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">MEDIUM - Above Normal Advert Rate</span>
                 <span className="ml-auto text-[10px] text-yellow-600/70 dark:text-yellow-400/70">
                   {mediumAlerts.length} node{mediumAlerts.length !== 1 ? 's' : ''}
                 </span>
               </div>
               <div className="divide-y divide-border">
-                {mediumAlerts.map((a) => <AlertRow key={a.public_key} alert={a} />)}
+                {mediumAlerts.map((a) => {
+                  const contact = data?.contacts.find((c) => c.public_key === a.public_key);
+                  return <AlertRow key={a.public_key} alert={a} lat={contact?.lat} lon={contact?.lon} onNavigateToMap={onNavigateToMap} />;
+                })}
               </div>
             </div>
           )}
@@ -497,9 +521,21 @@ export function MeshHealthView({ config }: Props) {
 
 // ─── Alert row sub-component ─────────────────────────────────────────────────
 
-function AlertRow({ alert }: { alert: MeshHealthAlert }) {
+function AlertRow({
+  alert,
+  lat,
+  lon,
+  onNavigateToMap,
+}: {
+  alert: MeshHealthAlert;
+  lat?: number | null;
+  lon?: number | null;
+  onNavigateToMap?: (focusKey?: string) => void;
+}) {
   const shortId = alert.public_key.slice(0, 4).toUpperCase();
   const isHigh = alert.level === 'HIGH';
+  const hasLocation = lat != null && lon != null && (lat !== 0 || lon !== 0);
+
   return (
     <div className="flex items-center gap-3 px-3 py-2">
       <span className="font-mono text-[10px] text-muted-foreground w-8 flex-shrink-0">{shortId}</span>
@@ -510,6 +546,16 @@ function AlertRow({ alert }: { alert: MeshHealthAlert }) {
       <span className="text-xs tabular-nums text-muted-foreground hidden sm:inline">
         {alert.adverts_per_hour.toFixed(1)}/hr
       </span>
+      {hasLocation && onNavigateToMap && (
+        <button
+          onClick={() => onNavigateToMap(alert.public_key)}
+          title="Show on map"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <Map className="h-3 w-3" />
+          <span className="hidden sm:inline">Map</span>
+        </button>
+      )}
       <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
         isHigh
           ? 'bg-destructive/15 text-destructive'

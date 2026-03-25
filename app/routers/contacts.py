@@ -11,6 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from meshcore import EventType
 
 from app.dependencies import require_connected
+from pydantic import BaseModel as _BaseModel
 from app.models import (
     Contact,
     ContactActiveRoom,
@@ -599,3 +600,53 @@ async def set_contact_routing_override(
         await _broadcast_contact_update(updated_contact)
 
     return {"status": "ok", "public_key": contact.public_key}
+
+
+# ─── Node notes endpoints ─────────────────────────────────────────────────────
+
+class ContactNotesUpdate(_BaseModel):
+    notes: str | None = None
+
+
+@router.get("/{public_key}/notes")
+async def get_contact_notes(public_key: str) -> dict:
+    """Get user-editable notes for a contact."""
+    contact = await ContactRepository.get_by_key_or_prefix(public_key)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"notes": contact.notes}
+
+
+@router.patch("/{public_key}/notes")
+async def update_contact_notes(public_key: str, body: ContactNotesUpdate) -> dict:
+    """Set or clear user-editable notes for a contact."""
+    contact = await ContactRepository.get_by_key_or_prefix(public_key)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    await ContactRepository.update_notes(contact.public_key, body.notes)
+    return {"status": "ok", "public_key": contact.public_key, "notes": body.notes}
+
+
+# ─── Owner ID endpoints ───────────────────────────────────────────────────────
+
+class ContactOwnerIdUpdate(_BaseModel):
+    owner_id: str | None = None
+
+
+@router.get("/{public_key}/owner-id")
+async def get_contact_owner_id(public_key: str) -> dict:
+    """Get the owner_id (companion radio public key) for a contact."""
+    contact = await ContactRepository.get_by_key_or_prefix(public_key)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"owner_id": contact.owner_id}
+
+
+@router.patch("/{public_key}/owner-id")
+async def update_contact_owner_id(public_key: str, body: ContactOwnerIdUpdate) -> dict:
+    """Set or clear the owner_id (companion radio public key) for a contact."""
+    contact = await ContactRepository.get_by_key_or_prefix(public_key)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    await ContactRepository.update_owner_id(contact.public_key, body.owner_id)
+    return {"status": "ok", "public_key": contact.public_key, "owner_id": body.owner_id}

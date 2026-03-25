@@ -122,6 +122,8 @@ export interface Contact {
   last_contacted: number | null;
   last_read_at: number | null;
   first_seen: number | null;
+  notes?: string | null;
+  owner_id?: string | null;
 }
 
 export interface ContactRoute {
@@ -137,6 +139,8 @@ export interface ContactAdvertPath {
   first_seen: number;
   last_seen: number;
   heard_count: number;
+  best_rssi?: number | null;
+  best_snr?: number | null;
 }
 
 export interface ContactAdvertPathSummary {
@@ -331,6 +335,7 @@ export interface AppSettings {
   flood_scope: string;
   blocked_keys: string[];
   blocked_names: string[];
+  show_warning_ticker: boolean;
 }
 
 export interface AppSettingsUpdate {
@@ -341,6 +346,7 @@ export interface AppSettingsUpdate {
   flood_scope?: string;
   blocked_keys?: string[];
   blocked_names?: string[];
+  show_warning_ticker?: boolean;
 }
 
 export interface MigratePreferencesRequest {

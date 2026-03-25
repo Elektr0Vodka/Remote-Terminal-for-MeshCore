@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { RawPacketList } from './RawPacketList';
@@ -395,6 +395,20 @@ export function RawPacketFeedView({
     return () => window.clearInterval(interval);
   }, []);
 
+  // Fetch the earliest packet timestamp from the DB (true monitoring start)
+  const firstPacketTsRef = useRef<number | null>(null);
+  const [firstPacketTs, setFirstPacketTs] = useState<number | null>(null);
+  useEffect(() => {
+    if (firstPacketTsRef.current !== null) return; // already fetched
+    fetch('/api/packets/first-timestamp')
+      .then((r) => r.json() as Promise<{ first_timestamp: number | null }>)
+      .then((d) => {
+        firstPacketTsRef.current = d.first_timestamp;
+        setFirstPacketTs(d.first_timestamp);
+      })
+      .catch(() => { /* fall back to session start */ });
+  }, []);
+
   useEffect(() => {
     setNowSec(Math.floor(Date.now() / 1000));
   }, [packets, rawPacketStatsSession]);
@@ -426,7 +440,7 @@ export function RawPacketFeedView({
         <div>
           <h2 className="font-semibold text-base text-foreground">Raw Packet Feed</h2>
           <p className="text-xs text-muted-foreground">
-            Collecting stats since {formatTimestamp(rawPacketStatsSession.sessionStartedAt)}
+            Monitoring since {formatTimestamp(firstPacketTs ?? rawPacketStatsSession.sessionStartedAt)}
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -170,6 +170,8 @@ class ContactRepository:
             last_contacted=row["last_contacted"],
             last_read_at=row["last_read_at"],
             first_seen=row["first_seen"],
+            notes=row["notes"] if "notes" in available_columns else None,
+            owner_id=row["owner_id"] if "owner_id" in available_columns else None,
         )
 
     @staticmethod
@@ -426,6 +428,26 @@ class ContactRepository:
         return cursor.rowcount > 0
 
     @staticmethod
+    async def update_notes(public_key: str, notes: str | None) -> bool:
+        """Update user notes for a contact.  Returns True if a row was updated."""
+        cursor = await db.conn.execute(
+            "UPDATE contacts SET notes = ? WHERE public_key = ?",
+            (notes, public_key.lower()),
+        )
+        await db.conn.commit()
+        return cursor.rowcount > 0
+
+    @staticmethod
+    async def update_owner_id(public_key: str, owner_id: str | None) -> bool:
+        """Set or clear the owner_id for a contact.  Returns True if a row was updated."""
+        cursor = await db.conn.execute(
+            "UPDATE contacts SET owner_id = ? WHERE public_key = ?",
+            (owner_id.lower() if owner_id else None, public_key.lower()),
+        )
+        await db.conn.commit()
+        return cursor.rowcount > 0
+
+    @staticmethod
     async def promote_prefix_placeholders(full_key: str) -> list[str]:
         """Promote prefix-only placeholder contacts to a resolved full key.
 
@@ -448,14 +470,28 @@ class ContactRepository:
             await db.conn.execute(
                 """
                 INSERT INTO contact_advert_paths
-                    (public_key, path_hex, path_len, first_seen, last_seen, heard_count)
-                SELECT ?, path_hex, path_len, first_seen, last_seen, heard_count
+                    (public_key, path_hex, path_len, first_seen, last_seen, heard_count,
+                     best_rssi, best_snr)
+                SELECT ?, path_hex, path_len, first_seen, last_seen, heard_count,
+                       best_rssi, best_snr
                 FROM contact_advert_paths
                 WHERE public_key = ?
                 ON CONFLICT(public_key, path_hex, path_len) DO UPDATE SET
                     first_seen = MIN(contact_advert_paths.first_seen, excluded.first_seen),
                     last_seen = MAX(contact_advert_paths.last_seen, excluded.last_seen),
-                    heard_count = contact_advert_paths.heard_count + excluded.heard_count
+                    heard_count = contact_advert_paths.heard_count + excluded.heard_count,
+                    best_rssi = CASE
+                        WHEN excluded.best_rssi IS NULL THEN contact_advert_paths.best_rssi
+                        WHEN contact_advert_paths.best_rssi IS NULL THEN excluded.best_rssi
+                        WHEN excluded.best_rssi > contact_advert_paths.best_rssi THEN excluded.best_rssi
+                        ELSE contact_advert_paths.best_rssi
+                    END,
+                    best_snr = CASE
+                        WHEN excluded.best_snr IS NULL THEN contact_advert_paths.best_snr
+                        WHEN contact_advert_paths.best_snr IS NULL THEN excluded.best_snr
+                        WHEN excluded.best_snr > contact_advert_paths.best_snr THEN excluded.best_snr
+                        ELSE contact_advert_paths.best_snr
+                    END
                 """,
                 (new_key, old_key),
             )
@@ -586,6 +622,7 @@ class ContactAdvertPathRepository:
         path = row["path_hex"] or ""
         path_len = row["path_len"]
         next_hop = first_hop_hex(path, path_len)
+        available = set(row.keys())
         return ContactAdvertPath(
             path=path,
             path_len=path_len,
@@ -593,6 +630,8 @@ class ContactAdvertPathRepository:
             first_seen=row["first_seen"],
             last_seen=row["last_seen"],
             heard_count=row["heard_count"],
+            best_rssi=row["best_rssi"] if "best_rssi" in available else None,
+            best_snr=row["best_snr"] if "best_snr" in available else None,
         )
 
     @staticmethod
@@ -602,9 +641,13 @@ class ContactAdvertPathRepository:
         timestamp: int,
         max_paths: int = 10,
         hop_count: int | None = None,
+        rssi: int | float | None = None,
+        snr: float | None = None,
     ) -> None:
         """
         Upsert a unique advert path observation for a contact and prune to N most recent.
+
+        rssi/snr are stored as the best (highest) values seen on this path.
         """
         if max_paths < 1:
             max_paths = 1
@@ -616,13 +659,26 @@ class ContactAdvertPathRepository:
         await db.conn.execute(
             """
             INSERT INTO contact_advert_paths
-                (public_key, path_hex, path_len, first_seen, last_seen, heard_count)
-            VALUES (?, ?, ?, ?, ?, 1)
+                (public_key, path_hex, path_len, first_seen, last_seen, heard_count,
+                 best_rssi, best_snr)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
             ON CONFLICT(public_key, path_hex, path_len) DO UPDATE SET
                 last_seen = MAX(contact_advert_paths.last_seen, excluded.last_seen),
-                heard_count = contact_advert_paths.heard_count + 1
+                heard_count = contact_advert_paths.heard_count + 1,
+                best_rssi = CASE
+                    WHEN excluded.best_rssi IS NULL THEN contact_advert_paths.best_rssi
+                    WHEN contact_advert_paths.best_rssi IS NULL THEN excluded.best_rssi
+                    WHEN excluded.best_rssi > contact_advert_paths.best_rssi THEN excluded.best_rssi
+                    ELSE contact_advert_paths.best_rssi
+                END,
+                best_snr = CASE
+                    WHEN excluded.best_snr IS NULL THEN contact_advert_paths.best_snr
+                    WHEN contact_advert_paths.best_snr IS NULL THEN excluded.best_snr
+                    WHEN excluded.best_snr > contact_advert_paths.best_snr THEN excluded.best_snr
+                    ELSE contact_advert_paths.best_snr
+                END
             """,
-            (normalized_key, normalized_path, path_len, timestamp, timestamp),
+            (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr),
         )
 
         # Keep only the N most recent unique paths per contact.
@@ -646,7 +702,7 @@ class ContactAdvertPathRepository:
     async def get_recent_for_contact(public_key: str, limit: int = 10) -> list[ContactAdvertPath]:
         cursor = await db.conn.execute(
             """
-            SELECT path_hex, path_len, first_seen, last_seen, heard_count
+            SELECT path_hex, path_len, first_seen, last_seen, heard_count, best_rssi, best_snr
             FROM contact_advert_paths
             WHERE public_key = ?
             ORDER BY last_seen DESC, heard_count DESC, path_len ASC, path_hex ASC
@@ -663,7 +719,8 @@ class ContactAdvertPathRepository:
     ) -> list[ContactAdvertPathSummary]:
         cursor = await db.conn.execute(
             """
-            SELECT public_key, path_hex, path_len, first_seen, last_seen, heard_count
+            SELECT public_key, path_hex, path_len, first_seen, last_seen, heard_count,
+                   best_rssi, best_snr
             FROM contact_advert_paths
             ORDER BY public_key ASC, last_seen DESC, heard_count DESC, path_len ASC, path_hex ASC
             """
