@@ -34,6 +34,8 @@ export function SettingsDatabaseSection({
   const [purgingDecryptedRaw, setPurgingDecryptedRaw] = useState(false);
   const [autoDecryptOnAdvert, setAutoDecryptOnAdvert] = useState(false);
   const [showWarningTicker, setShowWarningTicker] = useState(true);
+  const [autoDeleteRawEnabled, setAutoDeleteRawEnabled] = useState(false);
+  const [autoDeleteRawDays, setAutoDeleteRawDays] = useState('14');
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +43,8 @@ export function SettingsDatabaseSection({
   useEffect(() => {
     setAutoDecryptOnAdvert(appSettings.auto_decrypt_dm_on_advert);
     setShowWarningTicker(appSettings.show_warning_ticker ?? true);
+    setAutoDeleteRawEnabled(appSettings.auto_delete_raw_enabled ?? false);
+    setAutoDeleteRawDays(String(appSettings.auto_delete_raw_days ?? 14));
   }, [appSettings]);
 
   const handleCleanup = async () => {
@@ -94,7 +98,12 @@ export function SettingsDatabaseSection({
     setError(null);
 
     try {
-      await onSaveAppSettings({ auto_decrypt_dm_on_advert: autoDecryptOnAdvert, show_warning_ticker: showWarningTicker });
+      await onSaveAppSettings({
+        auto_decrypt_dm_on_advert: autoDecryptOnAdvert,
+        show_warning_ticker: showWarningTicker,
+        auto_delete_raw_enabled: autoDeleteRawEnabled,
+        auto_delete_raw_days: Math.max(1, parseInt(autoDeleteRawDays, 10) || 14),
+      });
       toast.success('Database settings saved');
     } catch (err) {
       console.error('Failed to save database settings:', err);
@@ -206,6 +215,44 @@ export function SettingsDatabaseSection({
         <p className="text-xs text-muted-foreground">
           When enabled, the server will automatically try to decrypt stored DM packets when a new
           contact sends an advertisement. This may cause brief delays on large packet backlogs.
+        </p>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-3">
+        <Label>Auto-Delete Raw Packets</Label>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoDeleteRawEnabled}
+            onChange={(e) => setAutoDeleteRawEnabled(e.target.checked)}
+            className="w-4 h-4 rounded border-input accent-primary"
+          />
+          <span className="text-sm">Automatically delete old undecrypted packets daily</span>
+        </label>
+        {autoDeleteRawEnabled && (
+          <div className="flex gap-2 items-end pl-7">
+            <div className="space-y-1">
+              <Label htmlFor="auto-delete-days" className="text-xs">
+                Older than (days)
+              </Label>
+              <Input
+                id="auto-delete-days"
+                type="number"
+                min="1"
+                max="365"
+                value={autoDeleteRawDays}
+                onChange={(e) => setAutoDeleteRawDays(e.target.value)}
+                className="w-24"
+              />
+            </div>
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">
+          When enabled, the server runs a daily background job that removes undecrypted raw
+          packets older than the configured threshold. Does not affect already-decrypted
+          messages or your chat history.
         </p>
       </div>
 

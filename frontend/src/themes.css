@@ -167,6 +167,30 @@
     inset -1px -1px 0 hsl(240 100% 14%);
 }
 
+/* Win95 — flat corners on leaflet popup */
+[data-theme='windows-95'] .leaflet-popup-content-wrapper {
+  border-radius: 0 !important;
+}
+
+/* Win95 map popup titlebar — classic blue gradient title bar */
+[data-theme='windows-95'] .popup-titlebar {
+  background: linear-gradient(
+    to right,
+    hsl(240 100% 25%) 0%,
+    hsl(240 60% 55%) 50%,
+    hsl(240 100% 25%) 100%
+  );
+  color: hsl(0 0% 100%);
+  border-radius: 0;
+  font-family: var(--font-sans);
+  font-weight: bold;
+  font-size: 0.75rem;
+  text-shadow: 1px 1px 0 hsl(240 100% 14%);
+  box-shadow:
+    inset 1px 1px 0 hsl(0 0% 100% / 0.35),
+    inset -1px -1px 0 hsl(240 100% 14%);
+}
+
 [data-theme='windows-95'] .conversation-header .text-muted-foreground,
 [data-theme='windows-95'] .conversation-header .text-foreground,
 [data-theme='windows-95'] .conversation-header .text-primary,

@@ -64,6 +64,8 @@ const baseSettings: AppSettings = {
   blocked_keys: [],
   blocked_names: [],
   show_warning_ticker: true,
+  auto_delete_raw_enabled: false,
+  auto_delete_raw_days: 14,
 };
 
 function renderModal(overrides?: {

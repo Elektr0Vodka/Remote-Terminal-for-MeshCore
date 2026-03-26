@@ -124,6 +124,8 @@ export interface Contact {
   first_seen: number | null;
   notes?: string | null;
   owner_id?: string | null;
+  last_rssi?: number | null;
+  last_snr?: number | null;
 }
 
 export interface ContactRoute {
@@ -141,6 +143,8 @@ export interface ContactAdvertPath {
   heard_count: number;
   best_rssi?: number | null;
   best_snr?: number | null;
+  /** Path address width: 0=1-byte hops, 1=2-byte hops, 2=3-byte hops (null=unknown/legacy) */
+  hash_mode?: number | null;
 }
 
 export interface ContactAdvertPathSummary {
@@ -298,6 +302,8 @@ export interface Conversation {
   name: string;
   /** For map view: public key prefix to focus on */
   mapFocusKey?: string;
+  /** For mesh-health view: public key to scroll to and highlight */
+  healthFocusKey?: string;
 }
 
 export interface RawPacket {
@@ -336,6 +342,8 @@ export interface AppSettings {
   blocked_keys: string[];
   blocked_names: string[];
   show_warning_ticker: boolean;
+  auto_delete_raw_enabled: boolean;
+  auto_delete_raw_days: number;
 }
 
 export interface AppSettingsUpdate {
@@ -347,6 +355,8 @@ export interface AppSettingsUpdate {
   blocked_keys?: string[];
   blocked_names?: string[];
   show_warning_ticker?: boolean;
+  auto_delete_raw_enabled?: boolean;
+  auto_delete_raw_days?: number;
 }
 
 export interface MigratePreferencesRequest {

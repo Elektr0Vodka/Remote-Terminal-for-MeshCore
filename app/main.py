@@ -42,6 +42,32 @@ from app.security import add_optional_basic_auth_middleware
 from app.services.radio_runtime import radio_runtime as radio_manager
 from app.version_info import get_app_build_info
 
+_auto_delete_task: asyncio.Task | None = None
+
+
+async def _auto_delete_raw_loop() -> None:
+    """Background task: prune old undecrypted raw packets daily when enabled."""
+    while True:
+        await asyncio.sleep(24 * 3600)
+        try:
+            from app.repository import AppSettingsRepository
+            from app.repository.raw_packets import RawPacketRepository
+
+            app_settings = await AppSettingsRepository.get()
+            if app_settings.auto_delete_raw_enabled:
+                deleted = await RawPacketRepository.prune_old_undecrypted(
+                    app_settings.auto_delete_raw_days
+                )
+                if deleted > 0:
+                    logger.info(
+                        "Auto-deleted %d undecrypted raw packets older than %d days",
+                        deleted,
+                        app_settings.auto_delete_raw_days,
+                    )
+        except Exception:
+            logger.exception("Error in auto-delete raw packets loop")
+
+
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -88,6 +114,9 @@ async def lifespan(app: FastAPI):
     startup_radio_task = asyncio.create_task(_startup_radio_connect_and_setup())
     app.state.startup_radio_task = startup_radio_task
 
+    global _auto_delete_task
+    _auto_delete_task = asyncio.create_task(_auto_delete_raw_loop())
+
     yield
 
     logger.info("Shutting down")
@@ -105,6 +134,12 @@ async def lifespan(app: FastAPI):
     if radio_manager.meshcore:
         await radio_manager.meshcore.stop_auto_message_fetching()
     await radio_manager.disconnect()
+    if _auto_delete_task and not _auto_delete_task.done():
+        _auto_delete_task.cancel()
+        try:
+            await _auto_delete_task
+        except asyncio.CancelledError:
+            pass
     await db.disconnect()
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
@@ -13,6 +13,8 @@ import { CONTACT_TYPE_REPEATER, CONTACT_TYPE_ROOM } from '../types';
 interface MapViewProps {
   contacts: Contact[];
   focusedKey?: string | null;
+  onSelectConversation?: (conversation: import('../types').Conversation) => void;
+  connectedPublicKey?: string | null;
 }
 
 // ─── Contact type constants ──────────────────────────────────────────────────
@@ -86,25 +88,74 @@ function buildIcon(emoji: string, color: string, focused = false, health: Health
 
 // ─── Map popup with editable notes and owner ID ───────────────────────────────
 
-function MapPopupContent({
+// Types that can have an owner (are owned by a companion radio)
+const OWNER_CAPABLE_TYPES = new Set([
+  CONTACT_TYPE_REPEATER,
+  CONTACT_TYPE_ROOM,
+  CONTACT_TYPE_SENSOR,
+]);
+
+const MapPopupContent = memo(function MapPopupContent({
   contact,
-  contacts,
+  contactsRef,
   cfg,
   displayName,
   lastHeardLabel,
   health,
+  onSelectConversation,
+  onOpenPopup,
+  connectedPublicKey,
 }: {
   contact: import('../types').Contact;
-  contacts: import('../types').Contact[];
+  contactsRef: React.MutableRefObject<import('../types').Contact[]>;
   cfg: { label: string; emoji: string };
   displayName: string;
   lastHeardLabel: string;
   health: HealthLevel;
+  onSelectConversation?: (conversation: import('../types').Conversation) => void;
+  onOpenPopup?: (publicKey: string) => void;
+  connectedPublicKey?: string | null;
 }) {
+  const map = useMap();
   const [notes, setNotes] = useState<string>(contact.notes ?? '');
   const [ownerId, setOwnerId] = useState<string>(contact.owner_id ?? '');
+  const [editingOwner, setEditingOwner] = useState(!contact.owner_id);
   const [saving, setSaving] = useState(false);
   const [savingOwner, setSavingOwner] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copiedCoords, setCopiedCoords] = useState(false);
+
+  const showOwnerField = OWNER_CAPABLE_TYPES.has(contact.type);
+  const isManageable = contact.type === CONTACT_TYPE_REPEATER || contact.type === CONTACT_TYPE_ROOM;
+
+  // Path info derived from the contact's known direct route
+  const directPathLen = contact.direct_path_len ?? -1;
+  const directHashMode = contact.direct_path_hash_mode ?? -1;
+  const hasKnownPath = directPathLen >= 0;
+  const pathLabel = hasKnownPath
+    ? (directPathLen === 0 ? 'direct' : `${directPathLen} hop${directPathLen !== 1 ? 's' : ''}`)
+    : null;
+  const pathModeLabel = directHashMode >= 0 && directHashMode <= 2
+    ? `${directHashMode + 1}-byte IDs`
+    : null;
+
+  const isConnectedRadio = !!connectedPublicKey &&
+    contact.public_key.toLowerCase() === connectedPublicKey.toLowerCase();
+
+  const copyKey = () => {
+    navigator.clipboard.writeText(contact.public_key).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  const copyCoords = () => {
+    const text = `${contact.lat!.toFixed(6)}, ${contact.lon!.toFixed(6)}`;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedCoords(true);
+      setTimeout(() => setCopiedCoords(false), 1500);
+    });
+  };
 
   const saveNotes = (value: string) => {
     if (value === (contact.notes ?? '')) return;
@@ -113,8 +164,7 @@ function MapPopupContent({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notes: value || null }),
-    })
-      .finally(() => setSaving(false));
+    }).finally(() => setSaving(false));
   };
 
   const saveOwnerId = (value: string) => {
@@ -126,86 +176,235 @@ function MapPopupContent({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ owner_id: trimmed }),
     })
+      .then(() => { if (trimmed) setEditingOwner(false); })
       .finally(() => setSavingOwner(false));
   };
 
-  // Look up the companion contact name if owner_id matches a known contact
+  // The contact that owns this node — read from ref so it doesn't cause re-renders
   const ownerContact = useMemo(() => {
     const id = (contact.owner_id ?? '').toLowerCase();
     if (!id) return null;
-    return contacts.find((c) => c.public_key.toLowerCase() === id || c.public_key.toLowerCase().startsWith(id)) ?? null;
-  }, [contact.owner_id, contacts]);
+    return contactsRef.current.find(
+      (c) => c.public_key.toLowerCase() === id || c.public_key.toLowerCase().startsWith(id)
+    ) ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contact.owner_id]);
 
-  // Also find the companion node that has this contact's key as its owner_id
-  const companionOf = useMemo(() => {
+  // All nodes this contact owns — read from ref so it doesn't cause re-renders
+  const ownedNodes = useMemo(() => {
     const pk = contact.public_key.toLowerCase();
-    return contacts.find((c) => (c.owner_id ?? '').toLowerCase() === pk) ?? null;
-  }, [contact.public_key, contacts]);
+    return contactsRef.current.filter((c) => (c.owner_id ?? '').toLowerCase() === pk);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contact.public_key]);
+
+  const navigateTo = (c: import('../types').Contact) => {
+    if (c.lat != null && c.lon != null) map.flyTo([c.lat, c.lon], Math.max(map.getZoom(), 14));
+    onOpenPopup?.(c.public_key);
+  };
+
+  const openManage = () => {
+    onSelectConversation?.({ type: 'contact', id: contact.public_key, name: contact.name ?? contact.public_key.slice(0, 12) });
+  };
 
   return (
-    <div className="text-sm min-w-[200px]">
-      <div className="font-medium flex items-center gap-1 flex-wrap">
-        <span aria-hidden="true">{cfg.emoji}</span>{displayName}
+    <div className="text-sm min-w-[210px] text-foreground">
+      {/* Titlebar — node name styled like a window/taskbar header */}
+      <div className="popup-titlebar -mx-3 -mt-3 mb-2 px-3 py-1.5 flex items-center gap-1.5 flex-wrap">
+        <span aria-hidden="true">{cfg.emoji}</span>
+        <span className="font-semibold truncate flex-1">{displayName}</span>
+        {isConnectedRadio && (
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-success/20 text-success whitespace-nowrap">
+            My Companion
+          </span>
+        )}
         {health === 'HIGH' && (
-          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-red-100 text-red-700">HIGH ADVERT</span>
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-destructive/20 text-destructive">HIGH ADVERT</span>
         )}
         {health === 'MEDIUM' && (
-          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-yellow-100 text-yellow-700">MED ADVERT</span>
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-warning/20 text-warning">MED ADVERT</span>
         )}
       </div>
-      <div className="text-xs text-gray-500 mt-1">{cfg.label}</div>
-      <div className="text-xs text-gray-500">Last heard: {lastHeardLabel}</div>
-      {contact.first_seen != null && (
-        <div className="text-xs text-gray-400">First heard: {formatTime(contact.first_seen)}</div>
-      )}
-      <div className="text-xs text-gray-400 mt-0.5 font-mono">{contact.lat!.toFixed(5)}, {contact.lon!.toFixed(5)}</div>
 
-      {/* Owner / companion links */}
-      {ownerContact && (
-        <div className="text-xs text-blue-600 mt-1">
-          Owner: <span className="font-medium">{ownerContact.name ?? ownerContact.public_key.slice(0, 12)}</span>
-        </div>
-      )}
-      {companionOf && (
-        <div className="text-xs text-purple-600 mt-1">
-          Companion of: <span className="font-medium">{companionOf.name ?? companionOf.public_key.slice(0, 12)}</span>
-        </div>
-      )}
-
-      {/* Owner ID field */}
-      <div className="mt-2">
-        <div className="text-[10px] text-gray-400 mb-0.5 font-medium uppercase tracking-wide">
-          Owner ID (companion radio) {savingOwner && <span className="normal-case font-normal">(saving...)</span>}
-        </div>
-        <input
-          type="text"
-          value={ownerId}
-          onChange={(e) => setOwnerId(e.target.value)}
-          onBlur={(e) => saveOwnerId(e.target.value)}
-          placeholder="Public key prefix or full key..."
-          className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:border-blue-400 font-mono"
-          style={{ minWidth: '160px' }}
-        />
+      {/* Public key + copy */}
+      <div className="flex items-center gap-1">
+        <span
+          className="font-mono text-[10px] text-muted-foreground truncate"
+          style={{ maxWidth: '172px' }}
+          title={contact.public_key}
+        >
+          {contact.public_key}
+        </span>
+        <button
+          onClick={copyKey}
+          title="Copy public key"
+          className="flex-shrink-0 rounded px-1 py-0.5 text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent transition"
+        >
+          {copied ? '✓' : '⧉'}
+        </button>
       </div>
 
-      {/* Notes field */}
+      {/* Meta */}
+      <div className="text-xs text-muted-foreground mt-0.5">{cfg.label}</div>
+      <div className="text-xs text-muted-foreground">Last heard: {lastHeardLabel}</div>
+      {contact.first_seen != null && (
+        <div className="text-xs text-muted-foreground">First heard: {formatTime(contact.first_seen)}</div>
+      )}
+      {/* Coordinates + copy */}
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="text-xs text-muted-foreground font-mono">
+          {contact.lat!.toFixed(5)}, {contact.lon!.toFixed(5)}
+        </span>
+        <button
+          onClick={copyCoords}
+          title="Copy coordinates"
+          className="flex-shrink-0 rounded px-1 py-0.5 text-[9px] text-muted-foreground hover:text-foreground hover:bg-accent transition"
+        >
+          {copiedCoords ? '✓' : '⧉'}
+        </button>
+      </div>
+      {contact.last_rssi != null && (
+        <div className="text-xs text-muted-foreground mt-0.5">
+          Last RSSI: {contact.last_rssi} dBm
+          {contact.last_snr != null && <span> · SNR: {contact.last_snr} dB</span>}
+        </div>
+      )}
+      {pathLabel != null && (
+        <div className="text-xs text-muted-foreground mt-0.5">
+          Path: {pathLabel}{pathModeLabel && <span> · {pathModeLabel}</span>}
+        </div>
+      )}
+
+      {/* Owner link — for contacts that can't have the edit field (clients/unknowns) */}
+      {ownerContact && !showOwnerField && (
+        <div className="flex items-center gap-1 mt-1 text-xs">
+          <span className="text-muted-foreground">Owner:</span>
+          <button
+            onClick={() => navigateTo(ownerContact)}
+            className="font-medium text-primary hover:underline"
+          >
+            {ownerContact.name ?? ownerContact.public_key.slice(0, 12)}
+          </button>
+        </div>
+      )}
+
+      {/* Owned nodes */}
+      {ownedNodes.length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs">
+          <span className="text-muted-foreground">Owned nodes:</span>
+          {ownedNodes.map((n, i) => {
+            const label = n.name ?? n.public_key.slice(0, 12);
+            const hasLoc = n.lat != null && n.lon != null;
+            return (
+              <span key={n.public_key} className="flex items-center">
+                {i > 0 && <span className="text-muted-foreground mr-1">,</span>}
+                {hasLoc ? (
+                  <button
+                    onClick={() => navigateTo(n)}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {label}
+                  </button>
+                ) : (
+                  <span className="font-medium text-foreground">{label}</span>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Contact Owner — repeaters, rooms, sensors: inline display with ↺, or input when editing */}
+      {showOwnerField && (
+        <div className="mt-1">
+          {editingOwner ? (
+            <div className="mt-1">
+              <div className="text-[10px] text-muted-foreground mb-0.5 font-medium uppercase tracking-wide">
+                Contact Owner {savingOwner && <span className="normal-case font-normal opacity-60">(saving…)</span>}
+              </div>
+              <input
+                type="text"
+                value={ownerId}
+                onChange={(e) => setOwnerId(e.target.value)}
+                onBlur={(e) => saveOwnerId(e.target.value)}
+                placeholder="Public key prefix or full key…"
+                className="w-full rounded border border-border bg-background px-1.5 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+                style={{ minWidth: '160px' }}
+                autoFocus
+              />
+            </div>
+          ) : (
+            <div className="text-xs">
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">Owner:</span>
+                {ownerContact ? (
+                  <button
+                    onClick={() => navigateTo(ownerContact)}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {ownerContact.name ?? ownerContact.public_key.slice(0, 12)}
+                  </button>
+                ) : (
+                  <span className="font-mono text-muted-foreground">{contact.owner_id?.slice(0, 16)}…</span>
+                )}
+                <button
+                  onClick={() => setEditingOwner(true)}
+                  title="Change Node Owner"
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition"
+                >
+                  ↺
+                </button>
+              </div>
+              {ownerContact && onSelectConversation && (
+                <button
+                  onClick={() => onSelectConversation({ type: 'contact', id: ownerContact.public_key, name: ownerContact.name ?? ownerContact.public_key.slice(0, 12) })}
+                  className="mt-1 w-full rounded border border-border bg-background px-2 py-1 font-medium text-foreground hover:bg-accent transition text-center"
+                >
+                  Contact Owner
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Send DM — clients and unknowns */}
+      {!showOwnerField && !isManageable && onSelectConversation && (
+        <button
+          onClick={openManage}
+          className="mt-2 w-full rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition text-center"
+        >
+          Send DM
+        </button>
+      )}
+
+      {/* Manage Node button — repeaters and rooms */}
+      {isManageable && onSelectConversation && (
+        <button
+          onClick={openManage}
+          className="mt-2 w-full rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition text-center"
+        >
+          Manage Node
+        </button>
+      )}
+
+      {/* Notes */}
       <div className="mt-2">
-        <div className="text-[10px] text-gray-400 mb-0.5 font-medium uppercase tracking-wide">
-          Notes {saving && <span className="normal-case font-normal">(saving...)</span>}
+        <div className="text-[10px] text-muted-foreground mb-0.5 font-medium uppercase tracking-wide">
+          Notes {saving && <span className="normal-case font-normal opacity-60">(saving…)</span>}
         </div>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           onBlur={(e) => saveNotes(e.target.value)}
-          placeholder="Add a note..."
+          placeholder="Add a note…"
           rows={2}
-          className="w-full resize-none rounded border border-gray-200 px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:border-blue-400"
+          className="w-full resize-none rounded border border-border bg-background px-1.5 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           style={{ minWidth: '160px' }}
         />
       </div>
     </div>
   );
-}
+});
 
 // ─── Custom cluster icon ──────────────────────────────────────────────────────
 
@@ -306,6 +505,33 @@ function saveClusterPref(v: boolean): void {
   try { localStorage.setItem('remoteterm-map-cluster', String(v)); } catch {}
 }
 
+const MAP_VIEW_KEY = 'remoteterm-map-view';
+function loadSavedView(): { lat: number; lng: number; zoom: number } | null {
+  try {
+    const r = localStorage.getItem(MAP_VIEW_KEY);
+    if (!r) return null;
+    const v = JSON.parse(r);
+    if (typeof v.lat === 'number' && typeof v.lng === 'number' && typeof v.zoom === 'number') return v;
+    return null;
+  } catch { return null; }
+}
+
+// Persists the map view to localStorage on every moveend/zoomend
+function MapViewPersist() {
+  const map = useMap();
+  useEffect(() => {
+    const save = () => {
+      const c = map.getCenter();
+      try { localStorage.setItem(MAP_VIEW_KEY, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() })); }
+      catch {}
+    };
+    map.on('moveend', save);
+    map.on('zoomend', save);
+    return () => { map.off('moveend', save); map.off('zoomend', save); };
+  }, [map]);
+  return null;
+}
+
 // ─── Map bounds handler ──────────────────────────────────────────────────────
 
 function MapBoundsHandler({ contacts, focusedContact }: { contacts: Contact[]; focusedContact: Contact | null }) {
@@ -319,6 +545,14 @@ function MapBoundsHandler({ contacts, focusedContact }: { contacts: Contact[]; f
       return;
     }
     if (hasInitialized) return;
+
+    // Restore saved view first if available
+    const saved = loadSavedView();
+    if (saved) {
+      map.setView([saved.lat, saved.lng], saved.zoom);
+      setHasInitialized(true);
+      return;
+    }
 
     const fitToContacts = () => {
       if (contacts.length === 0) { map.setView([20, 0], 2); setHasInitialized(true); return; }
@@ -344,7 +578,7 @@ function MapBoundsHandler({ contacts, focusedContact }: { contacts: Contact[]; f
 
 // ─── MapView ─────────────────────────────────────────────────────────────────
 
-export function MapView({ contacts, focusedKey }: MapViewProps) {
+export function MapView({ contacts, focusedKey, onSelectConversation, connectedPublicKey }: MapViewProps) {
   const now = useMemo(() => Math.floor(Date.now() / 1000), []);
 
   // ── Time window presets ─────────────────────────────────────────────────────
@@ -370,6 +604,15 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
   );
   const toggleType = (k: ContactTypeKey) => setVisibleTypes((p) => ({ ...p, [k]: !p[k] }));
 
+  // ── Owned-only filter ───────────────────────────────────────────────────────
+  const [showOwnedOnly, setShowOwnedOnly] = useState(() => {
+    try { return localStorage.getItem('remoteterm-map-owned-only') === 'true'; } catch { return false; }
+  });
+  const handleOwnedOnlyToggle = () => setShowOwnedOnly((p) => {
+    try { localStorage.setItem('remoteterm-map-owned-only', String(!p)); } catch {}
+    return !p;
+  });
+
   // ── Cluster toggle ──────────────────────────────────────────────────────────
   const [clustered, setClustered] = useState(loadClusterPref);
   const handleClusterToggle = () => setClustered((p) => { saveClusterPref(!p); return !p; });
@@ -386,8 +629,9 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
     if (!isValidLocation(c.lat, c.lon)) return false;
     if (c.public_key === focusedKey) return true;
     if (c.last_seen == null || c.last_seen < effectiveStart || c.last_seen > effectiveEnd) return false;
+    if (showOwnedOnly && !(OWNER_CAPABLE_TYPES.has(c.type) && c.owner_id)) return false;
     return visibleTypes[getTypeKey(c.type)];
-  }), [contacts, focusedKey, effectiveStart, effectiveEnd, visibleTypes]);
+  }), [contacts, focusedKey, effectiveStart, effectiveEnd, visibleTypes, showOwnedOnly]);
 
   const focusedContact = useMemo(() =>
     focusedKey ? (mappableContacts.find((c) => c.public_key === focusedKey) ?? null) : null,
@@ -441,6 +685,10 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
       }));
   }, [heatmap, heatRawData, mappableContacts]);
 
+  // ── Contacts ref — kept current without triggering re-renders ───────────────
+  const contactsRef = useRef<import('../types').Contact[]>(contacts);
+  contactsRef.current = contacts;
+
   // ── Marker refs ─────────────────────────────────────────────────────────────
   const markerRefs = useRef<Record<string, L.Marker | null>>({});
   const setMarkerRef = useCallback((key: string, ref: L.Marker | null) => {
@@ -454,16 +702,44 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
     }
   }, [focusedContact]);
 
+  const openPopup = useCallback((publicKey: string) => {
+    // Delay to let flyTo animation start before opening the popup
+    setTimeout(() => markerRefs.current[publicKey]?.openPopup(), 400);
+  }, []);
+
+  // ── Update marker icons imperatively (avoids cluster clearLayers on advert-warning changes) ─
+  useEffect(() => {
+    for (const contact of mappableContacts) {
+      const marker = markerRefs.current[contact.public_key];
+      if (!marker) continue;
+      const typeKey = getTypeKey(contact.type);
+      const cfg = CONTACT_TYPE_CONFIG[typeKey];
+      const color = getMarkerColor(contact.last_seen);
+      const focused = contact.public_key === focusedKey;
+      const health = advertWarnings.get(contact.public_key) ?? null;
+      marker.setIcon(buildIcon(cfg.emoji, color, focused, health, cfg.small ?? false));
+    }
+  }, [advertWarnings, mappableContacts, focusedKey]);
+
   const isFullRange = activePreset === 'All';
   const activeTypeCount = ALL_TYPE_KEYS.filter((k) => visibleTypes[k]).length;
 
-  const markerElements = mappableContacts.map((contact) => {
+  // Stable key — only changes when the identity/position/type of the marker set changes,
+  // NOT when last_seen, name, notes, owner_id etc. change. This prevents MarkerClusterGroup
+  // from calling clearLayers() (which closes open popups) on routine data updates.
+  const mappableKey = useMemo(
+    () => mappableContacts.map((c) => `${c.public_key}:${c.lat?.toFixed(4)}:${c.lon?.toFixed(4)}:${c.type}`).join('|'),
+    [mappableContacts]
+  );
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const markerElements = useMemo(() => mappableContacts.map((contact) => {
     const typeKey = getTypeKey(contact.type);
     const cfg = CONTACT_TYPE_CONFIG[typeKey];
     const color = getMarkerColor(contact.last_seen);
     const focused = contact.public_key === focusedKey;
-    const health = advertWarnings.get(contact.public_key) ?? null;
-    const icon = buildIcon(cfg.emoji, color, focused, health, cfg.small ?? false);
+    // Initial icon — health rings applied imperatively via useEffect above
+    const icon = buildIcon(cfg.emoji, color, focused, null, cfg.small ?? false);
     const displayName = contact.name || contact.public_key.slice(0, 12);
     const lastHeardLabel = contact.last_seen != null ? formatTime(contact.last_seen) : 'Never heard by this server';
 
@@ -477,16 +753,21 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
         <Popup>
           <MapPopupContent
             contact={contact}
-            contacts={contacts}
+            contactsRef={contactsRef}
             cfg={cfg}
             displayName={displayName}
             lastHeardLabel={lastHeardLabel}
-            health={health}
+            health={null}
+            onSelectConversation={onSelectConversation}
+            onOpenPopup={openPopup}
+            connectedPublicKey={connectedPublicKey}
           />
         </Popup>
       </Marker>
     );
-  });
+    // Only recompute when marker identities/positions/types change (not data-only updates)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [mappableKey, focusedKey, onSelectConversation, openPopup, setMarkerRef]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -580,6 +861,16 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
           <span>Heatmap</span>
         </button>
 
+        {/* Owned-only filter */}
+        <button onClick={handleOwnedOnlyToggle}
+          title={showOwnedOnly ? 'Show all nodes' : 'Show only owned repeaters & rooms'}
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
+            showOwnedOnly ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground'
+          }`}>
+          <span className="text-base leading-none">🏠</span>
+          <span>Owned</span>
+        </button>
+
         {/* Tile layer picker */}
         <div className="flex items-center gap-1 ml-1 border-l border-border pl-2">
           {(Object.keys(TILE_LAYERS) as TileLayerKey[]).map((key) => (
@@ -618,6 +909,7 @@ export function MapView({ contacts, focusedKey }: MapViewProps) {
             url={TILE_LAYERS[tileKey].url}
           />
           <MapBoundsHandler contacts={mappableContacts} focusedContact={focusedContact} />
+          <MapViewPersist />
 
           {/* Heatmap mode — no markers */}
           {heatmap && <HeatmapLayer points={heatPoints} />}

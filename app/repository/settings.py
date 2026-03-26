@@ -28,7 +28,8 @@ class AppSettingsRepository:
             SELECT max_radio_contacts, favorites, auto_decrypt_dm_on_advert,
                    sidebar_sort_order, last_message_times, preferences_migrated,
                    advert_interval, last_advert_time, flood_scope,
-                   blocked_keys, blocked_names, show_warning_ticker
+                   blocked_keys, blocked_names, show_warning_ticker,
+                   auto_delete_raw_enabled, auto_delete_raw_days
             FROM app_settings WHERE id = 1
             """
         )
@@ -98,6 +99,8 @@ class AppSettingsRepository:
             blocked_keys=blocked_keys,
             blocked_names=blocked_names,
             show_warning_ticker=bool(row["show_warning_ticker"] if row["show_warning_ticker"] is not None else 1),
+            auto_delete_raw_enabled=bool(row["auto_delete_raw_enabled"] if row["auto_delete_raw_enabled"] is not None else 0),
+            auto_delete_raw_days=int(row["auto_delete_raw_days"] if row["auto_delete_raw_days"] is not None else 14),
         )
 
     @staticmethod
@@ -114,6 +117,8 @@ class AppSettingsRepository:
         blocked_keys: list[str] | None = None,
         blocked_names: list[str] | None = None,
         show_warning_ticker: bool | None = None,
+        auto_delete_raw_enabled: bool | None = None,
+        auto_delete_raw_days: int | None = None,
     ) -> AppSettings:
         """Update app settings. Only provided fields are updated."""
         updates = []
@@ -167,6 +172,14 @@ class AppSettingsRepository:
         if show_warning_ticker is not None:
             updates.append("show_warning_ticker = ?")
             params.append(1 if show_warning_ticker else 0)
+
+        if auto_delete_raw_enabled is not None:
+            updates.append("auto_delete_raw_enabled = ?")
+            params.append(1 if auto_delete_raw_enabled else 0)
+
+        if auto_delete_raw_days is not None:
+            updates.append("auto_delete_raw_days = ?")
+            params.append(auto_delete_raw_days)
 
         if updates:
             query = f"UPDATE app_settings SET {', '.join(updates)} WHERE id = 1"

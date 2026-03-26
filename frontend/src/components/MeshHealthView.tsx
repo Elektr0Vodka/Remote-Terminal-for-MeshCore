@@ -20,6 +20,8 @@ interface MeshHealthContact {
   lat: number | null;
   lon: number | null;
   min_path_len: number | null;
+  /** 0=1-byte hops, 1=2-byte hops, 2=3-byte hops, null=unknown/legacy */
+  hash_mode: number | null;
 }
 
 interface MeshHealthAlert {
@@ -41,7 +43,7 @@ interface MeshHealthResponse {
   contacts: MeshHealthContact[];
 }
 
-type SortKey = 'name' | 'advert_count' | 'last_seen' | 'first_seen' | 'min_path_len' | 'distance' | 'status';
+type SortKey = 'name' | 'advert_count' | 'last_seen' | 'first_seen' | 'min_path_len' | 'distance' | 'status' | 'hash_mode';
 type SortDir = 'asc' | 'desc';
 
 // ─── Time windows ───────────────────────────────────────────────────────────
@@ -71,6 +73,8 @@ const PAGE_SIZE = 50;
 interface Props {
   config: RadioConfig | null;
   onNavigateToMap?: (focusKey?: string) => void;
+  /** Public key to scroll to and highlight when the view loads */
+  focusKey?: string;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -117,7 +121,7 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 
 // ─── Main component ─────────────────────────────────────────────────────────
 
-export function MeshHealthView({ config, onNavigateToMap }: Props) {
+export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
   const [selectedWindow, setSelectedWindow] = useState<TimeWindow>(DEFAULT_WINDOW);
   const [data, setData] = useState<MeshHealthResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -128,7 +132,9 @@ export function MeshHealthView({ config, onNavigateToMap }: Props) {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(0);
 
-  const lastFetchRef = useRef<number>(0);
+  const lastFetchRef  = useRef<number>(0);
+  const focusRowRef   = useRef<HTMLTableRowElement>(null);
+  const focusDoneRef  = useRef(false);
 
   const fetchHealth = useCallback((win: TimeWindow) => {
     const endTs = Math.floor(Date.now() / 1000);
@@ -167,6 +173,17 @@ export function MeshHealthView({ config, onNavigateToMap }: Props) {
 
   // Reset page when sort changes
   useEffect(() => { setPage(0); }, [sortKey, sortDir]);
+
+  // Scroll to focused node after data loads (only once per focusKey)
+  useEffect(() => {
+    if (!focusKey || !data || focusDoneRef.current) return;
+    // Give the DOM a tick to render the rows
+    const id = setTimeout(() => {
+      focusRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      focusDoneRef.current = true;
+    }, 100);
+    return () => clearTimeout(id);
+  }, [data, focusKey]);
 
   const handleSort = (col: SortKey) => {
     if (col === sortKey) {
@@ -213,6 +230,8 @@ export function MeshHealthView({ config, onNavigateToMap }: Props) {
           return dir * ((a.distKm ?? Infinity) - (b.distKm ?? Infinity));
         case 'status':
           return dir * ((a.isActive ? 0 : 1) - (b.isActive ? 0 : 1));
+        case 'hash_mode':
+          return dir * ((a.hash_mode ?? -1) - (b.hash_mode ?? -1));
         default:
           return 0;
       }
@@ -388,6 +407,13 @@ export function MeshHealthView({ config, onNavigateToMap }: Props) {
                       </th>
                       <th
                         className={`${thClass} text-right hidden md:table-cell`}
+                        onClick={() => handleSort('hash_mode')}
+                        title="Address bytes per hop (1, 2, or 3)"
+                      >
+                        Mode <SortIcon col="hash_mode" sortKey={sortKey} sortDir={sortDir} />
+                      </th>
+                      <th
+                        className={`${thClass} text-right hidden md:table-cell`}
                         onClick={() => handleSort('distance')}
                       >
                         Distance <SortIcon col="distance" sortKey={sortKey} sortDir={sortDir} />
@@ -405,10 +431,14 @@ export function MeshHealthView({ config, onNavigateToMap }: Props) {
                       const shortId = n.public_key.slice(0, 4).toUpperCase();
                       const isHighAlert = n.advert_count > 8;
                       const isMedAlert = !isHighAlert && n.advert_count > 2;
+                      const isFocused = focusKey === n.public_key;
                       return (
                         <tr
                           key={n.public_key}
-                          className="border-b border-border last:border-0 hover:bg-background transition-colors"
+                          ref={isFocused ? focusRowRef : undefined}
+                          className={`border-b border-border last:border-0 hover:bg-background transition-colors ${
+                            isFocused ? 'bg-primary/10 outline outline-1 outline-primary' : ''
+                          }`}
                         >
                           <td className="px-2 py-1.5 font-mono text-[10px] text-muted-foreground">{shortId}</td>
                           <td className="px-2 py-1.5 font-medium text-foreground max-w-[180px] truncate">
@@ -431,6 +461,18 @@ export function MeshHealthView({ config, onNavigateToMap }: Props) {
                           </td>
                           <td className="px-2 py-1.5 text-right text-muted-foreground tabular-nums hidden md:table-cell">
                             {n.min_path_len != null ? n.min_path_len : '—'}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums hidden md:table-cell">
+                            <span
+                              className="font-mono text-muted-foreground"
+                              title={
+                                n.hash_mode != null
+                                  ? `${n.hash_mode + 1}-byte hop addresses`
+                                  : 'Address width unknown (no data yet)'
+                              }
+                            >
+                              {n.hash_mode != null ? n.hash_mode + 1 : '?'}
+                            </span>
                           </td>
                           <td className="px-2 py-1.5 text-right text-muted-foreground tabular-nums hidden md:table-cell">
                             {n.distKm != null ? `${n.distKm.toFixed(0)} km` : '—'}

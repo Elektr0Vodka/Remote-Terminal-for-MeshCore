@@ -100,6 +100,8 @@ class Contact(BaseModel):
     route_override: ContactRoute | None = None
     notes: str | None = None
     owner_id: str | None = None
+    last_rssi: float | None = None
+    last_snr: float | None = None
 
     def model_post_init(self, __context) -> None:
         direct_path, direct_path_len, direct_path_hash_mode = normalize_contact_route(
@@ -253,6 +255,10 @@ class ContactAdvertPath(BaseModel):
     )
     best_snr: float | None = Field(
         default=None, description="Best (highest) SNR observed on this path, in dB"
+    )
+    hash_mode: int | None = Field(
+        default=None,
+        description="Path address width: 0=1-byte, 1=2-byte, 2=3-byte hops (None=unknown)",
     )
 
 
@@ -794,6 +800,14 @@ class AppSettings(BaseModel):
     show_warning_ticker: bool = Field(
         default=True,
         description="Show the scrolling advert-health warning ticker in the top bar",
+    )
+    auto_delete_raw_enabled: bool = Field(
+        default=False,
+        description="Whether to automatically prune old undecrypted raw packets on a daily schedule",
+    )
+    auto_delete_raw_days: int = Field(
+        default=14,
+        description="Delete undecrypted raw packets older than this many days when auto-delete is enabled",
     )
 
 

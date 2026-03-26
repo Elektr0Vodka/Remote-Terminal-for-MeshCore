@@ -385,6 +385,21 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_051_add_contact_owner_id(conn)
         await set_version(conn, 51)
         applied += 1
+    if version < 52:
+        logger.info("Applying migration 52: add last_rssi/last_snr to contacts")
+        await _migrate_052_add_contact_last_signal(conn)
+        await set_version(conn, 52)
+        applied += 1
+    if version < 53:
+        logger.info("Applying migration 53: add auto_delete_raw settings to app_settings")
+        await _migrate_053_add_auto_delete_raw_settings(conn)
+        await set_version(conn, 53)
+        applied += 1
+    if version < 54:
+        logger.info("Applying migration 54: add hash_mode to contact_advert_paths")
+        await _migrate_054_add_advert_path_hash_mode(conn)
+        await set_version(conn, 54)
+        applied += 1
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -2964,6 +2979,47 @@ async def _migrate_050_add_advert_path_signal(conn: aiosqlite.Connection) -> Non
             else:
                 raise
     await conn.commit()
+
+
+async def _migrate_052_add_contact_last_signal(conn: aiosqlite.Connection) -> None:
+    """Add last_rssi and last_snr columns to contacts for quick RSSI display."""
+    for col, col_type in [("last_rssi", "REAL"), ("last_snr", "REAL")]:
+        try:
+            await conn.execute(f"ALTER TABLE contacts ADD COLUMN {col} {col_type}")
+        except Exception as e:
+            if "duplicate column name" in str(e).lower():
+                logger.debug("contacts.%s already exists, skipping", col)
+            else:
+                raise
+    await conn.commit()
+
+
+async def _migrate_053_add_auto_delete_raw_settings(conn: aiosqlite.Connection) -> None:
+    """Add auto_delete_raw_enabled and auto_delete_raw_days columns to app_settings."""
+    for col, default in [("auto_delete_raw_enabled", "0"), ("auto_delete_raw_days", "14")]:
+        try:
+            await conn.execute(
+                f"ALTER TABLE app_settings ADD COLUMN {col} INTEGER DEFAULT {default}"
+            )
+        except Exception:
+            pass  # Column already exists
+
+
+async def _migrate_054_add_advert_path_hash_mode(conn: aiosqlite.Connection) -> None:
+    """Add hash_mode column to contact_advert_paths.
+
+    Stores the path address width used when the advert was received:
+      0 = 1-byte hop identifiers
+      1 = 2-byte hop identifiers
+      2 = 3-byte hop identifiers
+    NULL means the row pre-dates this migration and the width is unknown.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE contact_advert_paths ADD COLUMN hash_mode INTEGER"
+        )
+    except Exception:
+        pass  # Column already exists
 
 
 async def _migrate_051_add_contact_owner_id(conn: aiosqlite.Connection) -> None:

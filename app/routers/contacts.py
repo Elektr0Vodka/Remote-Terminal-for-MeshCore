@@ -650,3 +650,16 @@ async def update_contact_owner_id(public_key: str, body: ContactOwnerIdUpdate) -
         raise HTTPException(status_code=404, detail="Contact not found")
     await ContactRepository.update_owner_id(contact.public_key, body.owner_id)
     return {"status": "ok", "public_key": contact.public_key, "owner_id": body.owner_id}
+
+
+@router.delete("/{public_key}/location")
+async def clear_contact_location(public_key: str) -> dict:
+    """Clear the lat/lon of a contact so it no longer appears on the map.
+
+    The next advertisement that carries GPS coordinates will restore the location.
+    """
+    contact = await ContactRepository.get_by_key(public_key)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    await ContactRepository.clear_location(contact.public_key)
+    return {"status": "ok", "public_key": contact.public_key}

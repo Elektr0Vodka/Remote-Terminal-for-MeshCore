@@ -52,6 +52,16 @@ class AppSettingsUpdate(BaseModel):
         default=None,
         description="Show the scrolling advert-health warning ticker in the top bar",
     )
+    auto_delete_raw_enabled: bool | None = Field(
+        default=None,
+        description="Whether to automatically prune old undecrypted raw packets on a daily schedule",
+    )
+    auto_delete_raw_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=365,
+        description="Delete undecrypted raw packets older than this many days (auto-delete)",
+    )
 
 
 class BlockKeyRequest(BaseModel):
@@ -127,6 +137,10 @@ async def update_settings(update: AppSettingsUpdate) -> AppSettings:
         kwargs["blocked_names"] = update.blocked_names
     if update.show_warning_ticker is not None:
         kwargs["show_warning_ticker"] = update.show_warning_ticker
+    if update.auto_delete_raw_enabled is not None:
+        kwargs["auto_delete_raw_enabled"] = update.auto_delete_raw_enabled
+    if update.auto_delete_raw_days is not None:
+        kwargs["auto_delete_raw_days"] = update.auto_delete_raw_days
 
     # Flood scope
     flood_scope_changed = False

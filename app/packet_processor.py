@@ -469,6 +469,8 @@ async def _process_advertisement(
         hop_count=new_path_len,
         rssi=rssi,
         snr=snr,
+        # hash_size is bytes per hop (1/2/3); hash_mode is hash_size - 1 (0/1/2)
+        hash_mode=packet_info.path_hash_size - 1 if packet_info.path_hash_size else None,
     )
 
     contact_upsert = ContactUpsert(

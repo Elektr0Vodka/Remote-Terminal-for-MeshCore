@@ -65,6 +65,7 @@ interface AppShellProps {
   contactInfoPaneProps: ContactInfoPaneProps;
   channelInfoPaneProps: ChannelInfoPaneProps;
   showWarningTicker?: boolean;
+  onNavigateToHealth?: (publicKey: string) => void;
 }
 
 export function AppShell({
@@ -92,6 +93,7 @@ export function AppShell({
   contactInfoPaneProps,
   channelInfoPaneProps,
   showWarningTicker = true,
+  onNavigateToHealth,
 }: AppShellProps) {
   const swipeHandlers = useSwipeable({
     onSwipedRight: ({ initial }) => {
@@ -202,7 +204,7 @@ export function AppShell({
         onMenuClick={showSettings ? undefined : () => onSidebarOpenChange(true)}
       />
 
-      <WarningTicker enabled={showWarningTicker} />
+      <WarningTicker enabled={showWarningTicker} onNavigateToHealth={onNavigateToHealth} />
 
       <div className="flex flex-1 overflow-hidden">
         <div className="hidden md:block min-h-0 overflow-hidden">{activeSidebarContent}</div>

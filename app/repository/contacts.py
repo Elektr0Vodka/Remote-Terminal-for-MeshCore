@@ -172,6 +172,8 @@ class ContactRepository:
             first_seen=row["first_seen"],
             notes=row["notes"] if "notes" in available_columns else None,
             owner_id=row["owner_id"] if "owner_id" in available_columns else None,
+            last_rssi=row["last_rssi"] if "last_rssi" in available_columns else None,
+            last_snr=row["last_snr"] if "last_snr" in available_columns else None,
         )
 
     @staticmethod
@@ -448,6 +450,20 @@ class ContactRepository:
         return cursor.rowcount > 0
 
     @staticmethod
+    async def clear_location(public_key: str) -> bool:
+        """Clear lat/lon so the node is removed from the map.
+
+        The next advertisement that includes location will restore the values.
+        Returns True if a row was updated.
+        """
+        cursor = await db.conn.execute(
+            "UPDATE contacts SET lat = NULL, lon = NULL WHERE public_key = ?",
+            (public_key.lower(),),
+        )
+        await db.conn.commit()
+        return cursor.rowcount > 0
+
+    @staticmethod
     async def promote_prefix_placeholders(full_key: str) -> list[str]:
         """Promote prefix-only placeholder contacts to a resolved full key.
 
@@ -471,15 +487,16 @@ class ContactRepository:
                 """
                 INSERT INTO contact_advert_paths
                     (public_key, path_hex, path_len, first_seen, last_seen, heard_count,
-                     best_rssi, best_snr)
+                     best_rssi, best_snr, hash_mode)
                 SELECT ?, path_hex, path_len, first_seen, last_seen, heard_count,
-                       best_rssi, best_snr
+                       best_rssi, best_snr, hash_mode
                 FROM contact_advert_paths
                 WHERE public_key = ?
                 ON CONFLICT(public_key, path_hex, path_len) DO UPDATE SET
                     first_seen = MIN(contact_advert_paths.first_seen, excluded.first_seen),
                     last_seen = MAX(contact_advert_paths.last_seen, excluded.last_seen),
                     heard_count = contact_advert_paths.heard_count + excluded.heard_count,
+                    hash_mode = COALESCE(contact_advert_paths.hash_mode, excluded.hash_mode),
                     best_rssi = CASE
                         WHEN excluded.best_rssi IS NULL THEN contact_advert_paths.best_rssi
                         WHEN contact_advert_paths.best_rssi IS NULL THEN excluded.best_rssi
@@ -632,6 +649,7 @@ class ContactAdvertPathRepository:
             heard_count=row["heard_count"],
             best_rssi=row["best_rssi"] if "best_rssi" in available else None,
             best_snr=row["best_snr"] if "best_snr" in available else None,
+            hash_mode=row["hash_mode"] if "hash_mode" in available else None,
         )
 
     @staticmethod
@@ -643,11 +661,13 @@ class ContactAdvertPathRepository:
         hop_count: int | None = None,
         rssi: int | float | None = None,
         snr: float | None = None,
+        hash_mode: int | None = None,
     ) -> None:
         """
         Upsert a unique advert path observation for a contact and prune to N most recent.
 
         rssi/snr are stored as the best (highest) values seen on this path.
+        hash_mode: 0=1-byte hops, 1=2-byte hops, 2=3-byte hops (None=unknown).
         """
         if max_paths < 1:
             max_paths = 1
@@ -660,11 +680,12 @@ class ContactAdvertPathRepository:
             """
             INSERT INTO contact_advert_paths
                 (public_key, path_hex, path_len, first_seen, last_seen, heard_count,
-                 best_rssi, best_snr)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                 best_rssi, best_snr, hash_mode)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
             ON CONFLICT(public_key, path_hex, path_len) DO UPDATE SET
                 last_seen = MAX(contact_advert_paths.last_seen, excluded.last_seen),
                 heard_count = contact_advert_paths.heard_count + 1,
+                hash_mode = COALESCE(excluded.hash_mode, contact_advert_paths.hash_mode),
                 best_rssi = CASE
                     WHEN excluded.best_rssi IS NULL THEN contact_advert_paths.best_rssi
                     WHEN contact_advert_paths.best_rssi IS NULL THEN excluded.best_rssi
@@ -678,7 +699,7 @@ class ContactAdvertPathRepository:
                     ELSE contact_advert_paths.best_snr
                 END
             """,
-            (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr),
+            (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr, hash_mode),
         )
 
         # Keep only the N most recent unique paths per contact.
@@ -696,6 +717,19 @@ class ContactAdvertPathRepository:
             """,
             (normalized_key, normalized_key, max_paths),
         )
+
+        # Update last_rssi / last_snr on the contact row so callers don't need a join
+        if rssi is not None or snr is not None:
+            await db.conn.execute(
+                """
+                UPDATE contacts
+                SET last_rssi = COALESCE(?, last_rssi),
+                    last_snr  = COALESCE(?, last_snr)
+                WHERE public_key = ?
+                """,
+                (rssi, snr, normalized_key),
+            )
+
         await db.conn.commit()
 
     @staticmethod

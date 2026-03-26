@@ -607,6 +607,14 @@ export function App() {
         contactInfoPaneProps={contactInfoPaneProps}
         channelInfoPaneProps={channelInfoPaneProps}
         showWarningTicker={appSettings?.show_warning_ticker ?? true}
+        onNavigateToHealth={(publicKey) =>
+          handleSelectConversationWithTargetReset({
+            type: 'mesh-health',
+            id: 'mesh-health',
+            name: 'Mesh Health',
+            healthFocusKey: publicKey,
+          })
+        }
       />
     </DistanceUnitProvider>
   );

@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { Ban, Search, Star } from 'lucide-react';
+import { Ban, MapPinOff, Search, Star } from 'lucide-react';
 import { api } from '../api';
 import { formatTime } from '../utils/messageParser';
 import {
@@ -89,6 +89,7 @@ export function ContactInfoPane({
 
   const [analytics, setAnalytics] = useState<ContactAnalytics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [removingLocation, setRemovingLocation] = useState(false);
 
   // Get live contact data from contacts array (real-time via WS)
   const liveContact =
@@ -97,11 +98,13 @@ export function ContactInfoPane({
   useEffect(() => {
     if (!contactKey) {
       setAnalytics(null);
+      setPrevKeys(null);
       return;
     }
 
     let cancelled = false;
     setAnalytics(null);
+    setPrevKeys(null);
     setLoading(true);
     const request =
       isNameOnly && nameOnlyValue
@@ -121,6 +124,7 @@ export function ContactInfoPane({
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
@@ -443,6 +447,36 @@ export function ContactInfoPane({
               </div>
             )}
 
+            {/* Remove from map — clears lat/lon; next advert with GPS restores it */}
+            {isValidLocation(contact.lat, contact.lon) && (
+              <div className="px-5 py-3 border-b border-border">
+                <button
+                  type="button"
+                  disabled={removingLocation}
+                  className="text-sm flex items-center gap-2 hover:text-destructive transition-colors disabled:opacity-40"
+                  onClick={() => {
+                    setRemovingLocation(true);
+                    fetch(`/api/contacts/${contact.public_key}/location`, { method: 'DELETE' })
+                      .then((r) => {
+                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                        toast.success('Removed from map', {
+                          description: 'Location cleared — the node will reappear when it next advertises with GPS.',
+                        });
+                      })
+                      .catch((err) => {
+                        toast.error('Failed to remove from map', {
+                          description: err instanceof Error ? err.message : 'Unknown error',
+                        });
+                      })
+                      .finally(() => setRemovingLocation(false));
+                  }}
+                >
+                  <MapPinOff className="h-4.5 w-4.5 text-muted-foreground" aria-hidden="true" />
+                  <span>{removingLocation ? 'Removing…' : 'Remove from map'}</span>
+                </button>
+              </div>
+            )}
+
             {/* Nearest Repeaters */}
             {analytics && analytics.nearest_repeaters.length > 0 && (
               <div className="px-5 py-3 border-b border-border">
@@ -468,19 +502,37 @@ export function ContactInfoPane({
               <div className="px-5 py-3 border-b border-border">
                 <SectionLabel>Recent Advert Paths</SectionLabel>
                 <div className="space-y-1">
-                  {analytics.advert_paths.map((p) => (
-                    <div
-                      key={p.path + p.first_seen}
-                      className="flex justify-between items-center text-sm"
-                    >
-                      <span className="font-mono text-xs truncate">
-                        {p.path ? parsePathHops(p.path, p.path_len).join(' → ') : '(direct)'}
-                      </span>
-                      <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
-                        {p.heard_count}x · {formatTime(p.last_seen)}
-                      </span>
-                    </div>
-                  ))}
+                  {analytics.advert_paths.map((p) => {
+                    const hopBytes = p.hash_mode != null ? p.hash_mode + 1 : null;
+                    const modeLabel = hopBytes != null ? `${hopBytes}` : '?';
+                    const hops = parsePathHops(p.path, p.path_len);
+                    return (
+                      <div
+                        key={p.path + p.first_seen}
+                        className="flex justify-between items-start text-sm gap-2"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {/* Hash-mode badge */}
+                          <span
+                            className="shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide bg-muted text-muted-foreground"
+                            title={
+                              hopBytes != null
+                                ? `${hopBytes}-byte hop addresses (mode ${p.hash_mode})`
+                                : 'Hop address width unknown (legacy row)'
+                            }
+                          >
+                            {modeLabel}
+                          </span>
+                          <span className="font-mono text-xs truncate">
+                            {hops.length > 0 ? hops.join(' → ') : '(direct)'}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {p.heard_count}x · {formatTime(p.last_seen)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

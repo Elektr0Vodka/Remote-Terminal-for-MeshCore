@@ -174,7 +174,7 @@ export function ConversationPane({
         </h2>
         <div className="flex-1 overflow-hidden">
           <Suspense fallback={<LoadingPane label="Loading map..." />}>
-            <MapView contacts={contacts} focusedKey={activeConversation.mapFocusKey} />
+            <MapView contacts={contacts} focusedKey={activeConversation.mapFocusKey} onSelectConversation={onSelectConversation} connectedPublicKey={config?.public_key} />
           </Suspense>
         </div>
       </>
@@ -221,6 +221,7 @@ export function ConversationPane({
       <Suspense fallback={<LoadingPane label="Loading mesh health..." />}>
         <MeshHealthView
           config={config}
+          focusKey={activeConversation.healthFocusKey}
           onNavigateToMap={(focusKey?: string) => {
             if (focusKey) window.location.hash = `map/focus/${focusKey}`;
             // Use the passed-in select handler from props to properly update React state

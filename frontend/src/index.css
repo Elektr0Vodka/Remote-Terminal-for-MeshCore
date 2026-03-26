@@ -134,3 +134,45 @@
 .cm-editor .cm-scroller {
   overflow-x: auto !important;
 }
+
+/* ── Leaflet popup theme overrides ───────────────────────────────────────────
+   Leaflet hard-codes white backgrounds and dark text. Override with our CSS
+   variables so popups respect the active theme (dark, light, etc.).          */
+.leaflet-popup-content-wrapper {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+/* Leaflet also applies padding on .leaflet-popup-content — keep it but let
+   the titlebar bleed to the edges using negative margins on the inner div. */
+.leaflet-popup-content {
+  margin: 12px !important;
+}
+.leaflet-popup-tip {
+  background: hsl(var(--card)) !important;
+}
+.leaflet-popup-content-wrapper a {
+  color: hsl(var(--primary)) !important;
+}
+
+/* ── Map popup titlebar ───────────────────────────────────────────────────────
+   The top strip of each map info card. Uses primary colour by default so it
+   looks like a taskbar / window title. Theme overrides live in themes.css.   */
+.popup-titlebar {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
+/* In the light theme use a slightly muted bar so it doesn't overpower */
+:root[data-theme='light'] .popup-titlebar {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Menu, Moon, Sun } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Menu, Moon, Palette, Sun } from 'lucide-react';
 import type { HealthStatus, RadioConfig } from '../types';
 import { api } from '../api';
 import { toast } from './ui/sonner';
 import { handleKeyboardActivate } from '../utils/a11y';
-import { applyTheme, getSavedTheme, THEME_CHANGE_EVENT } from '../utils/theme';
+import { applyTheme, getSavedTheme, THEME_CHANGE_EVENT, THEMES } from '../utils/theme';
 import { cn } from '@/lib/utils';
 
 interface StatusBarProps {
@@ -14,6 +14,93 @@ interface StatusBarProps {
   onSettingsClick: () => void;
   onMenuClick?: () => void;
 }
+
+// Themes whose day/night toggle is meaningful (they have a clear light ↔ dark pairing)
+const LIGHT_THEMES  = new Set(['light', 'ios', 'paper-grove', 'monochrome']);
+const TOGGLE_THEMES = new Set(['original', 'light', 'ios', 'paper-grove', 'monochrome']);
+const PREV_DARK_KEY = 'remoteterm-prev-dark-theme';
+
+// ─── Compact theme swatch ─────────────────────────────────────────────────────
+
+function MiniSwatch({ colors }: { colors: readonly string[] }) {
+  return (
+    <div className="grid grid-cols-3 gap-[2px] shrink-0" aria-hidden="true">
+      {colors.slice(0, 6).map((c, i) => (
+        <div key={i} className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: c }} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Theme picker popup ───────────────────────────────────────────────────────
+
+interface ThemePickerProps {
+  currentTheme: string;
+  onClose: () => void;
+}
+
+function ThemePickerMenu({ currentTheme, onClose }: ThemePickerProps) {
+  const isLight    = LIGHT_THEMES.has(currentTheme);
+  const showToggle = TOGGLE_THEMES.has(currentTheme);
+
+  const handleToggle = () => {
+    if (isLight) {
+      let prev = 'original';
+      try { prev = localStorage.getItem(PREV_DARK_KEY) ?? 'original'; } catch { /* ignore */ }
+      applyTheme(prev);
+    } else {
+      try { localStorage.setItem(PREV_DARK_KEY, currentTheme); } catch { /* ignore */ }
+      applyTheme('light');
+    }
+    onClose();
+  };
+
+  return (
+    <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border border-border bg-card shadow-xl py-2">
+
+      {/* Light / dark toggle — only when this theme has a meaningful counterpart */}
+      {showToggle && (
+        <>
+          <button
+            onClick={handleToggle}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+          >
+            {isLight
+              ? <Moon className="h-3.5 w-3.5 text-muted-foreground" />
+              : <Sun  className="h-3.5 w-3.5 text-muted-foreground" />}
+            <span>{isLight ? 'Switch to dark mode' : 'Switch to light mode'}</span>
+          </button>
+          <div className="my-1.5 border-t border-border" />
+        </>
+      )}
+
+      {/* Theme grid */}
+      <div className="px-2 grid grid-cols-2 gap-1">
+        {THEMES.map((theme) => {
+          const active = theme.id === currentTheme;
+          return (
+            <button
+              key={theme.id}
+              onClick={() => { applyTheme(theme.id); onClose(); }}
+              className={cn(
+                'flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left transition-colors',
+                active
+                  ? 'bg-primary/10 border border-primary/40 text-foreground font-medium'
+                  : 'border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+              aria-pressed={active}
+            >
+              <MiniSwatch colors={theme.swatches} />
+              <span className="truncate">{theme.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── StatusBar ────────────────────────────────────────────────────────────────
 
 export function StatusBar({
   health,
@@ -40,20 +127,33 @@ export function StatusBar({
           : connected
             ? 'Radio OK'
             : 'Radio Disconnected';
-  const [reconnecting, setReconnecting] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState(getSavedTheme);
 
+  const [reconnecting, setReconnecting]   = useState(false);
+  const [currentTheme, setCurrentTheme]   = useState(getSavedTheme);
+  const [pickerOpen, setPickerOpen]       = useState(false);
+  const pickerRef                         = useRef<HTMLDivElement>(null);
+
+  // Sync theme state when changed from anywhere (e.g. the Settings → Appearance page)
   useEffect(() => {
-    const handleThemeChange = (event: Event) => {
+    const handler = (event: Event) => {
       const themeId = (event as CustomEvent<string>).detail;
       setCurrentTheme(typeof themeId === 'string' && themeId ? themeId : getSavedTheme());
     };
-
-    window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange as EventListener);
-    return () => {
-      window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange as EventListener);
-    };
+    window.addEventListener(THEME_CHANGE_EVENT, handler as EventListener);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, handler as EventListener);
   }, []);
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pickerOpen]);
 
   const handleReconnect = async () => {
     setReconnecting(true);
@@ -71,15 +171,9 @@ export function StatusBar({
     }
   };
 
-  const handleThemeToggle = () => {
-    const nextTheme = currentTheme === 'light' ? 'original' : 'light';
-    applyTheme(nextTheme);
-    setCurrentTheme(nextTheme);
-  };
-
   return (
     <header className="flex items-center gap-3 px-4 py-2.5 bg-card border-b border-border text-xs">
-      {/* Mobile menu button - only visible on small screens */}
+      {/* Mobile menu button */}
       {onMenuClick && (
         <button
           onClick={onMenuClick}
@@ -148,6 +242,7 @@ export function StatusBar({
           {reconnecting ? 'Reconnecting...' : radioState === 'paused' ? 'Connect' : 'Reconnect'}
         </button>
       )}
+
       <button
         onClick={onSettingsClick}
         className={cn(
@@ -159,18 +254,29 @@ export function StatusBar({
       >
         {settingsMode ? 'Back to Chat' : 'Settings'}
       </button>
-      <button
-        onClick={handleThemeToggle}
-        className="p-0.5 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-        title={currentTheme === 'light' ? 'Switch to classic theme' : 'Switch to light theme'}
-        aria-label={currentTheme === 'light' ? 'Switch to classic theme' : 'Switch to light theme'}
-      >
-        {currentTheme === 'light' ? (
-          <Moon className="h-4 w-4" aria-hidden="true" />
-        ) : (
-          <Sun className="h-4 w-4" aria-hidden="true" />
+
+      {/* Theme picker */}
+      <div className="relative" ref={pickerRef}>
+        <button
+          onClick={() => setPickerOpen((v) => !v)}
+          className={cn(
+            'p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            pickerOpen && 'bg-accent text-foreground'
+          )}
+          title="Change theme"
+          aria-label="Change theme"
+          aria-expanded={pickerOpen}
+        >
+          <Palette className="h-4 w-4" aria-hidden="true" />
+        </button>
+
+        {pickerOpen && (
+          <ThemePickerMenu
+            currentTheme={currentTheme}
+            onClose={() => setPickerOpen(false)}
+          />
         )}
-      </button>
+      </div>
     </header>
   );
 }

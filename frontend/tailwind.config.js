@@ -88,12 +88,12 @@ export default {
       },
       keyframes: {
         ticker: {
-          '0%':   { transform: 'translateX(0%)' },
-          '100%': { transform: 'translateX(-50%)' },
+          '0%':   { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-100%)' },
         },
       },
       animation: {
-        ticker: 'ticker 20s linear infinite',
+        ticker: 'ticker 30s linear infinite',
       },
     },
   },

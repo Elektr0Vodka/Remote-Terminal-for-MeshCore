@@ -770,6 +770,7 @@ class MeshHealthContact(BaseModel):
     lat: float | None
     lon: float | None
     min_path_len: int | None
+    hash_mode: int | None = None
 
 
 class MeshHealthAlert(BaseModel):
@@ -822,14 +823,25 @@ async def get_mesh_health(
                 c.lat,
                 c.lon,
                 c.last_seen,
-                MIN(cap.first_seen) AS first_seen,
-                MIN(cap.path_len)   AS min_path_len,
+                CASE WHEN MIN(cap.first_seen) < :start_ts THEN :start_ts ELSE MIN(cap.first_seen) END AS first_seen,
+                MIN(cap.path_len) AS min_path_len,
                 COALESCE(SUM(
                     CASE WHEN cap.first_seen >= :start_ts
                          THEN cap.heard_count
                          ELSE 1
                     END
-                ), 0) AS advert_count
+                ), 0) AS advert_count,
+                -- hash_mode from the shortest-hop path; falls back to any non-null mode
+                (
+                    SELECT cap2.hash_mode
+                    FROM contact_advert_paths cap2
+                    WHERE cap2.public_key = c.public_key
+                      AND cap2.last_seen >= :start_ts
+                      AND cap2.last_seen < :end_ts
+                      AND cap2.hash_mode IS NOT NULL
+                    ORDER BY cap2.path_len ASC, cap2.last_seen DESC
+                    LIMIT 1
+                ) AS hash_mode
             FROM contacts c
             JOIN contact_advert_paths cap ON cap.public_key = c.public_key
                 AND cap.last_seen >= :start_ts
@@ -857,6 +869,7 @@ async def get_mesh_health(
             lat=row["lat"],
             lon=row["lon"],
             min_path_len=row["min_path_len"],
+            hash_mode=row["hash_mode"],
         ))
 
         adverts_per_hour = advert_count / max(window_hours, 0.01)
