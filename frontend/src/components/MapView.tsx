@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
+import { Info } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
@@ -212,6 +213,15 @@ const MapPopupContent = memo(function MapPopupContent({
       <div className="popup-titlebar -mx-3 -mt-3 mb-2 px-3 py-1.5 flex items-center gap-1.5 flex-wrap">
         <span aria-hidden="true">{cfg.emoji}</span>
         <span className="font-semibold truncate flex-1">{displayName}</span>
+        {onSelectConversation && (
+          <button
+            onClick={openManage}
+            title="Open contact info"
+            className="flex-shrink-0 rounded p-0.5 text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        )}
         {isConnectedRadio && (
           <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-success/20 text-success whitespace-nowrap">
             My Companion
@@ -326,6 +336,7 @@ const MapPopupContent = memo(function MapPopupContent({
                 value={ownerId}
                 onChange={(e) => setOwnerId(e.target.value)}
                 onBlur={(e) => saveOwnerId(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveOwnerId(e.currentTarget.value); } }}
                 placeholder="Public key prefix or full key…"
                 className="w-full rounded border border-border bg-background px-1.5 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono"
                 style={{ minWidth: '160px' }}
@@ -347,7 +358,7 @@ const MapPopupContent = memo(function MapPopupContent({
                   <span className="font-mono text-muted-foreground">{contact.owner_id?.slice(0, 16)}…</span>
                 )}
                 <button
-                  onClick={() => setEditingOwner(true)}
+                  onClick={(e) => { e.stopPropagation(); setEditingOwner(true); }}
                   title="Change Node Owner"
                   className="text-[10px] text-muted-foreground hover:text-foreground transition"
                 >
@@ -750,7 +761,7 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
         position={[contact.lat!, contact.lon!]}
         icon={icon}
       >
-        <Popup>
+        <Popup autoPan={false}>
           <MapPopupContent
             contact={contact}
             contactsRef={contactsRef}

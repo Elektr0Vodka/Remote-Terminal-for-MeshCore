@@ -226,7 +226,7 @@ export function ConversationPane({
             if (focusKey) window.location.hash = `map/focus/${focusKey}`;
             // Use the passed-in select handler from props to properly update React state
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (onSelectConversation as any)?.({ type: 'map', id: 'map', name: 'Map' });
+            (onSelectConversation as any)?.({ type: 'map', id: 'map', name: 'Map', mapFocusKey: focusKey });
           }}
         />
       </Suspense>

@@ -649,6 +649,9 @@ async def update_contact_owner_id(public_key: str, body: ContactOwnerIdUpdate) -
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     await ContactRepository.update_owner_id(contact.public_key, body.owner_id)
+    updated = await ContactRepository.get_by_key(contact.public_key)
+    if updated:
+        await _broadcast_contact_update(updated)
     return {"status": "ok", "public_key": contact.public_key, "owner_id": body.owner_id}
 
 
@@ -662,4 +665,7 @@ async def clear_contact_location(public_key: str) -> dict:
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     await ContactRepository.clear_location(contact.public_key)
+    updated = await ContactRepository.get_by_key(contact.public_key)
+    if updated:
+        await _broadcast_contact_update(updated)
     return {"status": "ok", "public_key": contact.public_key}

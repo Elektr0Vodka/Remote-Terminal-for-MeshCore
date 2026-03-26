@@ -98,13 +98,11 @@ export function ContactInfoPane({
   useEffect(() => {
     if (!contactKey) {
       setAnalytics(null);
-      setPrevKeys(null);
       return;
     }
 
     let cancelled = false;
     setAnalytics(null);
-    setPrevKeys(null);
     setLoading(true);
     const request =
       isNameOnly && nameOnlyValue
