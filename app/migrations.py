@@ -400,6 +400,16 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_054_add_advert_path_hash_mode(conn)
         await set_version(conn, 54)
         applied += 1
+    if version < 55:
+        logger.info("Applying migration 55: add contacts.advert_hash_mode and backfill from advert paths")
+        await _migrate_055_add_contact_advert_hash_mode(conn)
+        await set_version(conn, 55)
+        applied += 1
+    if version < 56:
+        logger.info("Applying migration 56: create kms_keys table")
+        await _migrate_056_create_kms_keys(conn)
+        await set_version(conn, 56)
+        applied += 1
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -3005,6 +3015,43 @@ async def _migrate_053_add_auto_delete_raw_settings(conn: aiosqlite.Connection) 
             pass  # Column already exists
 
 
+async def _migrate_055_add_contact_advert_hash_mode(conn: aiosqlite.Connection) -> None:
+    """Add contacts.advert_hash_mode and backfill from most recent advert path observation.
+
+    This column stores the path address width (0=1B, 1=2B, 2=3B) as observed in
+    the node's most recent advertisement, independently of direct_path_hash_mode
+    which is only set when path discovery completes.
+    """
+    try:
+        await conn.execute("ALTER TABLE contacts ADD COLUMN advert_hash_mode INTEGER")
+    except Exception as e:
+        if "duplicate column name" in str(e).lower():
+            logger.debug("contacts.advert_hash_mode already exists, skipping add")
+        else:
+            raise
+    # Backfill from most recent advert path with a known hash_mode
+    await conn.execute(
+        """
+        UPDATE contacts
+        SET advert_hash_mode = (
+            SELECT hash_mode
+            FROM contact_advert_paths
+            WHERE public_key = contacts.public_key
+              AND hash_mode IS NOT NULL
+            ORDER BY last_seen DESC
+            LIMIT 1
+        )
+        WHERE EXISTS (
+            SELECT 1 FROM contact_advert_paths
+            WHERE public_key = contacts.public_key
+              AND hash_mode IS NOT NULL
+        )
+        """
+    )
+    await conn.commit()
+    logger.debug("Added contacts.advert_hash_mode and backfilled from contact_advert_paths")
+
+
 async def _migrate_054_add_advert_path_hash_mode(conn: aiosqlite.Connection) -> None:
     """Add hash_mode column to contact_advert_paths.
 
@@ -3020,6 +3067,38 @@ async def _migrate_054_add_advert_path_hash_mode(conn: aiosqlite.Connection) -> 
         )
     except Exception:
         pass  # Column already exists
+
+
+async def _migrate_056_create_kms_keys(conn: aiosqlite.Connection) -> None:
+    """Create the kms_keys table for MeshCore Key Management System.
+
+    Stores generated Ed25519 keypairs alongside device-lifecycle metadata
+    (device name, role, model, placement date, maintenance dates, etc.).
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kms_keys (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key              TEXT NOT NULL UNIQUE,
+            private_key             TEXT NOT NULL,
+            device_name             TEXT,
+            device_role             TEXT,
+            model                   TEXT,
+            placement_date          TEXT,
+            last_maintenance        TEXT,
+            last_registered_failure TEXT,
+            assigned_to             TEXT,
+            notes                   TEXT,
+            created_at              INTEGER NOT NULL,
+            updated_at              INTEGER NOT NULL
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_kms_keys_created ON kms_keys(created_at DESC)"
+    )
+    await conn.commit()
+    logger.debug("Created kms_keys table")
 
 
 async def _migrate_051_add_contact_owner_id(conn: aiosqlite.Connection) -> None:

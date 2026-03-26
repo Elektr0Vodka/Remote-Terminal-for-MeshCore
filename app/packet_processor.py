@@ -485,6 +485,9 @@ async def _process_advertisement(
     )
 
     await ContactRepository.upsert(contact_upsert)
+    if packet_info and packet_info.path_hash_size:
+        advert_hash_mode = packet_info.path_hash_size - 1  # 1→0, 2→1, 3→2
+        await ContactRepository.update_advert_hash_mode(advert.public_key.lower(), advert_hash_mode)
     promoted_keys = await promote_prefix_contacts_for_contact(
         public_key=advert.public_key,
         log=logger,

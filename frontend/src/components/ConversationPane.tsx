@@ -29,6 +29,7 @@ const VisualizerView = lazy(() =>
 );
 const MyNodeView = lazy(() => import('./MyNodeView'));
 const MeshHealthView = lazy(() => import('./MeshHealthView').then((m) => ({ default: m.MeshHealthView })));
+const KmsView = lazy(() => import('./KmsView').then((m) => ({ default: m.KmsView })));
 
 interface ConversationPaneProps {
   activeConversation: Conversation | null;
@@ -212,6 +213,14 @@ export function ConversationPane({
           rawPacketStatsSession={rawPacketStatsSession}
           contacts={contacts}
         />
+      </Suspense>
+    );
+  }
+
+  if (activeConversation.type === 'kms') {
+    return (
+      <Suspense fallback={<LoadingPane label="Loading MC-KMS..." />}>
+        <KmsView />
       </Suspense>
     );
   }

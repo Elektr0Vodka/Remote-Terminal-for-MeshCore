@@ -174,6 +174,7 @@ class ContactRepository:
             owner_id=row["owner_id"] if "owner_id" in available_columns else None,
             last_rssi=row["last_rssi"] if "last_rssi" in available_columns else None,
             last_snr=row["last_snr"] if "last_snr" in available_columns else None,
+            advert_hash_mode=row["advert_hash_mode"] if "advert_hash_mode" in available_columns else None,
         )
 
     @staticmethod
@@ -438,6 +439,15 @@ class ContactRepository:
         )
         await db.conn.commit()
         return cursor.rowcount > 0
+
+    @staticmethod
+    async def update_advert_hash_mode(public_key: str, hash_mode: int) -> None:
+        """Record the path address width observed in the most recent advert from this contact."""
+        await db.conn.execute(
+            "UPDATE contacts SET advert_hash_mode = ? WHERE public_key = ?",
+            (hash_mode, public_key.lower()),
+        )
+        await db.conn.commit()
 
     @staticmethod
     async def update_owner_id(public_key: str, owner_id: str | None) -> bool:

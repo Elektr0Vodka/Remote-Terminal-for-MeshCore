@@ -29,7 +29,7 @@ type ContactTypeKey = 'unknown' | 'client' | 'repeater' | 'room' | 'sensor';
 const CONTACT_TYPE_CONFIG: Record<ContactTypeKey, { label: string; value: number; emoji: string; small?: boolean }> = {
   unknown:  { label: 'Unknown',  value: CONTACT_TYPE_UNKNOWN,  emoji: '❓' },
   client:   { label: 'Client',   value: CONTACT_TYPE_CLIENT,   emoji: '📟' },
-  repeater: { label: 'Repeater', value: CONTACT_TYPE_REPEATER, emoji: '📶', small: true },
+  repeater: { label: 'Repeater', value: CONTACT_TYPE_REPEATER, emoji: '🗼', small: true },
   room:     { label: 'Room',     value: CONTACT_TYPE_ROOM,     emoji: '🏠' },
   sensor:   { label: 'Sensor',   value: CONTACT_TYPE_SENSOR,   emoji: '📡' },
 };
@@ -38,6 +38,29 @@ const ALL_TYPE_KEYS = Object.keys(CONTACT_TYPE_CONFIG) as ContactTypeKey[];
 
 function getTypeKey(type: number | null | undefined): ContactTypeKey {
   return ALL_TYPE_KEYS.find((k) => CONTACT_TYPE_CONFIG[k].value === type) ?? 'unknown';
+}
+
+// ─── Hash mode constants (path address width) ────────────────────────────────
+
+type HashModeKey = '1B' | '2B' | '3B';
+
+const HASH_MODE_CONFIG: Record<HashModeKey, { label: string; value: number }> = {
+  '1B': { label: '1-B', value: 0 },
+  '2B': { label: '2-B', value: 1 },
+  '3B': { label: '3-B', value: 2 },
+};
+const ALL_HASH_MODE_KEYS = Object.keys(HASH_MODE_CONFIG) as HashModeKey[];
+
+function getHashModeKey(hashMode: number | null | undefined): HashModeKey | null {
+  if (hashMode == null) return null;
+  return ALL_HASH_MODE_KEYS.find((k) => HASH_MODE_CONFIG[k].value === hashMode) ?? null;
+}
+
+/** Returns the best available hash mode key: path discovery wins, advert-observed as fallback. */
+function getContactHashModeKey(c: Contact): HashModeKey | null {
+  const direct = c.direct_path_hash_mode;
+  if (direct != null && direct >= 0) return getHashModeKey(direct);
+  return getHashModeKey(c.advert_hash_mode);
 }
 
 // ─── Recency colors ──────────────────────────────────────────────────────────
@@ -232,6 +255,11 @@ const MapPopupContent = memo(function MapPopupContent({
         )}
         {health === 'MEDIUM' && (
           <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-warning/20 text-warning">MED ADVERT</span>
+        )}
+        {getContactHashModeKey(contact) !== null && (
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-muted/80 text-muted-foreground whitespace-nowrap font-mono">
+            {HASH_MODE_CONFIG[getContactHashModeKey(contact)!].label}
+          </span>
         )}
       </div>
 
@@ -615,6 +643,12 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
   );
   const toggleType = (k: ContactTypeKey) => setVisibleTypes((p) => ({ ...p, [k]: !p[k] }));
 
+  // ── Hash mode toggles ────────────────────────────────────────────────────────
+  const [visibleHashModes, setVisibleHashModes] = useState<Record<HashModeKey, boolean>>(
+    { '1B': true, '2B': true, '3B': true }
+  );
+  const toggleHashMode = (k: HashModeKey) => setVisibleHashModes((p) => ({ ...p, [k]: !p[k] }));
+
   // ── Owned-only filter ───────────────────────────────────────────────────────
   const [showOwnedOnly, setShowOwnedOnly] = useState(() => {
     try { return localStorage.getItem('remoteterm-map-owned-only') === 'true'; } catch { return false; }
@@ -641,8 +675,11 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
     if (c.public_key === focusedKey) return true;
     if (c.last_seen == null || c.last_seen < effectiveStart || c.last_seen > effectiveEnd) return false;
     if (showOwnedOnly && !(OWNER_CAPABLE_TYPES.has(c.type) && c.owner_id)) return false;
-    return visibleTypes[getTypeKey(c.type)];
-  }), [contacts, focusedKey, effectiveStart, effectiveEnd, visibleTypes, showOwnedOnly]);
+    if (!visibleTypes[getTypeKey(c.type)]) return false;
+    const hmKey = getContactHashModeKey(c);
+    if (hmKey !== null && !visibleHashModes[hmKey]) return false;
+    return true;
+  }), [contacts, focusedKey, effectiveStart, effectiveEnd, visibleTypes, visibleHashModes, showOwnedOnly]);
 
   const focusedContact = useMemo(() =>
     focusedKey ? (mappableContacts.find((c) => c.public_key === focusedKey) ?? null) : null,
@@ -734,6 +771,7 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
 
   const isFullRange = activePreset === 'All';
   const activeTypeCount = ALL_TYPE_KEYS.filter((k) => visibleTypes[k]).length;
+  const activeHashModeCount = ALL_HASH_MODE_KEYS.filter((k) => visibleHashModes[k]).length;
 
   // Stable key — only changes when the identity/position/type of the marker set changes,
   // NOT when last_seen, name, notes, owner_id etc. change. This prevents MarkerClusterGroup
@@ -790,6 +828,7 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
           Showing {mappableContacts.length} contact{mappableContacts.length !== 1 ? 's' : ''}
           {isFullRange ? ' (all time)' : ` · last ${activePreset}`}
           {activeTypeCount < ALL_TYPE_KEYS.length ? ` · ${activeTypeCount}/${ALL_TYPE_KEYS.length} types` : ''}
+          {activeHashModeCount < ALL_HASH_MODE_KEYS.length ? ` · ${activeHashModeCount}/${ALL_HASH_MODE_KEYS.length} modes` : ''}
           {heatmap ? ' · heatmap' : ''}
           {heatmap && heatLoading ? ' · loading…' : ''}
         </span>
@@ -848,6 +887,37 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
             Show all
           </button>
         )}
+
+        {/* Hash mode toggles */}
+        <div className="flex items-center gap-1 border-l border-border pl-2">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-0.5">Hops:</span>
+          {ALL_HASH_MODE_KEYS.map((key) => {
+            const cfg = HASH_MODE_CONFIG[key];
+            const active = visibleHashModes[key];
+            const count = contacts.filter((c) =>
+              isValidLocation(c.lat, c.lon) && c.public_key !== focusedKey &&
+              c.last_seen != null && c.last_seen >= effectiveStart && c.last_seen <= effectiveEnd &&
+              getContactHashModeKey(c) === key
+            ).length;
+            return (
+              <button key={key} onClick={() => toggleHashMode(key)}
+                title={`${active ? 'Hide' : 'Show'} ${cfg.label} nodes (${count})`}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono transition-colors border ${
+                  active ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground opacity-50'
+                }`}>
+                <span>{cfg.label}</span>
+                <span className="tabular-nums text-[10px] text-muted-foreground">{count}</span>
+              </button>
+            );
+          })}
+          {activeHashModeCount < ALL_HASH_MODE_KEYS.length && (
+            <button onClick={() => setVisibleHashModes({ '1B': true, '2B': true, '3B': true })}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+              all
+            </button>
+          )}
+        </div>
+
         <div className="flex-1" />
 
         {/* Cluster toggle — hidden in heatmap mode */}

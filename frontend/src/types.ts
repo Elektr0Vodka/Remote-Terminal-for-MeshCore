@@ -126,6 +126,8 @@ export interface Contact {
   owner_id?: string | null;
   last_rssi?: number | null;
   last_snr?: number | null;
+  /** Most recent advert-observed path address width: 0=1B, 1=2B, 2=3B (null=never seen) */
+  advert_hash_mode?: number | null;
 }
 
 export interface ContactRoute {
@@ -292,8 +294,8 @@ export interface ResendChannelMessageResponse {
   message?: Message;
 }
 
-// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page
-type ConversationType = 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health';
+// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page, 'kms' for MC-KMS
+type ConversationType = 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health' | 'kms';
 
 export interface Conversation {
   type: ConversationType;
@@ -543,4 +545,46 @@ export interface StatisticsResponse {
     double_byte_pct: number;
     triple_byte_pct: number;
   };
+}
+
+// ─── MC-KMS ──────────────────────────────────────────────────────────────────
+
+export interface KmsKey {
+  id: number;
+  public_key: string;
+  private_key: string;
+  device_name: string | null;
+  device_role: string | null;
+  model: string | null;
+  placement_date: string | null;
+  last_maintenance: string | null;
+  last_registered_failure: string | null;
+  assigned_to: string | null;
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface KmsKeyCreate {
+  public_key: string;
+  private_key: string;
+  device_name?: string | null;
+  device_role?: string | null;
+  model?: string | null;
+  placement_date?: string | null;
+  last_maintenance?: string | null;
+  last_registered_failure?: string | null;
+  assigned_to?: string | null;
+  notes?: string | null;
+}
+
+export interface KmsKeyUpdate {
+  device_name?: string | null;
+  device_role?: string | null;
+  model?: string | null;
+  placement_date?: string | null;
+  last_maintenance?: string | null;
+  last_registered_failure?: string | null;
+  assigned_to?: string | null;
+  notes?: string | null;
 }

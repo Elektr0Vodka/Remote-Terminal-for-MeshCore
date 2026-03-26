@@ -1,6 +1,9 @@
 import type {
   AppSettings,
   AppSettingsUpdate,
+  KmsKey,
+  KmsKeyCreate,
+  KmsKeyUpdate,
   Channel,
   ChannelDetail,
   CommandResponse,
@@ -422,4 +425,13 @@ export const api = {
     fetchJson<RepeaterLppTelemetryResponse>(`/contacts/${publicKey}/room/lpp-telemetry`, {
       method: 'POST',
     }),
+
+  // ── KMS ──────────────────────────────────────────────────────────────────
+  kmsListKeys: () => fetchJson<KmsKey[]>('/kms/keys'),
+  kmsCreateKey: (body: KmsKeyCreate) =>
+    fetchJson<KmsKey>('/kms/keys', { method: 'POST', body: JSON.stringify(body) }),
+  kmsUpdateKey: (id: number, body: KmsKeyUpdate) =>
+    fetchJson<KmsKey>(`/kms/keys/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  kmsDeleteKey: (id: number) =>
+    fetch(`${API_BASE}/kms/keys/${id}`, { method: 'DELETE' }),
 };

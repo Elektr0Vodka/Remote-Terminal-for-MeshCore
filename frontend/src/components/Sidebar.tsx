@@ -12,6 +12,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   GripVertical,
+  KeyRound,
   LockOpen,
   Logs,
   Map,
@@ -129,7 +130,8 @@ type ToolKey =
   | 'message-search'
   | 'my-node'
   | 'mesh-health'
-  | 'room-finder';
+  | 'room-finder'
+  | 'mc-kms';
 
 const TOOL_LABELS: Record<ToolKey, string> = {
   'packet-feed': 'Packet Feed',
@@ -139,10 +141,12 @@ const TOOL_LABELS: Record<ToolKey, string> = {
   'my-node': 'My Node',
   'mesh-health': 'Mesh Health',
   'room-finder': 'Room Finder',
+  'mc-kms': 'MC-KMS',
 };
 
 const ALL_TOOL_KEYS: ToolKey[] = [
   'packet-feed', 'node-map', 'mesh-visualizer', 'message-search', 'my-node', 'mesh-health', 'room-finder',
+  'mc-kms',
 ];
 
 const SIDEBAR_TOOL_ORDER_KEY = 'remoteterm-sidebar-tool-order';
@@ -394,7 +398,7 @@ export function Sidebar({
   };
 
   const isActive = (
-    type: 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health',
+    type: 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health' | 'kms',
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
@@ -839,6 +843,12 @@ export function Sidebar({
         </>
       ),
       onClick: onToggleCracker,
+    }),
+    'mc-kms': renderSidebarActionRow({
+      key: 'tool-mc-kms', active: isActive('kms', 'kms'),
+      icon: <KeyRound className="h-4 w-4" />,
+      label: 'MC-KMS',
+      onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
     }),
   };
 
