@@ -1171,6 +1171,19 @@ async def _reconcile_radio_contacts_in_background(
                             _evict_removed_contact_from_library_cache(mc, public_key)
                             removed += 1
                             progressed = True
+                        elif (
+                            isinstance(remove_result.payload, dict)
+                            and remove_result.payload.get("error_code") == 2
+                        ):
+                            # ERR_CODE_NOT_FOUND — contact isn't on the radio anyway; treat as removed
+                            radio_contacts.pop(public_key, None)
+                            _evict_removed_contact_from_library_cache(mc, public_key)
+                            removed += 1
+                            progressed = True
+                            logger.debug(
+                                "Contact %s not found on radio during reconcile remove (already gone)",
+                                public_key[:12],
+                            )
                         else:
                             failed += 1
                             logger.warning(
