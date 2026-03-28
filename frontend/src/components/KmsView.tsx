@@ -16,6 +16,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Flame,
   KeyRound,
   Loader2,
   RefreshCw,
@@ -26,6 +27,7 @@ import { toast } from 'sonner';
 import { api } from '../api';
 import { cn } from '@/lib/utils';
 import type { KeygenWorkerResult } from '../workers/keygenWorker';
+import type { GPUKeyGenerator } from '../workers/gpu/gpuKeygen';
 import { KeyVaultView } from './KeyVaultView';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,6 +62,37 @@ function expectedAttempts(len: number): string {
   if (n >= 1_000_000) return `~${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `~${(n / 1_000).toFixed(0)}k`;
   return `~${n}`;
+}
+
+function formatAttempts(n: number): string {
+  if (n >= 1e12) return `${(n / 1e12).toFixed(1)} trillion`;
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} billion`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} million`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)} thousand`;
+  return Math.round(n).toLocaleString();
+}
+
+function formatEta(seconds: number): string {
+  if (seconds >= 31_536_000) return `${(seconds / 31_536_000).toFixed(1)} years`;
+  if (seconds >= 2_592_000) return `${(seconds / 2_592_000).toFixed(1)} months`;
+  if (seconds >= 86_400) return `${(seconds / 86_400).toFixed(1)} days`;
+  if (seconds >= 3_600) return `${(seconds / 3_600).toFixed(1)} hours`;
+  if (seconds >= 60) return `${(seconds / 60).toFixed(1)} minutes`;
+  return `${Math.round(seconds)} seconds`;
+}
+
+interface DifficultyTier {
+  label: string;
+  className: string;
+}
+
+function getDifficultyTier(n: number): DifficultyTier {
+  if (n <= 1_000)           return { label: 'Very Easy', className: 'text-emerald-500' };
+  if (n <= 100_000)         return { label: 'Easy',      className: 'text-green-500' };
+  if (n <= 10_000_000)      return { label: 'Moderate',  className: 'text-yellow-500' };
+  if (n <= 1_000_000_000)   return { label: 'Hard',      className: 'text-orange-500' };
+  if (n <= 100_000_000_000) return { label: 'Very Hard', className: 'text-red-500' };
+  return                       { label: 'Extreme',    className: 'text-purple-500' };
 }
 
 function downloadBatch(
@@ -309,6 +342,7 @@ export function KmsView() {
   const [keyCount, setKeyCount] = useState(1);
   const [useParallel, setUseParallel] = useState(false);
   const [gpuAvailable, setGpuAvailable] = useState<boolean | null>(null);
+  const [turboMode, setTurboMode] = useState(false);
 
   // ── Runtime ───────────────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -329,6 +363,25 @@ export function KmsView() {
   const useParallelRef = useRef(false);
   // Mutable ref to spawn function — avoids stale closures in worker callbacks
   const spawnRef = useRef<(idx: number) => void>(() => {});
+  // GPU refs
+  const gpuGenRef = useRef<GPUKeyGenerator | null>(null);
+  const gpuRunningRef = useRef(false);
+  const turboModeRef = useRef(false);
+  // Per-worker KPS tracking for parallel CPU mode (key = targetIdx * 1000 + workerSubIdx)
+  const workerKpsRef = useRef<Map<number, number>>(new Map());
+  const spawnParallelForTargetRef = useRef<(idx: number) => void>(() => {});
+
+  // Keep turboModeRef in sync and propagate to a live GPU generator
+  useEffect(() => {
+    turboModeRef.current = turboMode;
+    if (gpuGenRef.current) {
+      gpuGenRef.current.turboMode = turboMode;
+      // Normal: 100ms target (short bursts, ~60% GPU duty cycle — matches cracker standard mode)
+      // Turbo:  1000ms target (sustained load — matches cracker's standard target for fast GPUs)
+      gpuGenRef.current.dispatchTargetMs = turboMode ? 1000 : 100;
+      gpuGenRef.current.resetBatchTuning();
+    }
+  }, [turboMode]);
 
   // GPU detection
   useEffect(() => {
@@ -351,6 +404,8 @@ export function KmsView() {
   useEffect(() => {
     return () => {
       workersRef.current.forEach((w) => w.terminate());
+      gpuRunningRef.current = false;
+      gpuGenRef.current?.destroy();
     };
   }, []);
 
@@ -416,6 +471,94 @@ export function KmsView() {
     worker.postMessage({ type: 'start', prefix: allTargets[idx].prefix });
   };
 
+  // Assign spawnParallelForTargetRef every render — N workers per target, sequential through targets.
+  // First worker to find the key terminates all siblings and advances to the next target.
+  spawnParallelForTargetRef.current = (targetIdx: number) => {
+    const allTargets = targetsRef.current;
+    if (targetIdx >= allTargets.length) return;
+
+    const targetPrefix = allTargets[targetIdx].prefix;
+    const N = Math.min(navigator.hardwareConcurrency || 4, 16);
+    const localWorkerKeys: number[] = [];
+    let found = false; // prevents double-handling if two workers find simultaneously
+
+    // Mark this target as searching
+    targetsRef.current = targetsRef.current.map((t, i) =>
+      i === targetIdx ? { ...t, status: 'searching' as const } : t,
+    );
+    setTargets([...targetsRef.current]);
+
+    for (let wi = 0; wi < N; wi++) {
+      const workerKey = targetIdx * 1000 + wi;
+      localWorkerKeys.push(workerKey);
+
+      const worker = new Worker(new URL('../workers/keygenWorker.ts', import.meta.url), {
+        type: 'module',
+      });
+      workersRef.current.set(workerKey, worker);
+
+      worker.onmessage = (e: MessageEvent<KeygenWorkerResult>) => {
+        const msg = e.data;
+
+        if (msg.type === 'progress') {
+          workerKpsRef.current.set(workerKey, msg.keysPerSecond);
+          const totalKps = localWorkerKeys.reduce(
+            (sum, k) => sum + (workerKpsRef.current.get(k) ?? 0),
+            0,
+          );
+          targetsRef.current = targetsRef.current.map((t, i) =>
+            i === targetIdx ? { ...t, kps: totalKps, attempts: msg.attempts } : t,
+          );
+          setTargets([...targetsRef.current]);
+        } else if (msg.type === 'found') {
+          if (found) return;
+          found = true;
+
+          // Terminate all sibling workers for this target
+          for (const key of localWorkerKeys) {
+            const w = workersRef.current.get(key);
+            if (w) {
+              w.terminate();
+              workersRef.current.delete(key);
+              workerKpsRef.current.delete(key);
+            }
+          }
+
+          const result: GeneratedKey = {
+            publicKey: msg.publicKey,
+            privateKey: msg.privateKey,
+            attempts: msg.attempts,
+          };
+          targetsRef.current = targetsRef.current.map((t, i) =>
+            i === targetIdx ? { ...t, status: 'found', result, kps: 0 } : t,
+          );
+          setTargets([...targetsRef.current]);
+
+          const nextIdx = targetIdx + 1;
+          if (nextIdx < targetsRef.current.length && gpuRunningRef.current) {
+            spawnParallelForTargetRef.current(nextIdx);
+          } else {
+            gpuRunningRef.current = false;
+            setRunning(false);
+          }
+        } else if (msg.type === 'stopped') {
+          worker.terminate();
+          workersRef.current.delete(workerKey);
+          workerKpsRef.current.delete(workerKey);
+          if (workersRef.current.size === 0) setRunning(false);
+        } else if (msg.type === 'error') {
+          toast.error(`Key generation error: ${msg.message}`);
+          worker.terminate();
+          workersRef.current.delete(workerKey);
+          workerKpsRef.current.delete(workerKey);
+          if (workersRef.current.size === 0) setRunning(false);
+        }
+      };
+
+      worker.postMessage({ type: 'start', prefix: targetPrefix });
+    }
+  };
+
   // ── Validation ────────────────────────────────────────────────────────────
   const cleanPrefix = prefix.toLowerCase().replace(/[^0-9a-f]/g, '');
   const suffixLen = keyCount > 1 ? String(keyCount).length : 0;
@@ -424,6 +567,82 @@ export function KmsView() {
     prefix === '' || (prefix === cleanPrefix && cleanPrefix.length <= maxPrefixLen);
   const difficulty =
     cleanPrefix.length > 0 ? expectedAttempts(cleanPrefix.length + suffixLen) : null;
+
+  // ── GPU helpers ───────────────────────────────────────────────────────────
+
+  /** Expand a 32-byte seed → 64-byte MeshCore private key (SHA-512 + clamp). */
+  async function expandPrivateKeyFromSeed(seed: Uint8Array): Promise<Uint8Array> {
+    const ab = seed.buffer.slice(seed.byteOffset, seed.byteOffset + 32) as ArrayBuffer;
+    const hashBuf = await crypto.subtle.digest('SHA-512', ab);
+    const hash = new Uint8Array(hashBuf);
+    hash[0] &= 248;
+    hash[31] &= 127;
+    hash[31] |= 64;
+    return hash;
+  }
+
+  function bytesToHex(b: Uint8Array): string {
+    return Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+
+  /** Run the GPU dispatch loop for target at `idx`, then chain to `idx+1`. */
+  async function runGpuTarget(idx: number) {
+    const gen = gpuGenRef.current!;
+    const prefix = targetsRef.current[idx].prefix;
+    let totalAttempted = 0;
+    let periodStart = performance.now();
+    let periodAttempts = 0;
+
+    while (gpuRunningRef.current) {
+      const { matches, attempted } = await gen.dispatchBatch(prefix);
+      totalAttempted += attempted;
+      periodAttempts += attempted;
+
+      const now = performance.now();
+      if (now - periodStart >= 500) {
+        const kps = Math.round((periodAttempts / (now - periodStart)) * 1000);
+        targetsRef.current = targetsRef.current.map((t, i) =>
+          i === idx ? { ...t, kps, attempts: totalAttempted } : t
+        );
+        setTargets([...targetsRef.current]);
+        periodStart = now;
+        periodAttempts = 0;
+      }
+
+      if (matches.length > 0) {
+        const match = matches[0];
+        const pubHex = bytesToHex(match.pubkey);
+        const priv = await expandPrivateKeyFromSeed(match.seed);
+        const privHex = bytesToHex(priv);
+
+        const result: GeneratedKey = { publicKey: pubHex, privateKey: privHex, attempts: totalAttempted };
+        targetsRef.current = targetsRef.current.map((t, i) =>
+          i === idx ? { ...t, status: 'found', result, kps: 0 } : t
+        );
+        setTargets([...targetsRef.current]);
+
+        const nextIdx = idx + 1;
+        if (nextIdx < targetsRef.current.length && gpuRunningRef.current) {
+          targetsRef.current = targetsRef.current.map((t, i) =>
+            i === nextIdx ? { ...t, status: 'searching' } : t
+          );
+          setTargets([...targetsRef.current]);
+          runGpuTarget(nextIdx);
+        } else {
+          gpuRunningRef.current = false;
+          setRunning(false);
+        }
+        return;
+      }
+    }
+
+    // Stopped externally — reset any still-searching targets and clear running state
+    targetsRef.current = targetsRef.current.map((t) =>
+      t.status === 'searching' ? { ...t, status: 'waiting', kps: 0 } : t
+    );
+    setTargets([...targetsRef.current]);
+    setRunning(false);
+  }
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -434,17 +653,53 @@ export function KmsView() {
     targetsRef.current = allTargets.map((t) => ({ ...t }));
     useParallelRef.current = useParallel;
     workersRef.current.clear();
+    workerKpsRef.current.clear();
     setShowPriv({});
     setRunning(true);
 
     if (useParallel) {
-      targetsRef.current = targetsRef.current.map((t) => ({ ...t, status: 'searching' }));
-      setTargets([...targetsRef.current]);
-      targetsRef.current.forEach((_, i) => spawnRef.current(i));
-    } else {
+      // GPU mode: WebGPU sequential dispatch loop
+      if (!gpuAvailable) {
+        toast.error('WebGPU not available on this device');
+        setRunning(false);
+        return;
+      }
       targetsRef.current = targetsRef.current.map((t, i) => ({
         ...t,
-        status: i === 0 ? 'searching' : 'waiting',
+        status: i === 0 ? ('searching' as const) : ('waiting' as const),
+      }));
+      setTargets([...targetsRef.current]);
+      gpuRunningRef.current = true;
+
+      const initAndRun = async () => {
+        try {
+          if (!gpuGenRef.current || !gpuGenRef.current.isReady) {
+            const { GPUKeyGenerator } = await import('../workers/gpu/gpuKeygen');
+            if (!gpuGenRef.current) {
+              gpuGenRef.current = new GPUKeyGenerator();
+            }
+            await gpuGenRef.current.initialize();
+          }
+          gpuGenRef.current.turboMode = turboModeRef.current;
+          gpuGenRef.current.dispatchTargetMs = turboModeRef.current ? 1000 : 100;
+          runGpuTarget(0);
+        } catch (e) {
+          toast.error(`GPU init failed: ${String(e)}`);
+          gpuRunningRef.current = false;
+          setRunning(false);
+        }
+      };
+      initAndRun();
+    } else if (turboModeRef.current) {
+      // CPU + Turbo: parallel workers (N per target, sequential through targets)
+      gpuRunningRef.current = true;
+      setTargets([...targetsRef.current]);
+      spawnParallelForTargetRef.current(0);
+    } else {
+      // CPU: sequential single worker
+      targetsRef.current = targetsRef.current.map((t, i) => ({
+        ...t,
+        status: i === 0 ? ('searching' as const) : ('waiting' as const),
       }));
       setTargets([...targetsRef.current]);
       spawnRef.current(0);
@@ -452,6 +707,7 @@ export function KmsView() {
   };
 
   const stopGeneration = () => {
+    gpuRunningRef.current = false;
     workersRef.current.forEach((w) => w.postMessage({ type: 'stop' }));
   };
 
@@ -549,12 +805,27 @@ export function KmsView() {
                   <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
                 )}
               </div>
-              {difficulty && prefixValid && (
-                <p className="text-xs text-muted-foreground">
-                  Difficulty: {difficulty} keys expected for a{' '}
-                  {cleanPrefix.length + suffixLen}-char prefix
-                </p>
-              )}
+              {difficulty && prefixValid && (() => {
+                const prefixLen = cleanPrefix.length + suffixLen;
+                const n = Math.pow(16, prefixLen);
+                const tier = getDifficultyTier(n);
+                const eta = totalKps > 0 ? formatEta(n / totalKps) : null;
+                return (
+                  <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                    <span className={cn('font-semibold', tier.className)}>{tier.label}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-muted-foreground">
+                      ~{formatAttempts(n)} attempts for a {prefixLen}-char prefix
+                    </span>
+                    {eta && (
+                      <>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground">~{eta} at current rate</span>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </section>
 
             {/* ── Number of Keys ────────────────────────────────────────────── */}
@@ -671,13 +942,20 @@ export function KmsView() {
                   </button>
                   <button
                     onClick={() => setUseParallel(true)}
-                    disabled={running}
-                    title="Spawns all key workers simultaneously. WebGPU native acceleration planned."
+                    disabled={running || !gpuAvailable}
+                    title={
+                      gpuAvailable === null
+                        ? 'Checking WebGPU…'
+                        : gpuAvailable
+                          ? 'WebGPU hardware acceleration'
+                          : 'WebGPU not available on this device'
+                    }
                     className={cn(
                       'px-3 py-1.5 font-medium transition-colors border-l border-border',
                       useParallel
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-background text-muted-foreground hover:bg-accent/50',
+                      !gpuAvailable && 'opacity-40 cursor-not-allowed',
                     )}
                   >
                     GPU
@@ -685,11 +963,36 @@ export function KmsView() {
                 </div>
                 <span className="text-[11px] text-muted-foreground">
                   {useParallel
-                    ? gpuAvailable
-                      ? `WebGPU available · ${navigator.hardwareConcurrency || 4} threads`
-                      : `parallel workers · ${navigator.hardwareConcurrency || 4} cores`
-                    : 'single worker · sequential'}
+                    ? turboMode
+                      ? 'WebGPU · turbo — 1000ms dispatch, up to 4096 workgroups'
+                      : 'WebGPU · 100ms dispatch, up to 1024 workgroups'
+                    : turboMode
+                      ? `parallel CPU · ${Math.min(navigator.hardwareConcurrency || 4, 16)} workers`
+                      : `CPU · sequential · ${navigator.hardwareConcurrency || 4} core${(navigator.hardwareConcurrency || 4) !== 1 ? 's' : ''} available`}
                 </span>
+
+                <button
+                  onClick={() => setTurboMode((t) => !t)}
+                  disabled={running}
+                  title={
+                    useParallel
+                      ? turboMode
+                        ? 'Turbo on — WebGPU 1000ms dispatch (click to disable)'
+                        : 'Turbo off — click to enable WebGPU 1000ms dispatch'
+                      : turboMode
+                        ? `Turbo on — ${Math.min(navigator.hardwareConcurrency || 4, 16)} parallel CPU workers (click to disable)`
+                        : 'Turbo off — click to use parallel CPU workers'
+                  }
+                  className={cn(
+                    'flex items-center gap-1 px-2.5 py-1.5 rounded border text-xs font-medium transition-colors ml-1',
+                    turboMode
+                      ? 'bg-orange-500/20 border-orange-500/50 text-orange-400 hover:bg-orange-500/30'
+                      : 'bg-background border-border text-muted-foreground hover:bg-accent/50',
+                  )}
+                >
+                  <Flame className="h-3.5 w-3.5" />
+                  Turbo
+                </button>
               </div>
 
               {/* Generate button */}
