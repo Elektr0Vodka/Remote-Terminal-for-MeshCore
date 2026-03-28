@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     on_radio INTEGER DEFAULT 0,
     last_contacted INTEGER,
     first_seen INTEGER,
-    last_read_at INTEGER
+    last_read_at INTEGER,
+    advert_hash_mode INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS channels (

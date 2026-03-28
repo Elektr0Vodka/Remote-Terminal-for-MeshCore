@@ -102,6 +102,11 @@ export function useConversationRouter({
       hasSetDefaultConversation.current = true;
       return;
     }
+    if (hashConv?.type === 'kms') {
+      setActiveConversationState({ type: 'kms', id: 'kms', name: 'MC-KMS' });
+      hasSetDefaultConversation.current = true;
+      return;
+    }
     // Handle channel hash (ID-first with legacy-name fallback)
     if (hashConv?.type === 'channel') {
       const channel = resolveChannelFromHashToken(hashConv.name, channels);

@@ -126,7 +126,6 @@ export interface Contact {
   owner_id?: string | null;
   last_rssi?: number | null;
   last_snr?: number | null;
-  /** Most recent advert-observed path address width: 0=1B, 1=2B, 2=3B (null=never seen) */
   advert_hash_mode?: number | null;
 }
 
@@ -536,7 +535,7 @@ export interface StatisticsResponse {
   contacts_heard: ContactActivityCounts;
   repeaters_heard: ContactActivityCounts;
   known_channels_active: ContactActivityCounts;
-  path_hash_width_24h: {
+  path_hash_width_24h?: {
     total_packets: number;
     single_byte: number;
     double_byte: number;
@@ -544,7 +543,7 @@ export interface StatisticsResponse {
     single_byte_pct: number;
     double_byte_pct: number;
     triple_byte_pct: number;
-  };
+  } | null;
 }
 
 // ─── MC-KMS ──────────────────────────────────────────────────────────────────

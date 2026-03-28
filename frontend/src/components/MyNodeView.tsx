@@ -1194,16 +1194,15 @@ const resolvedStrongest = useMemo(() =>
                     </div>
                   </div>
                 )}
-
-                {stats.path_hash_width_24h.total_packets > 0 && (
+                {(stats.path_hash_width_24h?.total_packets ?? 0) > 0 && (
                   <div className="rounded-lg border border-border bg-card overflow-hidden">
                     <div className="border-b border-border px-3 py-2">
                       <span className="text-sm font-semibold text-foreground">Path Hash Width (last 24h)</span>
                     </div>
                     <div className="p-3">
-                      <KV label="1-byte hops" value={`${stats.path_hash_width_24h.single_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.single_byte.toLocaleString()} pkts`} />
-                      <KV label="2-byte hops" value={`${stats.path_hash_width_24h.double_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.double_byte.toLocaleString()} pkts`} />
-                      <KV label="3-byte hops" value={`${stats.path_hash_width_24h.triple_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h.triple_byte.toLocaleString()} pkts`} />
+                      <KV label="1-byte hops" value={`${stats.path_hash_width_24h!.single_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h!.single_byte.toLocaleString()} pkts`} />
+                      <KV label="2-byte hops" value={`${stats.path_hash_width_24h!.double_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h!.double_byte.toLocaleString()} pkts`} />
+                      <KV label="3-byte hops" value={`${stats.path_hash_width_24h!.triple_byte_pct.toFixed(1)}% · ${stats.path_hash_width_24h!.triple_byte.toLocaleString()} pkts`} />
                     </div>
                   </div>
                 )}

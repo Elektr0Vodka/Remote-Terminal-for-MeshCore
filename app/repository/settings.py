@@ -440,7 +440,10 @@ class StatisticsRepository:
         contacts_heard = await StatisticsRepository._activity_counts(contact_type=2, exclude=True)
         repeaters_heard = await StatisticsRepository._activity_counts(contact_type=2)
         known_channels_active = await StatisticsRepository._known_channels_active()
-        path_hash_width_24h = await StatisticsRepository._path_hash_width_24h()
+        try:
+            path_hash_width_24h = await StatisticsRepository._path_hash_width_24h()
+        except Exception:
+            path_hash_width_24h = None
 
         return {
             "busiest_channels_24h": busiest_channels_24h,

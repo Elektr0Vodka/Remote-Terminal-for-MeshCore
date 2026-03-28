@@ -4,7 +4,7 @@ import { getContactDisplayName } from './pubkey';
 import type { SettingsSection } from '../components/settings/settingsConstants';
 
 interface ParsedHashConversation {
-  type: 'channel' | 'contact' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health';
+  type: 'channel' | 'contact' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health' | 'kms';
   /** Conversation identity token (channel key or contact public key, or legacy name token) */
   name: string;
   /** Optional human-readable label segment (ignored for identity resolution) */
@@ -48,6 +48,9 @@ export function parseHashConversation(): ParsedHashConversation | null {
   }
   if (hash === 'mesh-health') {
     return { type: 'mesh-health', name: 'mesh-health' };
+  }
+  if (hash === 'kms') {
+    return { type: 'kms', name: 'kms' };
   }
   // Check for map with focus: #map/focus/{pubkey_prefix}
   if (hash.startsWith('map/focus/')) {
@@ -156,6 +159,7 @@ function getConversationHash(conv: Conversation | null): string {
   if (conv.type === 'search') return '#search';
   if (conv.type === 'node') return '#node';
   if (conv.type === 'mesh-health') return '#mesh-health';
+  if (conv.type === 'kms') return '#kms';
   
   // Use immutable IDs for identity, append readable label for UX.
   if (conv.type === 'channel') {

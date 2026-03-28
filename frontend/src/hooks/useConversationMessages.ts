@@ -275,7 +275,7 @@ interface UseConversationMessagesResult {
 }
 
 function isMessageConversation(conversation: Conversation | null): conversation is Conversation {
-  return !!conversation && !['raw', 'map', 'visualizer', 'search'].includes(conversation.type);
+  return !!conversation && !['raw', 'map', 'visualizer', 'search', 'node', 'mesh-health', 'kms'].includes(conversation.type);
 }
 
 function isActiveConversationMessage(

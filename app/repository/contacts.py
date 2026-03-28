@@ -443,11 +443,26 @@ class ContactRepository:
     @staticmethod
     async def update_advert_hash_mode(public_key: str, hash_mode: int) -> None:
         """Record the path address width observed in the most recent advert from this contact."""
-        await db.conn.execute(
-            "UPDATE contacts SET advert_hash_mode = ? WHERE public_key = ?",
-            (hash_mode, public_key.lower()),
-        )
-        await db.conn.commit()
+        try:
+            await db.conn.execute(
+                "UPDATE contacts SET advert_hash_mode = ? WHERE public_key = ?",
+                (hash_mode, public_key.lower()),
+            )
+            await db.conn.commit()
+        except Exception as e:
+            if "no such column" in str(e).lower():
+                # Column missing — migration hasn't applied yet. Add it now and retry.
+                await db.conn.execute(
+                    "ALTER TABLE contacts ADD COLUMN advert_hash_mode INTEGER"
+                )
+                await db.conn.commit()
+                await db.conn.execute(
+                    "UPDATE contacts SET advert_hash_mode = ? WHERE public_key = ?",
+                    (hash_mode, public_key.lower()),
+                )
+                await db.conn.commit()
+            else:
+                raise
 
     @staticmethod
     async def update_owner_id(public_key: str, owner_id: str | None) -> bool:

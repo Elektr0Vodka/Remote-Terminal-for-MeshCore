@@ -842,6 +842,9 @@ class PathHashWidthStats(BaseModel):
     single_byte: int
     double_byte: int
     triple_byte: int
+    single_byte_pct: float = 0.0
+    double_byte_pct: float = 0.0
+    triple_byte_pct: float = 0.0
 
 
 # ─── KMS ─────────────────────────────────────────────────────────────────────
@@ -903,4 +906,4 @@ class StatisticsResponse(BaseModel):
     contacts_heard: ContactActivityCounts
     repeaters_heard: ContactActivityCounts
     known_channels_active: ContactActivityCounts
-    path_hash_width_24h: PathHashWidthStats
+    path_hash_width_24h: PathHashWidthStats | None = None
