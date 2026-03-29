@@ -10,7 +10,7 @@ from app.database import db
 from app.decoder import parse_packet, try_decrypt_packet_with_channel_key
 from app.models import RawPacketDecryptedInfo, RawPacketDetail
 from app.packet_processor import create_message_from_decrypted, run_historical_dm_decryption
-from app.repository import ChannelRepository, MessageRepository, RawPacketRepository
+from app.repository import AppSettingsRepository, ChannelRepository, MessageRepository, RawPacketRepository
 from app.websocket import broadcast_success
 
 logger = logging.getLogger(__name__)
@@ -788,6 +788,8 @@ class MeshHealthResponse(BaseModel):
     total_contacts: int
     high_alert_count: int
     medium_alert_count: int
+    high_advert_threshold: int
+    medium_advert_threshold: int
     alerts: list[MeshHealthAlert]
     contacts: list[MeshHealthContact]
 
@@ -800,9 +802,9 @@ async def get_mesh_health(
     """
     Return advert-frequency health data for all contacts heard in the window.
 
-    Contacts advertising too frequently are flagged:
-    - HIGH:   > 8 adverts per window
-    - MEDIUM: > 2 adverts per window
+    Contacts advertising too frequently are flagged based on configurable thresholds:
+    - HIGH:   > configured high_advert_threshold (default 8) adverts per window
+    - MEDIUM: > configured medium_advert_threshold (default 2) adverts per window
 
     Uses contact_advert_paths which tracks every unique path heard per contact.
     heard_count is summed only for paths whose last_seen falls within the window.
@@ -810,6 +812,7 @@ async def get_mesh_health(
     if end_ts <= start_ts:
         raise HTTPException(status_code=400, detail="end_ts must be greater than start_ts")
 
+    settings = await AppSettingsRepository.get()
     window_hours = (end_ts - start_ts) / 3600.0
 
     async with aiosqlite.connect(db.db_path) as conn:
@@ -873,10 +876,10 @@ async def get_mesh_health(
         ))
 
         adverts_per_hour = advert_count / max(window_hours, 0.01)
-        if advert_count > 8:
+        if advert_count > settings.high_advert_threshold:
             level = "HIGH"
             high_count += 1
-        elif advert_count > 2:
+        elif advert_count > settings.medium_advert_threshold:
             level = "MEDIUM"
             medium_count += 1
         else:
@@ -897,6 +900,8 @@ async def get_mesh_health(
         total_contacts=len(contacts),
         high_alert_count=high_count,
         medium_alert_count=medium_count,
+        high_advert_threshold=settings.high_advert_threshold,
+        medium_advert_threshold=settings.medium_advert_threshold,
         alerts=alerts,
         contacts=contacts,
     )
@@ -968,6 +973,160 @@ async def get_advert_warnings() -> dict:
             "lon": row["lon"],
         })
     return {"warnings": warnings, "generated_at": end_ts}
+
+
+@router.get("/snr-rssi-scatter")
+async def get_snr_rssi_scatter(
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+    limit: int = 2000,
+) -> list[dict]:
+    """Return up to `limit` {rssi, snr, timestamp} points for an SNR vs RSSI scatter plot.
+
+    Only packets that carry both rssi and snr are included.
+    Results are returned newest-first so callers can slice the most recent data.
+    """
+    now = int(__import__("time").time())
+    effective_start = start_ts if start_ts is not None else now - 7 * 86400
+    effective_end = end_ts if end_ts is not None else now
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            """
+            SELECT rssi, snr, timestamp
+            FROM raw_packets
+            WHERE rssi IS NOT NULL
+              AND snr IS NOT NULL
+              AND timestamp >= :start_ts
+              AND timestamp <= :end_ts
+            ORDER BY timestamp DESC
+            LIMIT :limit
+            """,
+            {"start_ts": effective_start, "end_ts": effective_end, "limit": min(limit, 5000)},
+        ) as cur:
+            rows = await cur.fetchall()
+    return [{"rssi": int(r["rssi"]), "snr": float(r["snr"]), "ts": int(r["timestamp"])} for r in rows]
+
+
+@router.get("/hourly-heatmap")
+async def get_hourly_heatmap(
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+) -> dict:
+    """Return a 7×24 packet-count heatmap grouped by (day_of_week, hour_of_day).
+
+    day_of_week: 0=Sunday … 6=Saturday (SQLite strftime('%w')).
+    Returns { cells: [{dow, hour, count}], max_count, total }.
+    """
+    now = int(__import__("time").time())
+    effective_start = start_ts if start_ts is not None else now - 30 * 86400
+    effective_end = end_ts if end_ts is not None else now
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            """
+            SELECT
+                CAST(strftime('%w', datetime(timestamp, 'unixepoch')) AS INTEGER) AS dow,
+                CAST(strftime('%H', datetime(timestamp, 'unixepoch')) AS INTEGER) AS hour,
+                COUNT(*) AS count
+            FROM raw_packets
+            WHERE timestamp >= :start_ts AND timestamp <= :end_ts
+            GROUP BY dow, hour
+            """,
+            {"start_ts": effective_start, "end_ts": effective_end},
+        ) as cur:
+            rows = await cur.fetchall()
+    cells = [{"dow": int(r["dow"]), "hour": int(r["hour"]), "count": int(r["count"])} for r in rows]
+    max_count = max((c["count"] for c in cells), default=0)
+    total = sum(c["count"] for c in cells)
+    return {"cells": cells, "max_count": max_count, "total": total}
+
+
+@router.get("/relay-pairs")
+async def get_relay_pairs(limit: int = 20) -> list[dict]:
+    """Return the most frequent consecutive node-pair co-occurrences across advert paths.
+
+    Pairs are extracted from contact_advert_paths where path_len >= 2.
+    hop_a and hop_b are hex-encoded partial public-key prefixes (length varies by hash_mode).
+    """
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            """
+            SELECT cap.path_hex, cap.path_len, cap.hash_mode, cap.heard_count,
+                   c.name AS c_name
+            FROM contact_advert_paths cap
+            LEFT JOIN contacts c ON c.public_key = cap.public_key
+            WHERE cap.path_len >= 2 AND cap.path_hex IS NOT NULL AND cap.hash_mode IS NOT NULL
+            """,
+        ) as cur:
+            rows = await cur.fetchall()
+
+    pair_counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        path_hex: str = row["path_hex"] or ""
+        path_len: int = row["path_len"]
+        hash_mode: int = row["hash_mode"]
+        heard: int = row["heard_count"] or 1
+        hex_per_hop = (hash_mode + 1) * 2  # bytes→hex chars
+        if len(path_hex) < path_len * hex_per_hop:
+            continue
+        hops = [path_hex[i : i + hex_per_hop] for i in range(0, path_len * hex_per_hop, hex_per_hop)]
+        for a, b in zip(hops, hops[1:]):
+            pair_counts[(a, b)] = pair_counts.get((a, b), 0) + heard
+
+    top = sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[: min(limit, 50)]
+    return [{"hop_a": a, "hop_b": b, "count": count} for (a, b), count in top]
+
+
+@router.get("/reachability-rings")
+async def get_reachability_rings(
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+) -> list[dict]:
+    """Return unique contact counts grouped by minimum hop distance (reachability rings).
+
+    Returns [{hops: 0|1|2|3|null, count: int, label: str}] sorted by hop distance.
+    Contacts with no known path are reported as hops=null.
+    """
+    now = int(__import__("time").time())
+    effective_start = start_ts if start_ts is not None else 0
+    effective_end = end_ts if end_ts is not None else now
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            """
+            SELECT
+                c.public_key,
+                MIN(cap.path_len) AS min_hops
+            FROM contacts c
+            LEFT JOIN contact_advert_paths cap
+                ON cap.public_key = c.public_key
+                AND (:start_ts = 0 OR cap.last_seen >= :start_ts)
+                AND cap.last_seen <= :end_ts
+            WHERE c.last_seen >= :start_ts AND c.last_seen <= :end_ts
+            GROUP BY c.public_key
+            """,
+            {"start_ts": effective_start, "end_ts": effective_end},
+        ) as cur:
+            rows = await cur.fetchall()
+
+    buckets: dict[int | None, int] = {}
+    for row in rows:
+        h = row["min_hops"]
+        if h is not None:
+            h = int(h)
+            if h >= 3:
+                h = 3
+        buckets[h] = buckets.get(h, 0) + 1
+
+    label_map = {0: "Direct (0-hop)", 1: "1 hop", 2: "2 hops", 3: "3+ hops", None: "Unknown"}
+    order = [0, 1, 2, 3, None]
+    return [
+        {"hops": h, "count": buckets[h], "label": label_map[h]}
+        for h in order
+        if h in buckets
+    ]
 
 
 # NOTE: This route MUST remain last in the file. FastAPI matches routes in

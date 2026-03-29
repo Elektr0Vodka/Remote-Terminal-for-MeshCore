@@ -810,6 +810,14 @@ class AppSettings(BaseModel):
         default=14,
         description="Delete undecrypted raw packets older than this many days when auto-delete is enabled",
     )
+    high_advert_threshold: int = Field(
+        default=8,
+        description="Advert count threshold for HIGH alerts in mesh health (contacts exceeding this are flagged)",
+    )
+    medium_advert_threshold: int = Field(
+        default=2,
+        description="Advert count threshold for MEDIUM alerts in mesh health (contacts exceeding this are flagged)",
+    )
 
 
 class FanoutConfig(BaseModel):

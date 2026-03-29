@@ -268,7 +268,11 @@ export function SettingsModal(props: SettingsModalProps) {
         <section className={sectionWrapperClass}>
           {renderSectionHeader('statistics')}
           {isSectionVisible('statistics') && (
-            <SettingsStatisticsSection className={sectionContentClass} />
+            <SettingsStatisticsSection
+              className={sectionContentClass}
+              appSettings={appSettings ?? undefined}
+              onSaveAppSettings={onSaveAppSettings}
+            />
           )}
         </section>
       )}

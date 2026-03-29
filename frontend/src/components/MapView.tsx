@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
-import { Info } from 'lucide-react';
+import { Info, Search, X } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
@@ -615,6 +615,37 @@ function MapBoundsHandler({ contacts, focusedContact }: { contacts: Contact[]; f
   return null;
 }
 
+// ─── FlyToHandler — flies to a contact key and opens its popup ───────────────
+
+function FlyToHandler({
+  targetKey,
+  contacts,
+  markerRefs,
+  onDone,
+}: {
+  targetKey: string | null;
+  contacts: Contact[];
+  markerRefs: React.MutableRefObject<Record<string, L.Marker | null>>;
+  onDone: () => void;
+}) {
+  const map = useMap();
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  useEffect(() => {
+    if (!targetKey) return;
+    const c = contacts.find((x) => x.public_key === targetKey);
+    if (c?.lat != null && c?.lon != null) {
+      map.flyTo([c.lat, c.lon], Math.max(map.getZoom(), 14));
+      setTimeout(() => markerRefs.current[targetKey]?.openPopup(), 600);
+    }
+    onDoneRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey]);
+
+  return null;
+}
+
 // ─── MapView ─────────────────────────────────────────────────────────────────
 
 export function MapView({ contacts, focusedKey, onSelectConversation, connectedPublicKey }: MapViewProps) {
@@ -633,9 +664,43 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
   ] as const;
 
   const [activePreset, setActivePreset] = useState<string>('7d');
-  const activeSeconds = TIME_PRESETS.find((p) => p.label === activePreset)?.seconds ?? 7 * 86400;
-  const effectiveStart = activeSeconds === null ? 0 : now - activeSeconds;
-  const effectiveEnd   = now;
+
+  // ── Custom time range ───────────────────────────────────────────────────────
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+
+  const isCustomActive = activePreset === 'Custom';
+  const customFromSec = useMemo(
+    () => (customFrom ? Math.floor(new Date(customFrom).getTime() / 1000) : 0),
+    [customFrom]
+  );
+  const customToSec = useMemo(
+    () => (customTo ? Math.floor(new Date(customTo).getTime() / 1000) : now),
+    [customTo, now]
+  );
+
+  const activeSeconds = isCustomActive ? null : (TIME_PRESETS.find((p) => p.label === activePreset)?.seconds ?? 7 * 86400);
+  const effectiveStart = isCustomActive ? customFromSec : (activeSeconds === null ? 0 : now - activeSeconds);
+  const effectiveEnd   = isCustomActive ? customToSec   : now;
+
+  // ── Search ──────────────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [pendingSearchFocus, setPendingSearchFocus] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const searchLower = searchQuery.toLowerCase().trim();
+  const searchResults = useMemo(() => {
+    if (!searchLower) return [];
+    return contacts
+      .filter(
+        (c) =>
+          isValidLocation(c.lat, c.lon) &&
+          ((c.name?.toLowerCase().includes(searchLower)) ||
+            c.public_key.toLowerCase().startsWith(searchLower))
+      )
+      .slice(0, 8);
+  }, [contacts, searchLower]);
 
   // ── Type toggles ────────────────────────────────────────────────────────────
   const [visibleTypes, setVisibleTypes] = useState<Record<ContactTypeKey, boolean>>(
@@ -677,7 +742,8 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
     if (showOwnedOnly && !(OWNER_CAPABLE_TYPES.has(c.type) && c.owner_id)) return false;
     if (!visibleTypes[getTypeKey(c.type)]) return false;
     const hmKey = getContactHashModeKey(c);
-    if (hmKey !== null && !visibleHashModes[hmKey]) return false;
+    const allHashModesEnabled = ALL_HASH_MODE_KEYS.every((k) => visibleHashModes[k]);
+    if (!allHashModesEnabled && (hmKey === null || !visibleHashModes[hmKey])) return false;
     return true;
   }), [contacts, focusedKey, effectiveStart, effectiveEnd, visibleTypes, visibleHashModes, showOwnedOnly]);
 
@@ -769,7 +835,7 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
     }
   }, [advertWarnings, mappableContacts, focusedKey]);
 
-  const isFullRange = activePreset === 'All';
+  const isFullRange = activePreset === 'All' || (isCustomActive && !customFrom);
   const activeTypeCount = ALL_TYPE_KEYS.filter((k) => visibleTypes[k]).length;
   const activeHashModeCount = ALL_HASH_MODE_KEYS.filter((k) => visibleHashModes[k]).length;
 
@@ -826,7 +892,7 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
       <div className="px-4 py-2 bg-muted/50 text-xs text-muted-foreground flex items-center justify-between flex-wrap gap-2">
         <span>
           Showing {mappableContacts.length} contact{mappableContacts.length !== 1 ? 's' : ''}
-          {isFullRange ? ' (all time)' : ` · last ${activePreset}`}
+          {isFullRange ? ' (all time)' : isCustomActive ? ` · custom range` : ` · last ${activePreset}`}
           {activeTypeCount < ALL_TYPE_KEYS.length ? ` · ${activeTypeCount}/${ALL_TYPE_KEYS.length} types` : ''}
           {activeHashModeCount < ALL_HASH_MODE_KEYS.length ? ` · ${activeHashModeCount}/${ALL_HASH_MODE_KEYS.length} modes` : ''}
           {heatmap ? ' · heatmap' : ''}
@@ -967,19 +1033,91 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
             </button>
           ))}
         </div>
+
+        {/* Node search */}
+        <div className="relative flex items-center gap-1 border-l border-border pl-2">
+          <Search className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search nodes…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-28 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50 text-foreground"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          {/* Search results dropdown */}
+          {searchLower && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 mt-1 z-[1000] bg-popover border border-border rounded shadow-lg w-52 max-h-48 overflow-y-auto">
+              {searchResults.map((c) => {
+                const typeKey = getTypeKey(c.type);
+                const cfg = CONTACT_TYPE_CONFIG[typeKey];
+                return (
+                  <button
+                    key={c.public_key}
+                    className="w-full px-2.5 py-1.5 text-left text-xs hover:bg-accent flex items-center gap-2 transition-colors"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setPendingSearchFocus(c.public_key);
+                    }}
+                  >
+                    <span className="text-sm leading-none flex-shrink-0">{cfg.emoji}</span>
+                    <span className="truncate">{c.name ?? c.public_key.slice(0, 16)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {searchLower && searchResults.length === 0 && (
+            <span className="absolute top-full left-0 mt-1 z-[1000] bg-popover border border-border rounded shadow px-3 py-1.5 text-[10px] text-muted-foreground whitespace-nowrap">
+              No nodes found
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Time window presets */}
       <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center gap-1.5 flex-wrap">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Period:</span>
         {TIME_PRESETS.map(({ label }) => (
-          <button key={label} onClick={() => setActivePreset(label)}
+          <button key={label} onClick={() => { setActivePreset(label); setShowCustom(false); }}
             className={`px-2 py-0.5 text-[10px] rounded transition-colors ${activePreset === label
               ? 'bg-primary text-primary-foreground font-medium'
               : 'bg-background border border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
             {label}
           </button>
         ))}
+        <button
+          onClick={() => { setActivePreset('Custom'); setShowCustom(true); }}
+          className={`px-2 py-0.5 text-[10px] rounded transition-colors ${activePreset === 'Custom'
+            ? 'bg-primary text-primary-foreground font-medium'
+            : 'bg-background border border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
+          Custom…
+        </button>
+
+        {/* Custom date inputs — visible when Custom is active */}
+        {showCustom && (
+          <div className="flex items-center gap-1.5 ml-1 flex-wrap">
+            <span className="text-[10px] text-muted-foreground">From:</span>
+            <input
+              type="datetime-local"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="text-[10px] rounded border border-border bg-background px-1.5 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <span className="text-[10px] text-muted-foreground">To:</span>
+            <input
+              type="datetime-local"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="text-[10px] rounded border border-border bg-background px-1.5 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        )}
       </div>
 
       {/* Map */}
@@ -991,6 +1129,12 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
           />
           <MapBoundsHandler contacts={mappableContacts} focusedContact={focusedContact} />
           <MapViewPersist />
+          <FlyToHandler
+            targetKey={pendingSearchFocus}
+            contacts={contacts}
+            markerRefs={markerRefs}
+            onDone={() => setPendingSearchFocus(null)}
+          />
 
           {/* Heatmap mode — no markers */}
           {heatmap && <HeatmapLayer points={heatPoints} />}

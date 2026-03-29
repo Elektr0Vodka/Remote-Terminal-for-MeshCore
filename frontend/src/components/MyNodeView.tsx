@@ -20,6 +20,7 @@ import {
 } from '../utils/rawPacketStats';
 import { getContactDisplayName } from '../utils/pubkey';
 import { findContactsByPrefix } from '../utils/pathUtils';
+import { cn } from '@/lib/utils';
 
 // ─── Props ─────────────────────────────────────────────────────────────────
 
@@ -587,6 +588,7 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
 	  const [historicalStats, setHistoricalStats] = useState<HistoricalStatsResponse | null>(null);
 	  const [historicalStatsLoading, setHistoricalStatsLoading] = useState(false);
 	  const [historicalStatsError, setHistoricalStatsError] = useState<string | null>(null);
+  const [statsSource, setStatsSource] = useState<'session' | 'db'>('session');
 	 
 	  // Fetch DB historical stats whenever the time window changes (uses nowSec which ticks every 30s)
 	  useEffect(() => {
@@ -789,22 +791,6 @@ const resolvedStrongest = useMemo(() =>
               </div>
             </div>
 
-            {/* ── Session stats tiles ── */}
-            {sessionSnapshot.packetCount > 0 && (
-              <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <div className="border-b border-border px-3 py-2">
-                  <span className="text-sm font-semibold text-foreground">Session Stats</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-4">
-                  <StatTile label="Packets / min" value={sessionSnapshot.packetsPerMinute.toFixed(1)} sub={`${sessionSnapshot.packetCount.toLocaleString()} total`} />
-                  <StatTile label="Decrypt Rate" value={fmtPct(sessionSnapshot.decryptRate)} sub={`${sessionSnapshot.decryptedCount.toLocaleString()} / ${sessionSnapshot.packetCount.toLocaleString()}`} />
-                  <StatTile label="Unique Sources" value={sessionSnapshot.uniqueSources} sub="distinct senders" />
-                  <StatTile label="Distinct Paths" value={sessionSnapshot.distinctPaths} sub={`${fmtPct(sessionSnapshot.pathBearingRate)} path-bearing`} />
-                  <StatTile label="Best RSSI" value={fmtRssi(sessionSnapshot.bestRssi)} sub={sessionSnapshot.strongestPacketPayloadType ?? undefined} />
-                  <StatTile label="Median RSSI" value={fmtRssi(sessionSnapshot.medianRssi)} sub={sessionSnapshot.averageRssi != null ? `avg ${fmtRssi(sessionSnapshot.averageRssi)}` : undefined} />
-                </div>
-              </div>
-            )}
 
             {/* ── Live Activity charts ── */}
             <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -890,28 +876,83 @@ const resolvedStrongest = useMemo(() =>
               )}
             </div>
 
-            {/* ── DB Historical Stats ── */}
-            {(historicalStats || historicalStatsLoading || historicalStatsError) && (
+            {/* ── Stats (merged session + DB) ── */}
+            {(sessionSnapshot.packetCount > 0 || historicalStats || historicalStatsLoading || historicalStatsError) && (
               <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <div className="border-b border-border px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                    <span className="text-sm font-semibold text-foreground">DB Stats — {liveStats.windowLabel}</span>
-                    {historicalStatsLoading && <span className="text-[10px] text-muted-foreground animate-pulse">Loading…</span>}
-                    {historicalStatsError && <span className="text-[10px] text-destructive">{historicalStatsError}</span>}
+                <div className="border-b border-border px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">Stats</span>
+                    {statsSource === 'db' && historicalStatsLoading && (
+                      <span className="text-[10px] text-muted-foreground animate-pulse">Loading…</span>
+                    )}
+                    {statsSource === 'db' && historicalStatsError && (
+                      <span className="text-[10px] text-destructive">{historicalStatsError}</span>
+                    )}
+                  </div>
+                  <div className="flex rounded border border-border overflow-hidden text-xs">
+                    <button
+                      onClick={() => setStatsSource('session')}
+                      className={cn(
+                        'px-2.5 py-1 font-medium transition-colors',
+                        statsSource === 'session'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-background text-muted-foreground hover:bg-accent/50',
+                      )}
+                    >
+                      Session
+                    </button>
+                    <button
+                      onClick={() => setStatsSource('db')}
+                      disabled={!historicalStats && !historicalStatsLoading}
+                      className={cn(
+                        'px-2.5 py-1 font-medium transition-colors border-l border-border',
+                        statsSource === 'db'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-background text-muted-foreground hover:bg-accent/50',
+                        !historicalStats && !historicalStatsLoading && 'opacity-40 cursor-not-allowed',
+                      )}
+                    >
+                      DB — {liveStats.windowLabel}
+                    </button>
                   </div>
                 </div>
 
-                {historicalStats && (
+                {/* Session view */}
+                {statsSource === 'session' && (
+                  sessionSnapshot.packetCount > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-4">
+                      <StatTile label="Packets / min" value={sessionSnapshot.packetsPerMinute.toFixed(1)} sub={`${sessionSnapshot.packetCount.toLocaleString()} total`} />
+                      <StatTile label="Decrypt Rate" value={fmtPct(sessionSnapshot.decryptRate)} sub={`${sessionSnapshot.decryptedCount.toLocaleString()} / ${sessionSnapshot.packetCount.toLocaleString()}`} />
+                      <StatTile label="Unique Sources" value={sessionSnapshot.uniqueSources} sub="distinct senders" />
+                      <StatTile label="Distinct Paths" value={sessionSnapshot.distinctPaths} sub={`${fmtPct(sessionSnapshot.pathBearingRate)} path-bearing`} />
+                      <StatTile label="Best RSSI" value={fmtRssi(sessionSnapshot.bestRssi)} sub={sessionSnapshot.strongestPacketPayloadType ?? undefined} />
+                      <StatTile label="Median RSSI" value={fmtRssi(sessionSnapshot.medianRssi)} sub={sessionSnapshot.averageRssi != null ? `avg ${fmtRssi(sessionSnapshot.averageRssi)}` : undefined} />
+                    </div>
+                  ) : (
+                    <p className="p-4 text-center text-xs italic text-muted-foreground">No session data yet</p>
+                  )
+                )}
+
+                {/* DB view */}
+                {statsSource === 'db' && historicalStats && (
                   <div className="p-3 space-y-3">
-                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                       <StatTile label="Packets" value={historicalStats.total_packets.toLocaleString()} sub={`${historicalStats.packets_per_minute.toFixed(2)} /min`} />
                       <StatTile label="Bytes" value={fmtBytes(historicalStats.total_bytes)} sub={historicalStats.total_bytes.toLocaleString() + ' B'} />
                       <StatTile label="Best RSSI" value={fmtRssi(historicalStats.best_rssi)} sub={historicalStats.avg_rssi != null ? `avg ${fmtRssi(historicalStats.avg_rssi)}` : undefined} />
+                      {/* Session-only fields not tracked by DB — borrow from live session */}
+                      {sessionSnapshot.packetCount > 0 && (
+                        <>
+                          <StatTile label="Decrypt Rate" value={fmtPct(sessionSnapshot.decryptRate)} sub="this session" />
+                          <StatTile label="Unique Sources" value={sessionSnapshot.uniqueSources} sub="this session" />
+                          <StatTile label="Distinct Paths" value={sessionSnapshot.distinctPaths} sub="this session" />
+                        </>
+                      )}
                     </div>
 
                     {historicalStats.has_type_data && (
                       <HBarSection
-                        title="Packet Types (DB)"
+                        title="Packet Types"
                         items={Object.entries(historicalStats.type_counts)
                           .sort((a, b) => b[1] - a[1])
                           .map(([label, count]) => ({
@@ -944,6 +985,13 @@ const resolvedStrongest = useMemo(() =>
                       </div>
                     )}
                   </div>
+                )}
+
+                {statsSource === 'db' && !historicalStats && historicalStatsLoading && (
+                  <p className="p-4 text-center text-xs text-muted-foreground animate-pulse">Loading DB stats…</p>
+                )}
+                {statsSource === 'db' && !historicalStats && !historicalStatsLoading && !historicalStatsError && (
+                  <p className="p-4 text-center text-xs italic text-muted-foreground">No DB stats for this window</p>
                 )}
               </div>
             )}

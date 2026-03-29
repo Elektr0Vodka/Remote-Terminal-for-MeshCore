@@ -345,6 +345,8 @@ export interface AppSettings {
   show_warning_ticker: boolean;
   auto_delete_raw_enabled: boolean;
   auto_delete_raw_days: number;
+  high_advert_threshold?: number;
+  medium_advert_threshold?: number;
 }
 
 export interface AppSettingsUpdate {
@@ -358,6 +360,8 @@ export interface AppSettingsUpdate {
   show_warning_ticker?: boolean;
   auto_delete_raw_enabled?: boolean;
   auto_delete_raw_days?: number;
+  high_advert_threshold?: number;
+  medium_advert_threshold?: number;
 }
 
 export interface MigratePreferencesRequest {

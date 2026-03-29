@@ -9,6 +9,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, AlertTriangle, ChevronDown, ChevronUp, ChevronsUpDown, Map, RefreshCw } from 'lucide-react';
 import type { RadioConfig } from '../types';
 
+// ─── Extra analytics types ───────────────────────────────────────────────────
+
+interface ScatterPoint { rssi: number; snr: number; }
+interface HeatmapCell { dow: number; hour: number; count: number; }
+interface HeatmapData { cells: HeatmapCell[]; max_count: number; total: number; }
+interface RelayPair { hop_a: string; hop_b: string; count: number; }
+interface ReachabilityRing { hops: number | null; count: number; label: string; }
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface MeshHealthContact {
@@ -39,6 +47,8 @@ interface MeshHealthResponse {
   total_contacts: number;
   high_alert_count: number;
   medium_alert_count: number;
+  high_advert_threshold: number;
+  medium_advert_threshold: number;
   alerts: MeshHealthAlert[];
   contacts: MeshHealthContact[];
 }
@@ -112,6 +122,169 @@ function StatTile({ label, value, sub }: { label: string; value: string | number
   );
 }
 
+function DistBars({ items }: { items: { label: string; count: number; color: string }[] }) {
+  const max = Math.max(...items.map((i) => i.count), 1);
+  return (
+    <div className="space-y-1.5">
+      {items.map((item) => (
+        <div key={item.label} className="flex items-center gap-2">
+          <span className="w-14 flex-shrink-0 text-[10px] text-muted-foreground">{item.label}</span>
+          <div className="flex-1 overflow-hidden rounded-full bg-muted h-1.5">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${(item.count / max) * 100}%`, background: item.color }}
+            />
+          </div>
+          <span className="w-5 flex-shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
+            {item.count}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── SNR vs RSSI scatter plot ─────────────────────────────────────────────────
+
+function ScatterPlot({ points }: { points: ScatterPoint[] }) {
+  if (!points.length) return null;
+  const W = 360, H = 180;
+  const pad = { top: 8, right: 10, bottom: 28, left: 34 };
+  const pw = W - pad.left - pad.right;
+  const ph = H - pad.top - pad.bottom;
+
+  const rssis = points.map((p) => p.rssi);
+  const snrs  = points.map((p) => p.snr);
+  const minR = Math.min(...rssis), maxR = Math.max(...rssis, minR + 1);
+  const minS = Math.min(...snrs),  maxS = Math.max(...snrs,  minS + 1);
+
+  const xOf = (r: number) => pad.left + ((r - minR) / (maxR - minR)) * pw;
+  const yOf = (s: number) => pad.top  + ph - ((s - minS) / (maxS - minS)) * ph;
+
+  // X-axis ticks
+  const xTicks = [minR, Math.round((minR + maxR) / 2), maxR];
+  const yTicks = [minS, Math.round((minS + maxS) / 2), maxS];
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="SNR vs RSSI scatter">
+      {/* Grid lines */}
+      {yTicks.map((s) => (
+        <g key={s}>
+          <line x1={pad.left} x2={W - pad.right} y1={yOf(s)} y2={yOf(s)}
+            stroke="hsl(var(--border))" strokeWidth={0.5} />
+          <text x={pad.left - 3} y={yOf(s) + 3} textAnchor="end" fontSize={8}
+            fill="hsl(var(--muted-foreground))">{s}</text>
+        </g>
+      ))}
+      {xTicks.map((r) => (
+        <text key={r} x={xOf(r)} y={H - 4} textAnchor="middle" fontSize={8}
+          fill="hsl(var(--muted-foreground))">{r}</text>
+      ))}
+      {/* Axis labels */}
+      <text x={W / 2} y={H - 1} textAnchor="middle" fontSize={7}
+        fill="hsl(var(--muted-foreground))">RSSI (dBm)</text>
+      <text x={9} y={H / 2} textAnchor="middle" fontSize={7}
+        fill="hsl(var(--muted-foreground))"
+        transform={`rotate(-90, 9, ${H / 2})`}>SNR (dB)</text>
+      {/* Points */}
+      {points.map((p, i) => (
+        <circle key={i} cx={xOf(p.rssi)} cy={yOf(p.snr)} r={1.8}
+          fill="#2563eb" fillOpacity={0.45} />
+      ))}
+    </svg>
+  );
+}
+
+// ─── 7×24 hourly heatmap ──────────────────────────────────────────────────────
+
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function HourlyHeatmap({ data }: { data: HeatmapData }) {
+  const cellMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of data.cells) m[`${c.dow}:${c.hour}`] = c.count;
+    return m;
+  }, [data.cells]);
+
+  const maxCount = Math.max(data.max_count, 1);
+
+  const cellColor = (count: number) => {
+    if (!count) return 'hsl(var(--muted))';
+    const ratio = count / maxCount;
+    if (ratio < 0.25) return '#1e40af';
+    if (ratio < 0.5)  return '#2563eb';
+    if (ratio < 0.75) return '#f59e0b';
+    return '#ef4444';
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="grid gap-px" style={{ display: 'grid', gridTemplateColumns: '28px repeat(24, 1fr)', minWidth: 380 }}>
+        {/* Empty corner + hour headers */}
+        <div />
+        {Array.from({ length: 24 }, (_, h) => (
+          <div key={h} className="text-center text-[8px] text-muted-foreground pb-0.5"
+            style={{ lineHeight: 1 }}>
+            {h % 6 === 0 ? `${h}h` : ''}
+          </div>
+        ))}
+        {/* Rows: one per day */}
+        {Array.from({ length: 7 }, (_, dow) => (
+          <div key={dow} style={{ display: 'contents' }}>
+            <div className="text-[8px] text-muted-foreground flex items-center pr-1"
+              style={{ justifyContent: 'flex-end' }}>
+              {DOW_LABELS[dow]}
+            </div>
+            {Array.from({ length: 24 }, (_, h) => {
+              const count = cellMap[`${dow}:${h}`] ?? 0;
+              return (
+                <div
+                  key={h}
+                  title={`${DOW_LABELS[dow]} ${h}:00 — ${count} packets`}
+                  className="rounded-sm"
+                  style={{ backgroundColor: cellColor(count), height: 10 }}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mt-1.5 text-[8px] text-muted-foreground">
+        <span>Low</span>
+        <div className="flex gap-px">
+          {['#1e40af', '#2563eb', '#f59e0b', '#ef4444'].map((c) => (
+            <div key={c} className="w-4 h-2 rounded-sm" style={{ backgroundColor: c }} />
+          ))}
+        </div>
+        <span>High</span>
+        <span className="ml-auto">{data.total.toLocaleString()} total packets</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Relay pair bars ──────────────────────────────────────────────────────────
+
+function RelayPairBars({ pairs }: { pairs: RelayPair[] }) {
+  const max = Math.max(...pairs.map((p) => p.count), 1);
+  return (
+    <div className="space-y-1.5">
+      {pairs.slice(0, 10).map((p, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-32 flex-shrink-0 font-mono text-[9px] text-muted-foreground truncate"
+            title={`${p.hop_a} → ${p.hop_b}`}>
+            {p.hop_a}→{p.hop_b}
+          </span>
+          <div className="flex-1 overflow-hidden rounded-full bg-muted h-1.5">
+            <div className="h-full rounded-full" style={{ width: `${(p.count / max) * 100}%`, background: 'hsl(var(--primary))' }} />
+          </div>
+          <span className="w-6 flex-shrink-0 text-right text-[9px] tabular-nums text-muted-foreground">{p.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
   if (col !== sortKey) return <ChevronsUpDown className="ml-1 inline h-3 w-3 opacity-40" />;
   return sortDir === 'asc'
@@ -135,6 +308,12 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
   const lastFetchRef  = useRef<number>(0);
   const focusRowRef   = useRef<HTMLTableRowElement>(null);
   const focusDoneRef  = useRef(false);
+
+  // ── Extra analytics state ─────────────────────────────────────────────────
+  const [scatter,      setScatter]      = useState<ScatterPoint[]>([]);
+  const [heatmapData,  setHeatmapData]  = useState<HeatmapData | null>(null);
+  const [relayPairs,   setRelayPairs]   = useState<RelayPair[]>([]);
+  const [reachability, setReachability] = useState<ReachabilityRing[]>([]);
 
   const fetchHealth = useCallback((win: TimeWindow) => {
     const endTs = Math.floor(Date.now() / 1000);
@@ -160,6 +339,32 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
     fetchHealth(selectedWindow);
     setPage(0);
   }, [selectedWindow, fetchHealth]);
+
+  // Fetch extra analytics charts on window change
+  useEffect(() => {
+    const endTs = Math.floor(Date.now() / 1000);
+    const startTs = endTs - selectedWindow.hours * 3600;
+
+    fetch(`/api/packets/snr-rssi-scatter?start_ts=${startTs}&end_ts=${endTs}&limit=1500`)
+      .then((r) => r.json() as Promise<ScatterPoint[]>)
+      .then(setScatter)
+      .catch(() => {});
+
+    fetch(`/api/packets/hourly-heatmap?start_ts=${startTs}&end_ts=${endTs}`)
+      .then((r) => r.json() as Promise<HeatmapData>)
+      .then(setHeatmapData)
+      .catch(() => {});
+
+    fetch('/api/packets/relay-pairs?limit=10')
+      .then((r) => r.json() as Promise<RelayPair[]>)
+      .then(setRelayPairs)
+      .catch(() => {});
+
+    fetch(`/api/packets/reachability-rings?start_ts=${startTs}&end_ts=${endTs}`)
+      .then((r) => r.json() as Promise<ReachabilityRing[]>)
+      .then(setReachability)
+      .catch(() => {});
+  }, [selectedWindow]);
 
   // Auto-refresh: only for short windows (30m/1h), minimum 30s between refreshes
   useEffect(() => {
@@ -245,6 +450,44 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
   const highAlerts = data?.alerts.filter((a) => a.level === 'HIGH') ?? [];
   const mediumAlerts = data?.alerts.filter((a) => a.level === 'MEDIUM') ?? [];
 
+  const hopDist = useMemo(() => {
+    if (!contactsWithDist.length) return [];
+    const b = [
+      { label: 'Direct',  count: 0, color: 'hsl(var(--success))' },
+      { label: '1 hop',   count: 0, color: 'hsl(var(--primary))' },
+      { label: '2 hops',  count: 0, color: 'hsl(var(--info))' },
+      { label: '3+ hops', count: 0, color: 'hsl(var(--warning))' },
+      { label: 'Unknown', count: 0, color: 'hsl(var(--muted-foreground))' },
+    ];
+    for (const c of contactsWithDist) {
+      const h = c.min_path_len;
+      if (h === null)   b[4].count++;
+      else if (h === 0) b[0].count++;
+      else if (h === 1) b[1].count++;
+      else if (h === 2) b[2].count++;
+      else              b[3].count++;
+    }
+    return b.filter((x) => x.count > 0);
+  }, [contactsWithDist]);
+
+  const hashModeDist = useMemo(() => {
+    if (!contactsWithDist.length) return [];
+    const b = [
+      { label: '1-byte',  count: 0, color: 'hsl(var(--primary))' },
+      { label: '2-byte',  count: 0, color: 'hsl(var(--info))' },
+      { label: '3-byte',  count: 0, color: 'hsl(var(--success))' },
+      { label: 'Unknown', count: 0, color: 'hsl(var(--muted-foreground))' },
+    ];
+    for (const c of contactsWithDist) {
+      const m = c.hash_mode;
+      if (m === null)   b[3].count++;
+      else if (m === 0) b[0].count++;
+      else if (m === 1) b[1].count++;
+      else              b[2].count++;
+    }
+    return b.filter((x) => x.count > 0);
+  }, [contactsWithDist]);
+
   const thClass = 'px-2 py-1.5 font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors';
 
   return (
@@ -302,8 +545,8 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
           {data && (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               <StatTile label="Contacts Heard" value={data.total_contacts} sub={`last ${selectedWindow.label}`} />
-              <StatTile label="HIGH Alerts" value={data.high_alert_count} sub="> 8 adverts" />
-              <StatTile label="MEDIUM Alerts" value={data.medium_alert_count} sub="> 2 adverts" />
+              <StatTile label="HIGH Alerts" value={data.high_alert_count} sub={`> ${data.high_advert_threshold} adverts`} />
+              <StatTile label="MEDIUM Alerts" value={data.medium_alert_count} sub={`> ${data.medium_advert_threshold} adverts`} />
               <StatTile label="Window" value={selectedWindow.label} sub={`${data.window_hours.toFixed(1)}h`} />
             </div>
           )}
@@ -312,6 +555,69 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
               {[0, 1, 2, 3].map((i) => (
                 <div key={i} className="h-16 animate-pulse rounded border border-border bg-background" />
               ))}
+            </div>
+          )}
+
+          {/* Hop distance + hash mode distributions */}
+          {(hopDist.length > 0 || hashModeDist.length > 0) && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {hopDist.length > 0 && (
+                <div className="rounded border border-border bg-background p-2.5">
+                  <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Hop Distance
+                  </div>
+                  <DistBars items={hopDist} />
+                </div>
+              )}
+              {hashModeDist.length > 0 && (
+                <div className="rounded border border-border bg-background p-2.5">
+                  <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Hash Mode (bytes/hop)
+                  </div>
+                  <DistBars items={hashModeDist} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reachability rings */}
+          {reachability.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {reachability.map((r) => (
+                <StatTile key={String(r.hops)} label={r.label} value={r.count} sub="unique nodes" />
+              ))}
+            </div>
+          )}
+
+          {/* SNR vs RSSI scatter + hourly heatmap */}
+          {(scatter.length > 0 || heatmapData) && (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {scatter.length > 0 && (
+                <div className="rounded border border-border bg-background p-2.5">
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    SNR vs RSSI ({scatter.length.toLocaleString()} packets)
+                  </div>
+                  <ScatterPlot points={scatter} />
+                </div>
+              )}
+              {heatmapData && heatmapData.total > 0 && (
+                <div className="rounded border border-border bg-background p-2.5">
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Activity by Day &amp; Hour
+                  </div>
+                  <HourlyHeatmap data={heatmapData} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Relay pairs */}
+          {relayPairs.length > 0 && (
+            <div className="rounded border border-border bg-background p-2.5">
+              <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Top Relay Pairs (most frequent consecutive hops in advert paths)
+              </div>
+              <RelayPairBars pairs={relayPairs} />
             </div>
           )}
 
