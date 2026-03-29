@@ -33,7 +33,6 @@ export function SettingsDatabaseSection({
   const [cleaning, setCleaning] = useState(false);
   const [purgingDecryptedRaw, setPurgingDecryptedRaw] = useState(false);
   const [autoDecryptOnAdvert, setAutoDecryptOnAdvert] = useState(false);
-  const [showWarningTicker, setShowWarningTicker] = useState(true);
   const [autoDeleteRawEnabled, setAutoDeleteRawEnabled] = useState(false);
   const [autoDeleteRawDays, setAutoDeleteRawDays] = useState('14');
 
@@ -42,7 +41,6 @@ export function SettingsDatabaseSection({
 
   useEffect(() => {
     setAutoDecryptOnAdvert(appSettings.auto_decrypt_dm_on_advert);
-    setShowWarningTicker(appSettings.show_warning_ticker ?? true);
     setAutoDeleteRawEnabled(appSettings.auto_delete_raw_enabled ?? false);
     setAutoDeleteRawDays(String(appSettings.auto_delete_raw_days ?? 14));
   }, [appSettings]);
@@ -100,7 +98,6 @@ export function SettingsDatabaseSection({
     try {
       await onSaveAppSettings({
         auto_decrypt_dm_on_advert: autoDecryptOnAdvert,
-        show_warning_ticker: showWarningTicker,
         auto_delete_raw_enabled: autoDeleteRawEnabled,
         auto_delete_raw_days: Math.max(1, parseInt(autoDeleteRawDays, 10) || 14),
       });
@@ -253,25 +250,6 @@ export function SettingsDatabaseSection({
           When enabled, the server runs a daily background job that removes undecrypted raw
           packets older than the configured threshold. Does not affect already-decrypted
           messages or your chat history.
-        </p>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3">
-        <Label>Warning Ticker</Label>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showWarningTicker}
-            onChange={(e) => setShowWarningTicker(e.target.checked)}
-            className="w-4 h-4 rounded border-input accent-primary"
-          />
-          <span className="text-sm">Show mesh health warning ticker in the top bar</span>
-        </label>
-        <p className="text-xs text-muted-foreground">
-          Displays a scrolling alert strip when nodes are advertising too frequently (HIGH or MEDIUM
-          severity). Updates every 60 seconds. Can be dismissed temporarily with the X button.
         </p>
       </div>
 

@@ -220,6 +220,8 @@ export function SettingsModal(props: SettingsModalProps) {
             <SettingsLocalSection
               onLocalLabelChange={onLocalLabelChange}
               className={sectionContentClass}
+              appSettings={appSettings ?? undefined}
+              onSaveAppSettings={onSaveAppSettings}
             />
           )}
         </section>
@@ -268,11 +270,7 @@ export function SettingsModal(props: SettingsModalProps) {
         <section className={sectionWrapperClass}>
           {renderSectionHeader('statistics')}
           {isSectionVisible('statistics') && (
-            <SettingsStatisticsSection
-              className={sectionContentClass}
-              appSettings={appSettings ?? undefined}
-              onSaveAppSettings={onSaveAppSettings}
-            />
+            <SettingsStatisticsSection className={sectionContentClass} />
           )}
         </section>
       )}

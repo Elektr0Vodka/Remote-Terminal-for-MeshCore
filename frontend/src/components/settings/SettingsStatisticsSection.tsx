@@ -1,39 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Separator } from '../ui/separator';
 import { api } from '../../api';
-import { toast } from '../ui/sonner';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Button } from '../ui/button';
-import type { StatisticsResponse, AppSettings, AppSettingsUpdate } from '../../types';
+import type { StatisticsResponse } from '../../types';
 
 function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-export function SettingsStatisticsSection({
-  className,
-  appSettings,
-  onSaveAppSettings,
-}: {
-  className?: string;
-  appSettings?: AppSettings;
-  onSaveAppSettings?: (update: AppSettingsUpdate) => Promise<void>;
-}) {
+export function SettingsStatisticsSection({ className }: { className?: string }) {
   const [stats, setStats] = useState<StatisticsResponse | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState(false);
-  const [highAdvertThreshold, setHighAdvertThreshold] = useState('');
-  const [mediumAdvertThreshold, setMediumAdvertThreshold] = useState('');
-  const [thresholdBusy, setThresholdBusy] = useState(false);
-  const [thresholdError, setThresholdError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (appSettings) {
-      setHighAdvertThreshold(String(appSettings.high_advert_threshold ?? 8));
-      setMediumAdvertThreshold(String(appSettings.medium_advert_threshold ?? 2));
-    }
-  }, [appSettings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,32 +34,6 @@ export function SettingsStatisticsSection({
       cancelled = true;
     };
   }, []);
-
-  const handleSaveThresholds = async () => {
-    if (!onSaveAppSettings || !appSettings) return;
-    setThresholdError(null);
-    setThresholdBusy(true);
-
-    try {
-      const update: AppSettingsUpdate = {};
-      const newHighThreshold = parseInt(highAdvertThreshold, 10);
-      if (!isNaN(newHighThreshold) && newHighThreshold !== (appSettings.high_advert_threshold ?? 8)) {
-        update.high_advert_threshold = newHighThreshold;
-      }
-      const newMediumThreshold = parseInt(mediumAdvertThreshold, 10);
-      if (!isNaN(newMediumThreshold) && newMediumThreshold !== (appSettings.medium_advert_threshold ?? 2)) {
-        update.medium_advert_threshold = newMediumThreshold;
-      }
-      if (Object.keys(update).length > 0) {
-        await onSaveAppSettings(update);
-      }
-      toast.success('Thresholds saved');
-    } catch (err) {
-      setThresholdError(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setThresholdBusy(false);
-    }
-  };
 
   return (
     <div className={className}>
@@ -244,61 +195,6 @@ export function SettingsStatisticsSection({
                     </div>
                   ))}
                 </div>
-              </div>
-            </>
-          )}
-
-          {appSettings && (
-            <>
-              <Separator />
-
-              {/* Mesh Health Alert Thresholds */}
-              <div>
-                <h4 className="text-sm font-medium mb-4">Mesh Health Alert Thresholds</h4>
-                <p className="text-xs text-muted-foreground mb-4">
-                  Configure advert count thresholds for mesh health alerts. Customize these to match
-                  region-specific advert guidelines (e.g., 1 advert per 24h vs 50 adverts per 24h).
-                </p>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="high-threshold">HIGH Alert Threshold</Label>
-                    <Input
-                      id="high-threshold"
-                      type="number"
-                      min="1"
-                      value={highAdvertThreshold}
-                      onChange={(e) => setHighAdvertThreshold(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Contacts exceeding this many adverts are flagged as HIGH alerts.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="medium-threshold">MEDIUM Alert Threshold</Label>
-                    <Input
-                      id="medium-threshold"
-                      type="number"
-                      min="1"
-                      value={mediumAdvertThreshold}
-                      onChange={(e) => setMediumAdvertThreshold(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Contacts exceeding this many adverts are flagged as MEDIUM alerts.
-                    </p>
-                  </div>
-                </div>
-                {thresholdError && (
-                  <div className="text-sm text-destructive mb-2" role="alert">
-                    {thresholdError}
-                  </div>
-                )}
-                <Button
-                  onClick={handleSaveThresholds}
-                  disabled={thresholdBusy || !appSettings}
-                  className="w-full"
-                >
-                  {thresholdBusy ? 'Saving...' : 'Save Thresholds'}
-                </Button>
               </div>
             </>
           )}
