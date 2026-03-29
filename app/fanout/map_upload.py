@@ -46,7 +46,7 @@ from app.services.radio_runtime import radio_runtime
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_API_URL = "https://map.meshcore.io/api/v1/uploader/node"
+_DEFAULT_API_URL = "https://map.meshcore.io/api/v1/uploader/node" #changed tln of url to io from dev to temp fix the temporary redir error preventing uploads.
 
 # Re-upload guard: skip re-uploading a pubkey seen within this window (AU parity)
 _REUPLOAD_SECONDS = 3600
@@ -111,7 +111,7 @@ class MapUploadModule(FanoutModule):
         self._seen: dict[str, int] = {}
 
     async def start(self) -> None:
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(15.0))
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(15.0), follow_redirects=True) #allows following of redirects instead of erroring out. Fix by kizniche - issues/123
         self._last_error = None
         self._seen.clear()
 
