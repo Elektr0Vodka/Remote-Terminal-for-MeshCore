@@ -46,7 +46,7 @@ from app.services.radio_runtime import radio_runtime
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_API_URL = "https://map.meshcore.dev/api/v1/uploader/node"
+_DEFAULT_API_URL = "https://map.meshcore.io/api/v1/uploader/node"
 
 # Re-upload guard: skip re-uploading a pubkey seen within this window (AU parity)
 _REUPLOAD_SECONDS = 3600
