@@ -176,8 +176,8 @@ def _format_raw_packet(data: dict[str, Any], device_name: str, public_key_hex: s
     ts_str = current_time.isoformat()
 
     # SNR/RSSI are always strings in reference output.
-    snr: float | None = data.get("snr") #jkingsman/Remote-Terminal-for-MeshCore/issues/121 - fixed by kizniche
-    rssi: int | None = data.get("rssi") #jkingsman/Remote-Terminal-for-MeshCore/issues/121 - fixed by kizniche
+    snr_val: float | None = data.get("snr")
+    rssi_val: int | None = data.get("rssi")
     snr = str(snr_val) if snr_val is not None else "Unknown"
     rssi = str(rssi_val) if rssi_val is not None else "Unknown"
 
