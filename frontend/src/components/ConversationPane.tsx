@@ -30,6 +30,9 @@ const VisualizerView = lazy(() =>
 const MyNodeView = lazy(() => import('./MyNodeView'));
 const MeshHealthView = lazy(() => import('./MeshHealthView').then((m) => ({ default: m.MeshHealthView })));
 const KmsView = lazy(() => import('./KmsView').then((m) => ({ default: m.KmsView })));
+const ContactAnalyticsView = lazy(() =>
+  import('./ContactAnalyticsView').then((m) => ({ default: m.ContactAnalyticsView }))
+);
 
 interface ConversationPaneProps {
   activeConversation: Conversation | null;
@@ -221,6 +224,20 @@ export function ConversationPane({
     return (
       <Suspense fallback={<LoadingPane label="Loading MC-KMS..." />}>
         <KmsView />
+      </Suspense>
+    );
+  }
+
+  if (activeConversation.type === 'contact-analytics') {
+    return (
+      <Suspense fallback={<LoadingPane label="Loading analytics..." />}>
+        <ContactAnalyticsView
+          publicKey={activeConversation.id}
+          displayName={activeConversation.name}
+          config={config}
+          contacts={contacts}
+          onSelectConversation={onSelectConversation}
+        />
       </Suspense>
     );
   }

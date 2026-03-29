@@ -107,6 +107,15 @@ export function useConversationRouter({
       hasSetDefaultConversation.current = true;
       return;
     }
+    if (hashConv?.type === 'contact-analytics') {
+      setActiveConversationState({
+        type: 'contact-analytics',
+        id: hashConv.name,
+        name: hashConv.label ?? hashConv.name.slice(0, 12),
+      });
+      hasSetDefaultConversation.current = true;
+      return;
+    }
     // Handle channel hash (ID-first with legacy-name fallback)
     if (hashConv?.type === 'channel') {
       const channel = resolveChannelFromHashToken(hashConv.name, channels);

@@ -293,8 +293,8 @@ export interface ResendChannelMessageResponse {
   message?: Message;
 }
 
-// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page, 'kms' for MC-KMS
-type ConversationType = 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health' | 'kms';
+// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page, 'kms' for MC-KMS, 'contact-analytics' for per-contact analytics
+type ConversationType = 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health' | 'kms' | 'contact-analytics';
 
 export interface Conversation {
   type: ConversationType;

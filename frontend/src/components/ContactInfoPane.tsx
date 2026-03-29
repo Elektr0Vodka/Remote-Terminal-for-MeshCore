@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { Ban, MapPinOff, Search, Star } from 'lucide-react';
+import { BarChart2, Ban, MapPinOff, Search, Star } from 'lucide-react';
 import { api } from '../api';
 import { formatTime } from '../utils/messageParser';
 import {
@@ -61,6 +61,7 @@ interface ContactInfoPaneProps {
   onNavigateToChannel?: (channelKey: string) => void;
   onSearchMessagesByKey?: (publicKey: string) => void;
   onSearchMessagesByName?: (name: string) => void;
+  onOpenAnalytics?: (publicKey: string, name: string) => void;
   blockedKeys?: string[];
   blockedNames?: string[];
   onToggleBlockedKey?: (key: string) => void;
@@ -78,6 +79,7 @@ export function ContactInfoPane({
   onNavigateToChannel,
   onSearchMessagesByKey,
   onSearchMessagesByName,
+  onOpenAnalytics,
   blockedKeys = [],
   blockedNames = [],
   onToggleBlockedKey,
@@ -441,6 +443,25 @@ export function ContactInfoPane({
                 >
                   <Search className="h-4.5 w-4.5 text-muted-foreground" aria-hidden="true" />
                   <span>Search user&apos;s messages by key</span>
+                </button>
+              </div>
+            )}
+
+            {onOpenAnalytics && (
+              <div className="px-5 py-3 border-b border-border">
+                <button
+                  type="button"
+                  className="text-sm flex items-center gap-2 hover:text-primary transition-colors"
+                  onClick={() => {
+                    onOpenAnalytics(
+                      contact.public_key,
+                      getContactDisplayName(contact.name, contact.public_key, contact.last_advert)
+                    );
+                    onClose();
+                  }}
+                >
+                  <BarChart2 className="h-4.5 w-4.5 text-muted-foreground" aria-hidden="true" />
+                  <span>Full analytics</span>
                 </button>
               </div>
             )}

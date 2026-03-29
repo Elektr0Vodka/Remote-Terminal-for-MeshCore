@@ -559,6 +559,13 @@ export function App() {
     onToggleBlockedName: handleBlockName,
     blockedKeys: appSettings?.blocked_keys ?? [],
     blockedNames: appSettings?.blocked_names ?? [],
+    onOpenAnalytics: (publicKey: string, name: string) => {
+      handleSelectConversationWithTargetReset({
+        type: 'contact-analytics',
+        id: publicKey,
+        name,
+      });
+    },
   };
   const channelInfoPaneProps = {
     channelKey: infoPaneChannelKey,
