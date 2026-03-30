@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from app.database import Database
+from app.models import ContactUpsert
 from app.repository import (
     ChannelRepository,
     ContactAdvertPathRepository,
@@ -18,13 +19,12 @@ from app.repository import (
     MessageRepository,
     RawPacketRepository,
 )
-from app.models import ContactUpsert
-
 
 # ── File-backed DB fixture ─────────────────────────────────────────────────────
 # The timeseries / historical-stats / mesh-health endpoints open fresh
 # aiosqlite connections via db.db_path.  An in-memory ":memory:" path creates
 # a new, empty database on each open, so those tests need a real temp file.
+
 
 @pytest.fixture
 async def file_db(tmp_path):
@@ -565,6 +565,7 @@ class TestMaintenanceEndpoint:
 
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
+
 async def _insert_contact(public_key: str, name: str, last_seen: int) -> None:
     await ContactRepository.upsert(
         ContactUpsert(
@@ -584,6 +585,7 @@ async def _insert_advert_path(public_key: str, timestamp: int) -> None:
 
 
 # ── GET /packets/recent ────────────────────────────────────────────────────────
+
 
 class TestRecentPackets:
     """Test GET /api/packets/recent."""
@@ -640,6 +642,7 @@ class TestRecentPackets:
 
 
 # ── GET /packets/timeseries ────────────────────────────────────────────────────
+
 
 class TestPacketTimeseries:
     """Test GET /api/packets/timeseries."""
@@ -708,18 +711,25 @@ class TestPacketTimeseries:
     @pytest.mark.asyncio
     async def test_response_fields_present(self, file_db, client):
         now = int(time.time())
-        response = await client.get(
-            f"/api/packets/timeseries?start_ts={now - 60}&end_ts={now}"
-        )
+        response = await client.get(f"/api/packets/timeseries?start_ts={now - 60}&end_ts={now}")
 
         assert response.status_code == 200
         data = response.json()
-        for field in ("bins", "total_packets", "total_bytes", "start_ts", "end_ts",
-                      "bin_seconds", "has_signal_data", "has_type_data"):
+        for field in (
+            "bins",
+            "total_packets",
+            "total_bytes",
+            "start_ts",
+            "end_ts",
+            "bin_seconds",
+            "has_signal_data",
+            "has_type_data",
+        ):
             assert field in data
 
 
 # ── GET /packets/historical-stats ─────────────────────────────────────────────
+
 
 class TestHistoricalStats:
     """Test GET /api/packets/historical-stats."""
@@ -752,9 +762,7 @@ class TestHistoricalStats:
         for i in range(4):
             await RawPacketRepository.create(f"data{i}".encode(), start + i * 100)
 
-        response = await client.get(
-            f"/api/packets/historical-stats?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/historical-stats?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         data = response.json()
@@ -770,9 +778,7 @@ class TestHistoricalStats:
         await _insert_contact(pub_key, "Alice", now - 100)
         await _insert_advert_path(pub_key, now - 100)
 
-        response = await client.get(
-            f"/api/packets/historical-stats?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/historical-stats?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         data = response.json()
@@ -792,9 +798,7 @@ class TestHistoricalStats:
         await _insert_contact(pub_key, "Bob", now - 7200)  # last_seen before window
         await _insert_advert_path(pub_key, now - 7200)
 
-        response = await client.get(
-            f"/api/packets/historical-stats?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/historical-stats?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         assert response.json()["neighbors_by_count"] == []
@@ -808,14 +812,24 @@ class TestHistoricalStats:
 
         assert response.status_code == 200
         data = response.json()
-        for field in ("total_packets", "total_bytes", "packets_per_minute",
-                      "avg_rssi", "avg_snr", "best_rssi", "type_counts",
-                      "has_signal_data", "has_type_data",
-                      "neighbors_by_count", "neighbors_by_signal"):
+        for field in (
+            "total_packets",
+            "total_bytes",
+            "packets_per_minute",
+            "avg_rssi",
+            "avg_snr",
+            "best_rssi",
+            "type_counts",
+            "has_signal_data",
+            "has_type_data",
+            "neighbors_by_count",
+            "neighbors_by_signal",
+        ):
             assert field in data
 
 
 # ── GET /packets/mesh-health ───────────────────────────────────────────────────
+
 
 class TestMeshHealth:
     """Test GET /api/packets/mesh-health."""
@@ -829,9 +843,7 @@ class TestMeshHealth:
     @pytest.mark.asyncio
     async def test_empty_window_returns_empty_lists(self, file_db, client):
         now = int(time.time())
-        response = await client.get(
-            f"/api/packets/mesh-health?start_ts={now - 3600}&end_ts={now}"
-        )
+        response = await client.get(f"/api/packets/mesh-health?start_ts={now - 3600}&end_ts={now}")
 
         assert response.status_code == 200
         data = response.json()
@@ -849,9 +861,7 @@ class TestMeshHealth:
         await _insert_contact(pub_key, "Charlie", now - 100)
         await _insert_advert_path(pub_key, now - 100)
 
-        response = await client.get(
-            f"/api/packets/mesh-health?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/mesh-health?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         data = response.json()
@@ -874,9 +884,7 @@ class TestMeshHealth:
                 timestamp=now - 10 - i,
             )
 
-        response = await client.get(
-            f"/api/packets/mesh-health?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/mesh-health?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         data = response.json()
@@ -901,9 +909,7 @@ class TestMeshHealth:
                 timestamp=now - 10 - i,
             )
 
-        response = await client.get(
-            f"/api/packets/mesh-health?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/mesh-health?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         data = response.json()
@@ -921,9 +927,7 @@ class TestMeshHealth:
         await _insert_contact(pub_key, "Quiet", now - 10)
         await _insert_advert_path(pub_key, now - 10)
 
-        response = await client.get(
-            f"/api/packets/mesh-health?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/mesh-health?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         data = response.json()
@@ -933,14 +937,20 @@ class TestMeshHealth:
     @pytest.mark.asyncio
     async def test_response_fields_present(self, file_db, client):
         now = int(time.time())
-        response = await client.get(
-            f"/api/packets/mesh-health?start_ts={now - 60}&end_ts={now}"
-        )
+        response = await client.get(f"/api/packets/mesh-health?start_ts={now - 60}&end_ts={now}")
 
         assert response.status_code == 200
         data = response.json()
-        for field in ("start_ts", "end_ts", "window_hours", "total_contacts",
-                      "high_alert_count", "medium_alert_count", "alerts", "contacts"):
+        for field in (
+            "start_ts",
+            "end_ts",
+            "window_hours",
+            "total_contacts",
+            "high_alert_count",
+            "medium_alert_count",
+            "alerts",
+            "contacts",
+        ):
             assert field in data
 
     @pytest.mark.asyncio
@@ -949,9 +959,7 @@ class TestMeshHealth:
         start = now - 7200  # 2 hours
         end = now
 
-        response = await client.get(
-            f"/api/packets/mesh-health?start_ts={start}&end_ts={end}"
-        )
+        response = await client.get(f"/api/packets/mesh-health?start_ts={start}&end_ts={end}")
 
         assert response.status_code == 200
         assert abs(response.json()["window_hours"] - 2.0) < 0.01
