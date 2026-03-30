@@ -56,11 +56,34 @@ function getHashModeKey(hashMode: number | null | undefined): HashModeKey | null
   return ALL_HASH_MODE_KEYS.find((k) => HASH_MODE_CONFIG[k].value === hashMode) ?? null;
 }
 
-/** Returns the best available hash mode key: path discovery wins, advert-observed as fallback. */
+/**
+ * Returns the best available hash mode key from all evidence sources.
+ * Priority: direct path > max(advert, observed packet evidence)
+ */
 function getContactHashModeKey(c: Contact): HashModeKey | null {
   const direct = c.direct_path_hash_mode;
   if (direct != null && direct >= 0) return getHashModeKey(direct);
-  return getHashModeKey(c.advert_hash_mode);
+  const a = c.advert_hash_mode ?? -1;
+  const o = c.observed_hash_mode ?? -1;
+  const best = Math.max(a, o);
+  return best >= 0 ? getHashModeKey(best) : null;
+}
+
+/** True if hash mode is known only from packet evidence (no advert or direct path). */
+function isHashModeObservedOnly(c: Contact): boolean {
+  const direct = c.direct_path_hash_mode;
+  if (direct != null && direct >= 0) return false;
+  if (c.advert_hash_mode != null) return false;
+  return (c.observed_hash_mode ?? -1) >= 0;
+}
+
+/**
+ * Returns the hash mode key to use for map filtering.
+ * Defaults to '1B' when no evidence exists — MeshCore's default mode — so that
+ * contacts without attribution are not hidden when the 1B filter is active.
+ */
+function getContactHashModeKeyForFilter(c: Contact): HashModeKey {
+  return getContactHashModeKey(c) ?? '1B';
 }
 
 // ─── Recency colors ──────────────────────────────────────────────────────────
@@ -257,8 +280,12 @@ const MapPopupContent = memo(function MapPopupContent({
           <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-warning/20 text-warning">MED ADVERT</span>
         )}
         {getContactHashModeKey(contact) !== null && (
-          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-muted/80 text-muted-foreground whitespace-nowrap font-mono">
+          <span
+            className="rounded px-1 py-0.5 text-[9px] font-bold bg-muted/80 text-muted-foreground whitespace-nowrap font-mono"
+            title={isHashModeObservedOnly(contact) ? 'Hash mode inferred from received packets (no advert)' : 'Hash mode declared via advertisement'}
+          >
             {HASH_MODE_CONFIG[getContactHashModeKey(contact)!].label}
+            {isHashModeObservedOnly(contact) && <span className="opacity-60"> obs</span>}
           </span>
         )}
       </div>
@@ -741,9 +768,9 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
     if (c.last_seen == null || c.last_seen < effectiveStart || c.last_seen > effectiveEnd) return false;
     if (showOwnedOnly && !(OWNER_CAPABLE_TYPES.has(c.type) && c.owner_id)) return false;
     if (!visibleTypes[getTypeKey(c.type)]) return false;
-    const hmKey = getContactHashModeKey(c);
+    const hmKey = getContactHashModeKeyForFilter(c);
     const allHashModesEnabled = ALL_HASH_MODE_KEYS.every((k) => visibleHashModes[k]);
-    if (!allHashModesEnabled && (hmKey === null || !visibleHashModes[hmKey])) return false;
+    if (!allHashModesEnabled && !visibleHashModes[hmKey]) return false;
     return true;
   }), [contacts, focusedKey, effectiveStart, effectiveEnd, visibleTypes, visibleHashModes, showOwnedOnly]);
 
@@ -963,7 +990,7 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
             const count = contacts.filter((c) =>
               isValidLocation(c.lat, c.lon) && c.public_key !== focusedKey &&
               c.last_seen != null && c.last_seen >= effectiveStart && c.last_seen <= effectiveEnd &&
-              getContactHashModeKey(c) === key
+              getContactHashModeKeyForFilter(c) === key
             ).length;
             return (
               <button key={key} onClick={() => toggleHashMode(key)}

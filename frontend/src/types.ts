@@ -127,6 +127,7 @@ export interface Contact {
   last_rssi?: number | null;
   last_snr?: number | null;
   advert_hash_mode?: number | null;
+  observed_hash_mode?: number | null;
 }
 
 export interface ContactRoute {

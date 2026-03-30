@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     last_contacted INTEGER,
     first_seen INTEGER,
     last_read_at INTEGER,
-    advert_hash_mode INTEGER
+    advert_hash_mode INTEGER,
+    observed_hash_mode INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS channels (

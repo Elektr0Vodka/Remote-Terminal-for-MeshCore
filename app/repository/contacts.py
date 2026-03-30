@@ -175,6 +175,7 @@ class ContactRepository:
             last_rssi=row["last_rssi"] if "last_rssi" in available_columns else None,
             last_snr=row["last_snr"] if "last_snr" in available_columns else None,
             advert_hash_mode=row["advert_hash_mode"] if "advert_hash_mode" in available_columns else None,
+            observed_hash_mode=row["observed_hash_mode"] if "observed_hash_mode" in available_columns else None,
         )
 
     @staticmethod
@@ -407,6 +408,16 @@ class ContactRepository:
         await db.conn.commit()
 
     @staticmethod
+    async def update_last_seen(public_key: str, timestamp: int | None = None) -> None:
+        """Update only the last_seen timestamp for a contact (does not touch last_contacted)."""
+        ts = timestamp if timestamp is not None else int(time.time())
+        await db.conn.execute(
+            "UPDATE contacts SET last_seen = ? WHERE public_key = ?",
+            (ts, public_key.lower()),
+        )
+        await db.conn.commit()
+
+    @staticmethod
     async def update_last_contacted(public_key: str, timestamp: int | None = None) -> None:
         """Update the last_contacted timestamp for a contact."""
         ts = timestamp if timestamp is not None else int(time.time())
@@ -459,6 +470,47 @@ class ContactRepository:
                 await db.conn.execute(
                     "UPDATE contacts SET advert_hash_mode = ? WHERE public_key = ?",
                     (hash_mode, public_key.lower()),
+                )
+                await db.conn.commit()
+            else:
+                raise
+
+    @staticmethod
+    async def update_observed_hash_mode(public_key: str, hash_mode: int) -> None:
+        """Record the highest path address width inferred from a received packet.
+
+        Only advances (never retreats): if the contact has already demonstrated
+        a higher mode, the stored value is left unchanged.
+        """
+        try:
+            await db.conn.execute(
+                """
+                UPDATE contacts
+                SET observed_hash_mode = CASE
+                    WHEN observed_hash_mode IS NULL OR ? > observed_hash_mode THEN ?
+                    ELSE observed_hash_mode
+                END
+                WHERE public_key = ?
+                """,
+                (hash_mode, hash_mode, public_key.lower()),
+            )
+            await db.conn.commit()
+        except Exception as e:
+            if "no such column" in str(e).lower():
+                await db.conn.execute(
+                    "ALTER TABLE contacts ADD COLUMN observed_hash_mode INTEGER"
+                )
+                await db.conn.commit()
+                await db.conn.execute(
+                    """
+                    UPDATE contacts
+                    SET observed_hash_mode = CASE
+                        WHEN observed_hash_mode IS NULL OR ? > observed_hash_mode THEN ?
+                        ELSE observed_hash_mode
+                    END
+                    WHERE public_key = ?
+                    """,
+                    (hash_mode, hash_mode, public_key.lower()),
                 )
                 await db.conn.commit()
             else:

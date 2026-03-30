@@ -401,6 +401,27 @@ async def _process_group_text(
             path_len=packet_info.path_length if packet_info else None,
         )
 
+        # Attribute packet evidence to the sender contact.
+        # Look up by name; only act when exactly one contact matches (avoid mis-attribution).
+        if decrypted.sender:
+            sender_matches = await ContactRepository.get_by_name(decrypted.sender)
+            if len(sender_matches) == 1:
+                sender_contact = sender_matches[0]
+                await ContactRepository.update_last_seen(sender_contact.public_key, timestamp)
+                if packet_info and packet_info.path_hash_size:
+                    obs_mode = packet_info.path_hash_size - 1  # 1→0, 2→1, 3→2
+                    await ContactRepository.update_observed_hash_mode(
+                        sender_contact.public_key, obs_mode
+                    )
+                refreshed = await ContactRepository.get_by_key(sender_contact.public_key)
+                if refreshed is not None:
+                    broadcast_event("contact", refreshed.model_dump())
+                    logger.debug(
+                        "Updated last_seen + observed_hash_mode for GroupText sender %s (mode %s)",
+                        decrypted.sender,
+                        packet_info.path_hash_size if packet_info else "?",
+                    )
+
         return {
             "decrypted": True,
             "channel_name": channel.name,
@@ -624,6 +645,12 @@ async def _process_direct_message(
                 result.message[:50] if result.message else "",
             )
 
+            # Record packet-evidence hash mode for the sender of incoming DMs.
+            # Outgoing DMs tell us about our own mode, not the contact's.
+            if not is_outgoing and packet_info and packet_info.path_hash_size:
+                obs_mode = packet_info.path_hash_size - 1  # 1→0, 2→1, 3→2
+                await ContactRepository.update_observed_hash_mode(contact.public_key, obs_mode)
+
             # Create message (or add path to existing if duplicate)
             msg_id = await create_dm_message_from_decrypted(
                 packet_id=packet_id,
@@ -703,6 +730,11 @@ async def _process_path_packet(
             result.returned_path_hash_mode,
             updated_at=timestamp,
         )
+
+        # Record packet-evidence hash mode from the PATH packet envelope.
+        if packet_info and packet_info.path_hash_size:
+            obs_mode = packet_info.path_hash_size - 1  # 1→0, 2→1, 3→2
+            await ContactRepository.update_observed_hash_mode(contact.public_key, obs_mode)
 
         if result.extra_type == PayloadType.ACK and len(result.extra) >= 4:
             ack_code = result.extra[:4].hex()

@@ -410,6 +410,11 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_056_create_kms_keys(conn)
         await set_version(conn, 56)
         applied += 1
+    if version < 57:
+        logger.info("Applying migration 57: add contacts.observed_hash_mode for packet-evidence tracking")
+        await _migrate_057_add_contact_observed_hash_mode(conn)
+        await set_version(conn, 57)
+        applied += 1
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -3106,6 +3111,29 @@ async def _migrate_056_create_kms_keys(conn: aiosqlite.Connection) -> None:
     )
     await conn.commit()
     logger.debug("Created kms_keys table")
+
+
+async def _migrate_057_add_contact_observed_hash_mode(conn: aiosqlite.Connection) -> None:
+    """Add observed_hash_mode column to contacts.
+
+    Tracks the highest path address width inferred from actual received packets
+    (DMs, PATH packets) as opposed to advert_hash_mode which is declaration-based.
+      0 = 1-byte hop identifiers observed
+      1 = 2-byte hop identifiers observed
+      2 = 3-byte hop identifiers observed
+    NULL means no packet evidence yet collected.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE contacts ADD COLUMN observed_hash_mode INTEGER"
+        )
+    except Exception as e:
+        if "duplicate column name" in str(e).lower():
+            logger.debug("contacts.observed_hash_mode already exists, skipping")
+        else:
+            raise
+    await conn.commit()
+    logger.debug("Added contacts.observed_hash_mode")
 
 
 async def _migrate_051_add_contact_owner_id(conn: aiosqlite.Connection) -> None:

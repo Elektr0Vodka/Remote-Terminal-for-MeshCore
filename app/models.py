@@ -103,6 +103,7 @@ class Contact(BaseModel):
     last_rssi: float | None = None
     last_snr: float | None = None
     advert_hash_mode: int | None = None  # Most recent advert-observed hash mode (0=1B, 1=2B, 2=3B)
+    observed_hash_mode: int | None = None  # Highest hash mode inferred from received packets (0=1B, 1=2B, 2=3B)
 
     def model_post_init(self, __context) -> None:
         direct_path, direct_path_len, direct_path_hash_mode = normalize_contact_route(
