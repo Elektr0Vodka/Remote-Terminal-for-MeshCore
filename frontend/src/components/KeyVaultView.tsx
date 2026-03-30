@@ -32,19 +32,27 @@ import type { KmsKey, KmsKeyUpdate } from '../types';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function formatTs(ts: number): string {
   return new Date(ts * 1000).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
 function downloadKeyJson(key: KmsKey) {
   const blob = new Blob(
     [JSON.stringify({ public_key: key.public_key, private_key: key.private_key }, null, 2)],
-    { type: 'application/json' },
+    { type: 'application/json' }
   );
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -56,7 +64,12 @@ function downloadKeyJson(key: KmsKey) {
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 
-const METADATA_FIELDS: { key: keyof KmsKeyUpdate; label: string; type?: string; placeholder?: string }[] = [
+const METADATA_FIELDS: {
+  key: keyof KmsKeyUpdate;
+  label: string;
+  type?: string;
+  placeholder?: string;
+}[] = [
   { key: 'device_name', label: 'Device Name', placeholder: 'e.g. Rooftop Repeater' },
   { key: 'device_role', label: 'Device Role', placeholder: 'Repeater, Room Server, Client…' },
   { key: 'model', label: 'Model', placeholder: 'e.g. HELTEC-V3' },
@@ -106,7 +119,9 @@ function EditModal({
             <Edit2 className="h-4 w-4" />
             Edit Key Metadata
           </h3>
-          <span className="text-xs text-muted-foreground font-mono">{kmsKey.public_key.slice(0, 16)}…</span>
+          <span className="text-xs text-muted-foreground font-mono">
+            {kmsKey.public_key.slice(0, 16)}…
+          </span>
           <button onClick={onClose} className="p-1 rounded hover:bg-accent/50 transition ml-2">
             <X className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -138,7 +153,10 @@ function EditModal({
         </div>
 
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded border border-border hover:bg-accent/50 transition">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs rounded border border-border hover:bg-accent/50 transition"
+          >
             Cancel
           </button>
           <button
@@ -146,7 +164,11 @@ function EditModal({
             disabled={saving}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
           >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
             Save
           </button>
         </div>
@@ -172,7 +194,7 @@ function KeyRow({
   const copy = (text: string, label: string) =>
     navigator.clipboard.writeText(text).then(
       () => toast.success(`${label} copied`),
-      () => toast.error('Clipboard not available'),
+      () => toast.error('Clipboard not available')
     );
 
   return (
@@ -182,9 +204,11 @@ function KeyRow({
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent/30 transition select-none"
         onClick={() => setExpanded((e) => !e)}
       >
-        {expanded
-          ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-          : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+        {expanded ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+        )}
         <KeyRound className="h-4 w-4 text-primary flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -235,19 +259,26 @@ function KeyRow({
           {/* Crypto */}
           <div className="space-y-2">
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Public Key</label>
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Public Key
+              </label>
               <div className="flex items-center gap-2">
                 <span className="flex-1 font-mono text-xs bg-muted/40 rounded px-2 py-1.5 break-all select-all">
                   {kmsKey.public_key}
                 </span>
-                <button onClick={() => copy(kmsKey.public_key, 'Public key')} className="p-1 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition">
+                <button
+                  onClick={() => copy(kmsKey.public_key, 'Public key')}
+                  className="p-1 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition"
+                >
                   <Copy className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Private Key</label>
+                <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Private Key
+                </label>
                 <button
                   onClick={() => setShowPriv((p) => !p)}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition"
@@ -260,7 +291,10 @@ function KeyRow({
                 <span className="flex-1 font-mono text-xs bg-muted/40 rounded px-2 py-1.5 break-all select-all">
                   {showPriv ? kmsKey.private_key : '•'.repeat(32) + '…'}
                 </span>
-                <button onClick={() => copy(kmsKey.private_key, 'Private key')} className="p-1 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition">
+                <button
+                  onClick={() => copy(kmsKey.private_key, 'Private key')}
+                  className="p-1 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition"
+                >
                   <Copy className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -279,7 +313,9 @@ function KeyRow({
             ].map(({ label, value }) => (
               <div key={label}>
                 <span className="text-muted-foreground">{label}: </span>
-                <span className={cn(value === '—' && 'text-muted-foreground/50')}>{value ?? '—'}</span>
+                <span className={cn(value === '—' && 'text-muted-foreground/50')}>
+                  {value ?? '—'}
+                </span>
               </div>
             ))}
             {kmsKey.notes && (
@@ -316,14 +352,19 @@ export function KeyVaultView({ embedded = false }: { embedded?: boolean }) {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const handleUpdate = useCallback(async (update: KmsKeyUpdate) => {
-    if (!editingKey) return;
-    const updated = await api.kmsUpdateKey(editingKey.id, update);
-    setKeys((prev) => prev.map((k) => (k.id === updated.id ? updated : k)));
-    toast.success('Key updated');
-  }, [editingKey]);
+  const handleUpdate = useCallback(
+    async (update: KmsKeyUpdate) => {
+      if (!editingKey) return;
+      const updated = await api.kmsUpdateKey(editingKey.id, update);
+      setKeys((prev) => prev.map((k) => (k.id === updated.id ? updated : k)));
+      toast.success('Key updated');
+    },
+    [editingKey]
+  );
 
   const handleDelete = useCallback(async () => {
     if (!deletingKey) return;
@@ -354,7 +395,12 @@ export function KeyVaultView({ embedded = false }: { embedded?: boolean }) {
     : keys;
 
   const header = (
-    <div className={cn('flex items-center gap-3', embedded ? 'pb-3' : 'px-4 py-2.5 border-b border-border')}>
+    <div
+      className={cn(
+        'flex items-center gap-3',
+        embedded ? 'pb-3' : 'px-4 py-2.5 border-b border-border'
+      )}
+    >
       {!embedded && <KeyRound className="h-4 w-4 text-primary flex-shrink-0" />}
       {!embedded && <h2 className="font-semibold text-base">Key Vault</h2>}
       <span className="text-xs text-muted-foreground">
@@ -386,11 +432,7 @@ export function KeyVaultView({ embedded = false }: { embedded?: boolean }) {
   const modals = (
     <>
       {editingKey && (
-        <EditModal
-          kmsKey={editingKey}
-          onSave={handleUpdate}
-          onClose={() => setEditingKey(null)}
-        />
+        <EditModal kmsKey={editingKey} onSave={handleUpdate} onClose={() => setEditingKey(null)} />
       )}
       {deletingKey && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -420,7 +462,11 @@ export function KeyVaultView({ embedded = false }: { embedded?: boolean }) {
                 disabled={deleting}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition disabled:opacity-60"
               >
-                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
                 Delete
               </button>
             </div>
@@ -442,8 +488,12 @@ export function KeyVaultView({ embedded = false }: { embedded?: boolean }) {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
             <KeyRound className="h-8 w-8 opacity-30" />
-            <p className="text-sm">{search ? 'No keys match your search' : 'No keys in vault yet'}</p>
-            {!search && <p className="text-xs">Generate a key on the Generate tab and save it here</p>}
+            <p className="text-sm">
+              {search ? 'No keys match your search' : 'No keys in vault yet'}
+            </p>
+            {!search && (
+              <p className="text-xs">Generate a key on the Generate tab and save it here</p>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -469,8 +519,12 @@ export function KeyVaultView({ embedded = false }: { embedded?: boolean }) {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
             <KeyRound className="h-8 w-8 opacity-30" />
-            <p className="text-sm">{search ? 'No keys match your search' : 'No keys in vault yet'}</p>
-            {!search && <p className="text-xs">Generate a key in the MC-KMS tab and save it here</p>}
+            <p className="text-sm">
+              {search ? 'No keys match your search' : 'No keys in vault yet'}
+            </p>
+            {!search && (
+              <p className="text-xs">Generate a key in the MC-KMS tab and save it here</p>
+            )}
           </div>
         ) : (
           <div className="space-y-2">

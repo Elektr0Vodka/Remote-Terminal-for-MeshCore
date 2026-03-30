@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
 import { Info, Search, X } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
 import L from 'leaflet';
@@ -8,7 +8,10 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import type { Contact } from '../types';
 import { formatTime } from '../utils/messageParser';
-import { isValidLocation } from '../utils/pathUtils';
+import { isValidLocation, parsePathHops, findContactsByPrefix } from '../utils/pathUtils';
+import { getContactShortId } from '../utils/pubkey';
+import { api } from '../api';
+import type { TraceResponse } from '../types';
 import { CONTACT_TYPE_REPEATER, CONTACT_TYPE_ROOM } from '../types';
 
 interface MapViewProps {
@@ -21,17 +24,20 @@ interface MapViewProps {
 // ─── Contact type constants ──────────────────────────────────────────────────
 
 const CONTACT_TYPE_UNKNOWN = 0;
-const CONTACT_TYPE_CLIENT  = 1;
-const CONTACT_TYPE_SENSOR  = 4;
+const CONTACT_TYPE_CLIENT = 1;
+const CONTACT_TYPE_SENSOR = 4;
 
 type ContactTypeKey = 'unknown' | 'client' | 'repeater' | 'room' | 'sensor';
 
-const CONTACT_TYPE_CONFIG: Record<ContactTypeKey, { label: string; value: number; emoji: string; small?: boolean }> = {
-  unknown:  { label: 'Unknown',  value: CONTACT_TYPE_UNKNOWN,  emoji: '❓' },
-  client:   { label: 'Client',   value: CONTACT_TYPE_CLIENT,   emoji: '📟' },
+const CONTACT_TYPE_CONFIG: Record<
+  ContactTypeKey,
+  { label: string; value: number; emoji: string; small?: boolean }
+> = {
+  unknown: { label: 'Unknown', value: CONTACT_TYPE_UNKNOWN, emoji: '❓' },
+  client: { label: 'Client', value: CONTACT_TYPE_CLIENT, emoji: '📟' },
   repeater: { label: 'Repeater', value: CONTACT_TYPE_REPEATER, emoji: '🗼', small: true },
-  room:     { label: 'Room',     value: CONTACT_TYPE_ROOM,     emoji: '🏠' },
-  sensor:   { label: 'Sensor',   value: CONTACT_TYPE_SENSOR,   emoji: '📡' },
+  room: { label: 'Room', value: CONTACT_TYPE_ROOM, emoji: '🏠' },
+  sensor: { label: 'Sensor', value: CONTACT_TYPE_SENSOR, emoji: '📡' },
 };
 
 const ALL_TYPE_KEYS = Object.keys(CONTACT_TYPE_CONFIG) as ContactTypeKey[];
@@ -90,16 +96,16 @@ function getContactHashModeKeyForFilter(c: Contact): HashModeKey {
 
 const MAP_RECENCY_COLORS = {
   recent: '#06b6d4',
-  today:  '#2563eb',
-  stale:  '#f59e0b',
-  old:    '#64748b',
+  today: '#2563eb',
+  stale: '#f59e0b',
+  old: '#64748b',
 } as const;
 
 function getMarkerColor(lastSeen: number | null | undefined): string {
   if (lastSeen == null) return MAP_RECENCY_COLORS.old;
   const age = Date.now() / 1000 - lastSeen;
-  if (age < 3600)      return MAP_RECENCY_COLORS.recent;
-  if (age < 86400)     return MAP_RECENCY_COLORS.today;
+  if (age < 3600) return MAP_RECENCY_COLORS.recent;
+  if (age < 86400) return MAP_RECENCY_COLORS.today;
   if (age < 3 * 86400) return MAP_RECENCY_COLORS.stale;
   return MAP_RECENCY_COLORS.old;
 }
@@ -108,7 +114,13 @@ function getMarkerColor(lastSeen: number | null | undefined): string {
 
 type HealthLevel = 'HIGH' | 'MEDIUM' | null;
 
-function buildIcon(emoji: string, color: string, focused = false, health: HealthLevel = null, small = false): L.DivIcon {
+function buildIcon(
+  emoji: string,
+  color: string,
+  focused = false,
+  health: HealthLevel = null,
+  small = false
+): L.DivIcon {
   const w = small ? 20 : 28;
   const h = small ? 22 : 32;
   const fontSize = small ? '14px' : '22px';
@@ -118,11 +130,12 @@ function buildIcon(emoji: string, color: string, focused = false, health: Health
   const ring = focused
     ? `<div style="position:absolute;inset:-3px;border-radius:50%;border:2px dashed #ffffff;pointer-events:none;"></div>`
     : '';
-  const healthRing = health === 'HIGH'
-    ? `<div style="position:absolute;inset:-5px;border-radius:50%;border:2.5px solid #dc2626;pointer-events:none;"></div>`
-    : health === 'MEDIUM'
-    ? `<div style="position:absolute;inset:-5px;border-radius:50%;border:2px dashed #d97706;pointer-events:none;"></div>`
-    : '';
+  const healthRing =
+    health === 'HIGH'
+      ? `<div style="position:absolute;inset:-5px;border-radius:50%;border:2.5px solid #dc2626;pointer-events:none;"></div>`
+      : health === 'MEDIUM'
+        ? `<div style="position:absolute;inset:-5px;border-radius:50%;border:2px dashed #d97706;pointer-events:none;"></div>`
+        : '';
   const html = `
     <div style="position:relative;width:${w}px;height:${h}px;display:flex;flex-direction:column;align-items:center;gap:1px;${opacity}">
       ${healthRing}
@@ -130,7 +143,13 @@ function buildIcon(emoji: string, color: string, focused = false, health: Health
       <span style="font-size:${fontSize};line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));">${emoji}</span>
       <span style="width:${dotSize};height:${dotSize};border-radius:50%;background:${color};border:1.5px solid #0f172a;flex-shrink:0;"></span>
     </div>`;
-  return L.divIcon({ html, className: '', iconSize: [w, h], iconAnchor: [w / 2, h], popupAnchor: [0, -(h + 6)] });
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
+    popupAnchor: [0, -(h + 6)],
+  });
 }
 
 // ─── Map popup with editable notes and owner ID ───────────────────────────────
@@ -151,6 +170,7 @@ const MapPopupContent = memo(function MapPopupContent({
   health,
   onSelectConversation,
   onOpenPopup,
+  onShowPathOnMap,
   connectedPublicKey,
 }: {
   contact: import('../types').Contact;
@@ -161,6 +181,8 @@ const MapPopupContent = memo(function MapPopupContent({
   health: HealthLevel;
   onSelectConversation?: (conversation: import('../types').Conversation) => void;
   onOpenPopup?: (publicKey: string) => void;
+  /** Callback to draw a path overlay on the main map */
+  onShowPathOnMap?: (contactKey: string, segments: [number, number][][]) => void;
   connectedPublicKey?: string | null;
 }) {
   const map = useMap();
@@ -172,6 +194,112 @@ const MapPopupContent = memo(function MapPopupContent({
   const [copied, setCopied] = useState(false);
   const [copiedCoords, setCopiedCoords] = useState(false);
 
+  // ── Live trace state ─────────────────────────────────────────────────────
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [traceResult, setTraceResult] = useState<TraceResponse | null>(null);
+  const [traceError, setTraceError] = useState<string | null>(null);
+
+  const handleLiveTrace = useCallback(async () => {
+    setTraceLoading(true);
+    setTraceResult(null);
+    setTraceError(null);
+    try {
+      const result = await api.requestTrace(contact.public_key);
+      setTraceResult(result);
+    } catch (err) {
+      setTraceError(err instanceof Error ? err.message : 'Trace failed');
+    } finally {
+      setTraceLoading(false);
+    }
+  }, [contact.public_key]);
+
+  // ── Path-on-map: resolve direct_path hops to GPS segments ───────────────
+  const handleShowPathOnMap = useCallback(() => {
+    if (!onShowPathOnMap) return;
+    const contacts = contactsRef.current;
+    const path = contact.direct_path;
+    const pathLen = contact.direct_path_len;
+
+    if (!path || pathLen <= 0) {
+      // No known path — show just the direct line from radio to this node if both have GPS
+      const radioContact = connectedPublicKey
+        ? contacts.find((c) => c.public_key.toLowerCase() === connectedPublicKey.toLowerCase())
+        : null;
+      if (
+        radioContact &&
+        isValidLocation(radioContact.lat, radioContact.lon) &&
+        isValidLocation(contact.lat, contact.lon)
+      ) {
+        onShowPathOnMap(contact.public_key, [
+          [
+            [radioContact.lat!, radioContact.lon!],
+            [contact.lat!, contact.lon!],
+          ],
+        ]);
+      }
+      return;
+    }
+
+    // Resolve hops via prefix matching
+    const hopPrefixes = parsePathHops(path, pathLen);
+    type Pt = [number, number];
+    // Build ordered point chain: radio → hops → contact
+    const allPts: (Pt | null)[] = [];
+
+    const radioContact = connectedPublicKey
+      ? contacts.find((c) => c.public_key.toLowerCase() === connectedPublicKey.toLowerCase())
+      : null;
+    allPts.push(
+      radioContact && isValidLocation(radioContact.lat, radioContact.lon)
+        ? [radioContact.lat!, radioContact.lon!]
+        : null
+    );
+
+    for (const prefix of hopPrefixes) {
+      const matches = findContactsByPrefix(prefix, contacts, true);
+      if (matches.length === 1 && isValidLocation(matches[0].lat, matches[0].lon)) {
+        allPts.push([matches[0].lat!, matches[0].lon!]);
+      } else {
+        allPts.push(null);
+      }
+    }
+
+    allPts.push(isValidLocation(contact.lat, contact.lon) ? [contact.lat!, contact.lon!] : null);
+
+    // Split into contiguous segments
+    const segments: Pt[][] = [];
+    let current: Pt[] = [];
+    for (const pt of allPts) {
+      if (pt !== null) {
+        current.push(pt);
+      } else {
+        if (current.length >= 2) segments.push(current);
+        current = [];
+      }
+    }
+    if (current.length >= 2) segments.push(current);
+
+    onShowPathOnMap(contact.public_key, segments);
+    // Fly to show the path
+    if (segments.length > 0) {
+      const flat = segments.flat();
+      if (flat.length === 1) map.flyTo(flat[0], Math.max(map.getZoom(), 12));
+      else map.fitBounds(flat as L.LatLngBoundsExpression, { padding: [60, 60], maxZoom: 14 });
+    }
+  }, [contact, contactsRef, connectedPublicKey, map, onShowPathOnMap]);
+
+  // Short bracketed ID for this contact (used alongside full key display)
+  const shortId = useMemo(
+    () =>
+      getContactShortId(
+        contact.public_key,
+        contact.advert_hash_mode ?? contact.observed_hash_mode,
+        contactsRef.current
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [contact.public_key, contact.advert_hash_mode, contact.observed_hash_mode]
+  );
+
   const showOwnerField = OWNER_CAPABLE_TYPES.has(contact.type);
   const isManageable = contact.type === CONTACT_TYPE_REPEATER || contact.type === CONTACT_TYPE_ROOM;
 
@@ -180,14 +308,15 @@ const MapPopupContent = memo(function MapPopupContent({
   const directHashMode = contact.direct_path_hash_mode ?? -1;
   const hasKnownPath = directPathLen >= 0;
   const pathLabel = hasKnownPath
-    ? (directPathLen === 0 ? 'direct' : `${directPathLen} hop${directPathLen !== 1 ? 's' : ''}`)
+    ? directPathLen === 0
+      ? 'direct'
+      : `${directPathLen} hop${directPathLen !== 1 ? 's' : ''}`
     : null;
-  const pathModeLabel = directHashMode >= 0 && directHashMode <= 2
-    ? `${directHashMode + 1}-byte IDs`
-    : null;
+  const pathModeLabel =
+    directHashMode >= 0 && directHashMode <= 2 ? `${directHashMode + 1}-byte IDs` : null;
 
-  const isConnectedRadio = !!connectedPublicKey &&
-    contact.public_key.toLowerCase() === connectedPublicKey.toLowerCase();
+  const isConnectedRadio =
+    !!connectedPublicKey && contact.public_key.toLowerCase() === connectedPublicKey.toLowerCase();
 
   const copyKey = () => {
     navigator.clipboard.writeText(contact.public_key).then(() => {
@@ -223,7 +352,9 @@ const MapPopupContent = memo(function MapPopupContent({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ owner_id: trimmed }),
     })
-      .then(() => { if (trimmed) setEditingOwner(false); })
+      .then(() => {
+        if (trimmed) setEditingOwner(false);
+      })
       .finally(() => setSavingOwner(false));
   };
 
@@ -231,9 +362,11 @@ const MapPopupContent = memo(function MapPopupContent({
   const ownerContact = useMemo(() => {
     const id = (contact.owner_id ?? '').toLowerCase();
     if (!id) return null;
-    return contactsRef.current.find(
-      (c) => c.public_key.toLowerCase() === id || c.public_key.toLowerCase().startsWith(id)
-    ) ?? null;
+    return (
+      contactsRef.current.find(
+        (c) => c.public_key.toLowerCase() === id || c.public_key.toLowerCase().startsWith(id)
+      ) ?? null
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contact.owner_id]);
 
@@ -250,7 +383,11 @@ const MapPopupContent = memo(function MapPopupContent({
   };
 
   const openManage = () => {
-    onSelectConversation?.({ type: 'contact', id: contact.public_key, name: contact.name ?? contact.public_key.slice(0, 12) });
+    onSelectConversation?.({
+      type: 'contact',
+      id: contact.public_key,
+      name: contact.name ?? contact.public_key.slice(0, 12),
+    });
   };
 
   return (
@@ -274,15 +411,23 @@ const MapPopupContent = memo(function MapPopupContent({
           </span>
         )}
         {health === 'HIGH' && (
-          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-destructive/20 text-destructive">HIGH ADVERT</span>
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-destructive/20 text-destructive">
+            HIGH ADVERT
+          </span>
         )}
         {health === 'MEDIUM' && (
-          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-warning/20 text-warning">MED ADVERT</span>
+          <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-warning/20 text-warning">
+            MED ADVERT
+          </span>
         )}
         {getContactHashModeKey(contact) !== null && (
           <span
             className="rounded px-1 py-0.5 text-[9px] font-bold bg-muted/80 text-muted-foreground whitespace-nowrap font-mono"
-            title={isHashModeObservedOnly(contact) ? 'Hash mode inferred from received packets (no advert)' : 'Hash mode declared via advertisement'}
+            title={
+              isHashModeObservedOnly(contact)
+                ? 'Hash mode inferred from received packets (no advert)'
+                : 'Hash mode declared via advertisement'
+            }
           >
             {HASH_MODE_CONFIG[getContactHashModeKey(contact)!].label}
             {isHashModeObservedOnly(contact) && <span className="opacity-60"> obs</span>}
@@ -290,14 +435,17 @@ const MapPopupContent = memo(function MapPopupContent({
         )}
       </div>
 
-      {/* Public key + copy */}
+      {/* Public key + short ID + copy */}
       <div className="flex items-center gap-1">
+        <span className="font-mono text-[10px] font-semibold text-primary/80 flex-shrink-0">
+          {shortId}
+        </span>
         <span
           className="font-mono text-[10px] text-muted-foreground truncate"
-          style={{ maxWidth: '172px' }}
+          style={{ maxWidth: '140px' }}
           title={contact.public_key}
         >
-          {contact.public_key}
+          {contact.public_key.slice(shortId.length - 2)}
         </span>
         <button
           onClick={copyKey}
@@ -312,7 +460,9 @@ const MapPopupContent = memo(function MapPopupContent({
       <div className="text-xs text-muted-foreground mt-0.5">{cfg.label}</div>
       <div className="text-xs text-muted-foreground">Last heard: {lastHeardLabel}</div>
       {contact.first_seen != null && (
-        <div className="text-xs text-muted-foreground">First heard: {formatTime(contact.first_seen)}</div>
+        <div className="text-xs text-muted-foreground">
+          First heard: {formatTime(contact.first_seen)}
+        </div>
       )}
       {/* Coordinates + copy */}
       <div className="flex items-center gap-1 mt-0.5">
@@ -327,15 +477,37 @@ const MapPopupContent = memo(function MapPopupContent({
           {copiedCoords ? '✓' : '⧉'}
         </button>
       </div>
+      {/* Signal information */}
       {contact.last_rssi != null && (
         <div className="text-xs text-muted-foreground mt-0.5">
-          Last RSSI: {contact.last_rssi} dBm
-          {contact.last_snr != null && <span> · SNR: {contact.last_snr} dB</span>}
+          Signal: {contact.last_rssi} dBm RSSI
+          {contact.last_snr != null && <span> / {contact.last_snr} dB SNR</span>}
         </div>
       )}
+
+      {/* Live trace result */}
+      {traceResult != null && (
+        <div className="mt-1 rounded border border-border bg-muted/40 px-2 py-1 text-xs space-y-0.5">
+          <div className="font-medium text-foreground">Live trace</div>
+          {traceResult.local_snr != null && (
+            <div className="text-muted-foreground">Local heard: {traceResult.local_snr} dB SNR</div>
+          )}
+          {traceResult.remote_snr != null && (
+            <div className="text-muted-foreground">
+              Remote heard us: {traceResult.remote_snr} dB SNR
+            </div>
+          )}
+          <div className="text-muted-foreground">
+            Path length: {traceResult.path_len} hop{traceResult.path_len !== 1 ? 's' : ''}
+          </div>
+        </div>
+      )}
+      {traceError != null && <div className="mt-1 text-xs text-destructive">{traceError}</div>}
+
       {pathLabel != null && (
         <div className="text-xs text-muted-foreground mt-0.5">
-          Path: {pathLabel}{pathModeLabel && <span> · {pathModeLabel}</span>}
+          Path: {pathLabel}
+          {pathModeLabel && <span> · {pathModeLabel}</span>}
         </div>
       )}
 
@@ -384,14 +556,22 @@ const MapPopupContent = memo(function MapPopupContent({
           {editingOwner ? (
             <div className="mt-1">
               <div className="text-[10px] text-muted-foreground mb-0.5 font-medium uppercase tracking-wide">
-                Contact Owner {savingOwner && <span className="normal-case font-normal opacity-60">(saving…)</span>}
+                Contact Owner{' '}
+                {savingOwner && (
+                  <span className="normal-case font-normal opacity-60">(saving…)</span>
+                )}
               </div>
               <input
                 type="text"
                 value={ownerId}
                 onChange={(e) => setOwnerId(e.target.value)}
                 onBlur={(e) => saveOwnerId(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveOwnerId(e.currentTarget.value); } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveOwnerId(e.currentTarget.value);
+                  }
+                }}
                 placeholder="Public key prefix or full key…"
                 className="w-full rounded border border-border bg-background px-1.5 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono"
                 style={{ minWidth: '160px' }}
@@ -410,10 +590,15 @@ const MapPopupContent = memo(function MapPopupContent({
                     {ownerContact.name ?? ownerContact.public_key.slice(0, 12)}
                   </button>
                 ) : (
-                  <span className="font-mono text-muted-foreground">{contact.owner_id?.slice(0, 16)}…</span>
+                  <span className="font-mono text-muted-foreground">
+                    {contact.owner_id?.slice(0, 16)}…
+                  </span>
                 )}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setEditingOwner(true); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingOwner(true);
+                  }}
                   title="Change Node Owner"
                   className="text-[10px] text-muted-foreground hover:text-foreground transition"
                 >
@@ -422,7 +607,13 @@ const MapPopupContent = memo(function MapPopupContent({
               </div>
               {ownerContact && onSelectConversation && (
                 <button
-                  onClick={() => onSelectConversation({ type: 'contact', id: ownerContact.public_key, name: ownerContact.name ?? ownerContact.public_key.slice(0, 12) })}
+                  onClick={() =>
+                    onSelectConversation({
+                      type: 'contact',
+                      id: ownerContact.public_key,
+                      name: ownerContact.name ?? ownerContact.public_key.slice(0, 12),
+                    })
+                  }
                   className="mt-1 w-full rounded border border-border bg-background px-2 py-1 font-medium text-foreground hover:bg-accent transition text-center"
                 >
                   Contact Owner
@@ -433,25 +624,51 @@ const MapPopupContent = memo(function MapPopupContent({
         </div>
       )}
 
-      {/* Send DM — clients and unknowns */}
-      {!showOwnerField && !isManageable && onSelectConversation && (
-        <button
-          onClick={openManage}
-          className="mt-2 w-full rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition text-center"
-        >
-          Send DM
-        </button>
-      )}
+      {/* Action buttons row */}
+      <div className="mt-2 flex flex-col gap-1.5">
+        {/* Send DM — clients and unknowns */}
+        {!showOwnerField && !isManageable && onSelectConversation && (
+          <button
+            onClick={openManage}
+            className="w-full rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition text-center"
+          >
+            Send DM
+          </button>
+        )}
 
-      {/* Manage Node button — repeaters and rooms */}
-      {isManageable && onSelectConversation && (
-        <button
-          onClick={openManage}
-          className="mt-2 w-full rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition text-center"
-        >
-          Manage Node
-        </button>
-      )}
+        {/* Manage Node button — repeaters and rooms */}
+        {isManageable && onSelectConversation && (
+          <button
+            onClick={openManage}
+            className="w-full rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-accent transition text-center"
+          >
+            Manage Node
+          </button>
+        )}
+
+        {/* Live signal trace — available for all nodes with a route */}
+        <div className="flex gap-1.5">
+          <button
+            onClick={handleLiveTrace}
+            disabled={traceLoading}
+            title="Send a trace packet and get live SNR readings from this node"
+            className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition text-center disabled:opacity-50"
+          >
+            {traceLoading ? 'Tracing…' : '📡 Live Signal'}
+          </button>
+
+          {/* Show path on main map — only when path is known or contact has GPS */}
+          {onShowPathOnMap && isValidLocation(contact.lat, contact.lon) && (
+            <button
+              onClick={handleShowPathOnMap}
+              title="Draw the route to this node on the map"
+              className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition text-center"
+            >
+              🗺 Show Path
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Notes */}
       <div className="mt-2">
@@ -479,12 +696,21 @@ function buildClusterIcon(cluster: any): L.DivIcon {
   const count = cluster.getChildCount();
   const size = count < 10 ? 32 : count < 100 ? 38 : 44;
   const html = `<div style="width:${size}px;height:${size}px;border-radius:50%;background:hsl(220 70% 45% / 0.85);border:2px solid #f8fafc;display:flex;align-items:center;justify-content:center;color:#fff;font-size:${size < 38 ? 11 : 13}px;font-weight:700;font-family:sans-serif;box-shadow:0 2px 6px rgba(0,0,0,0.4);">${count}</div>`;
-  return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
 }
 
 // ─── Heatmap layer ────────────────────────────────────────────────────────────
 
-interface HeatPoint { lat: number; lon: number; intensity: number; }
+interface HeatPoint {
+  lat: number;
+  lon: number;
+  intensity: number;
+}
 
 function HeatmapLayer({ points }: { points: HeatPoint[] }) {
   const map = useMap();
@@ -496,14 +722,22 @@ function HeatmapLayer({ points }: { points: HeatPoint[] }) {
     const data = points.map((p) => [p.lat, p.lon, p.intensity] as [number, number, number]);
 
     if (!heatRef.current) {
-      heatRef.current = (L as any).heatLayer(data, {
-        radius: 35,
-        blur: 25,
-        maxZoom: 10,
-        max: 1.0,
-        gradient: { 0.2: '#0ea5e9', 0.4: '#22c55e', 0.6: '#eab308', 0.8: '#f97316', 1.0: '#ef4444' },
-        minOpacity: 0.4,
-      }).addTo(map);
+      heatRef.current = (L as any)
+        .heatLayer(data, {
+          radius: 35,
+          blur: 25,
+          maxZoom: 10,
+          max: 1.0,
+          gradient: {
+            0.2: '#0ea5e9',
+            0.4: '#22c55e',
+            0.6: '#eab308',
+            0.8: '#f97316',
+            1.0: '#ef4444',
+          },
+          minOpacity: 0.4,
+        })
+        .addTo(map);
     } else {
       heatRef.current.setLatLngs(data);
       heatRef.current.redraw();
@@ -533,12 +767,14 @@ const TILE_LAYERS: Record<TileLayerKey, { label: string; url: string; attributio
   dark: {
     label: 'Dark',
     url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
   },
   light: {
     label: 'Light',
     url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
   },
   satellite: {
     label: 'Satellite',
@@ -548,27 +784,44 @@ const TILE_LAYERS: Record<TileLayerKey, { label: string; url: string; attributio
   topo: {
     label: 'Topo',
     url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://opentopomap.org/">OpenTopoMap</a>',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://opentopomap.org/">OpenTopoMap</a>',
   },
 };
 
 const TILE_PREF_KEY = 'remoteterm-map-tile';
 function loadTilePref(): TileLayerKey {
-  try { const r = localStorage.getItem(TILE_PREF_KEY); return (r as TileLayerKey) ?? 'osm'; }
-  catch { return 'osm'; }
+  try {
+    const r = localStorage.getItem(TILE_PREF_KEY);
+    return (r as TileLayerKey) ?? 'osm';
+  } catch {
+    return 'osm';
+  }
 }
 function saveTilePref(v: TileLayerKey): void {
-  try { localStorage.setItem(TILE_PREF_KEY, v); } catch {}
+  try {
+    localStorage.setItem(TILE_PREF_KEY, v);
+  } catch {
+    /* ignore storage errors */
+  }
 }
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 
 function loadClusterPref(): boolean {
-  try { const r = localStorage.getItem('remoteterm-map-cluster'); return r === null ? true : r === 'true'; }
-  catch { return true; }
+  try {
+    const r = localStorage.getItem('remoteterm-map-cluster');
+    return r === null ? true : r === 'true';
+  } catch {
+    return true;
+  }
 }
 function saveClusterPref(v: boolean): void {
-  try { localStorage.setItem('remoteterm-map-cluster', String(v)); } catch {}
+  try {
+    localStorage.setItem('remoteterm-map-cluster', String(v));
+  } catch {
+    /* ignore storage errors */
+  }
 }
 
 const MAP_VIEW_KEY = 'remoteterm-map-view';
@@ -577,9 +830,12 @@ function loadSavedView(): { lat: number; lng: number; zoom: number } | null {
     const r = localStorage.getItem(MAP_VIEW_KEY);
     if (!r) return null;
     const v = JSON.parse(r);
-    if (typeof v.lat === 'number' && typeof v.lng === 'number' && typeof v.zoom === 'number') return v;
+    if (typeof v.lat === 'number' && typeof v.lng === 'number' && typeof v.zoom === 'number')
+      return v;
     return null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // Persists the map view to localStorage on every moveend/zoomend
@@ -588,19 +844,34 @@ function MapViewPersist() {
   useEffect(() => {
     const save = () => {
       const c = map.getCenter();
-      try { localStorage.setItem(MAP_VIEW_KEY, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() })); }
-      catch {}
+      try {
+        localStorage.setItem(
+          MAP_VIEW_KEY,
+          JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() })
+        );
+      } catch {
+        /* ignore storage errors */
+      }
     };
     map.on('moveend', save);
     map.on('zoomend', save);
-    return () => { map.off('moveend', save); map.off('zoomend', save); };
+    return () => {
+      map.off('moveend', save);
+      map.off('zoomend', save);
+    };
   }, [map]);
   return null;
 }
 
 // ─── Map bounds handler ──────────────────────────────────────────────────────
 
-function MapBoundsHandler({ contacts, focusedContact }: { contacts: Contact[]; focusedContact: Contact | null }) {
+function MapBoundsHandler({
+  contacts,
+  focusedContact,
+}: {
+  contacts: Contact[];
+  focusedContact: Contact | null;
+}) {
   const map = useMap();
   const [hasInitialized, setHasInitialized] = useState(false);
 
@@ -621,16 +892,29 @@ function MapBoundsHandler({ contacts, focusedContact }: { contacts: Contact[]; f
     }
 
     const fitToContacts = () => {
-      if (contacts.length === 0) { map.setView([20, 0], 2); setHasInitialized(true); return; }
-      if (contacts.length === 1) { map.setView([contacts[0].lat!, contacts[0].lon!], 10); setHasInitialized(true); return; }
-      const bounds: LatLngBoundsExpression = contacts.map((c) => [c.lat!, c.lon!] as [number, number]);
+      if (contacts.length === 0) {
+        map.setView([20, 0], 2);
+        setHasInitialized(true);
+        return;
+      }
+      if (contacts.length === 1) {
+        map.setView([contacts[0].lat!, contacts[0].lon!], 10);
+        setHasInitialized(true);
+        return;
+      }
+      const bounds: LatLngBoundsExpression = contacts.map(
+        (c) => [c.lat!, c.lon!] as [number, number]
+      );
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
       setHasInitialized(true);
     };
 
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => { map.setView([pos.coords.latitude, pos.coords.longitude], 8); setHasInitialized(true); },
+        (pos) => {
+          map.setView([pos.coords.latitude, pos.coords.longitude], 8);
+          setHasInitialized(true);
+        },
         () => fitToContacts(),
         { timeout: 5000, maximumAge: 300000 }
       );
@@ -667,7 +951,7 @@ function FlyToHandler({
       setTimeout(() => markerRefs.current[targetKey]?.openPopup(), 600);
     }
     onDoneRef.current();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetKey]);
 
   return null;
@@ -675,17 +959,22 @@ function FlyToHandler({
 
 // ─── MapView ─────────────────────────────────────────────────────────────────
 
-export function MapView({ contacts, focusedKey, onSelectConversation, connectedPublicKey }: MapViewProps) {
+export function MapView({
+  contacts,
+  focusedKey,
+  onSelectConversation,
+  connectedPublicKey,
+}: MapViewProps) {
   const now = useMemo(() => Math.floor(Date.now() / 1000), []);
 
   // ── Time window presets ─────────────────────────────────────────────────────
   const TIME_PRESETS = [
-    { label: '1h',  seconds: 3600 },
-    { label: '2h',  seconds: 2 * 3600 },
-    { label: '6h',  seconds: 6 * 3600 },
+    { label: '1h', seconds: 3600 },
+    { label: '2h', seconds: 2 * 3600 },
+    { label: '6h', seconds: 6 * 3600 },
     { label: '12h', seconds: 12 * 3600 },
     { label: '24h', seconds: 86400 },
-    { label: '7d',  seconds: 7 * 86400 },
+    { label: '7d', seconds: 7 * 86400 },
     { label: '30d', seconds: 30 * 86400 },
     { label: 'All', seconds: null },
   ] as const;
@@ -707,9 +996,15 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
     [customTo, now]
   );
 
-  const activeSeconds = isCustomActive ? null : (TIME_PRESETS.find((p) => p.label === activePreset)?.seconds ?? 7 * 86400);
-  const effectiveStart = isCustomActive ? customFromSec : (activeSeconds === null ? 0 : now - activeSeconds);
-  const effectiveEnd   = isCustomActive ? customToSec   : now;
+  const activeSeconds = isCustomActive
+    ? null
+    : (TIME_PRESETS.find((p) => p.label === activePreset)?.seconds ?? 7 * 86400);
+  const effectiveStart = isCustomActive
+    ? customFromSec
+    : activeSeconds === null
+      ? 0
+      : now - activeSeconds;
+  const effectiveEnd = isCustomActive ? customToSec : now;
 
   // ── Search ──────────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -723,59 +1018,94 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
       .filter(
         (c) =>
           isValidLocation(c.lat, c.lon) &&
-          ((c.name?.toLowerCase().includes(searchLower)) ||
+          (c.name?.toLowerCase().includes(searchLower) ||
             c.public_key.toLowerCase().startsWith(searchLower))
       )
       .slice(0, 8);
   }, [contacts, searchLower]);
 
   // ── Type toggles ────────────────────────────────────────────────────────────
-  const [visibleTypes, setVisibleTypes] = useState<Record<ContactTypeKey, boolean>>(
-    { unknown: true, client: true, repeater: true, room: true, sensor: true }
-  );
+  const [visibleTypes, setVisibleTypes] = useState<Record<ContactTypeKey, boolean>>({
+    unknown: true,
+    client: true,
+    repeater: true,
+    room: true,
+    sensor: true,
+  });
   const toggleType = (k: ContactTypeKey) => setVisibleTypes((p) => ({ ...p, [k]: !p[k] }));
 
   // ── Hash mode toggles ────────────────────────────────────────────────────────
-  const [visibleHashModes, setVisibleHashModes] = useState<Record<HashModeKey, boolean>>(
-    { '1B': true, '2B': true, '3B': true }
-  );
+  const [visibleHashModes, setVisibleHashModes] = useState<Record<HashModeKey, boolean>>({
+    '1B': true,
+    '2B': true,
+    '3B': true,
+  });
   const toggleHashMode = (k: HashModeKey) => setVisibleHashModes((p) => ({ ...p, [k]: !p[k] }));
 
   // ── Owned-only filter ───────────────────────────────────────────────────────
   const [showOwnedOnly, setShowOwnedOnly] = useState(() => {
-    try { return localStorage.getItem('remoteterm-map-owned-only') === 'true'; } catch { return false; }
+    try {
+      return localStorage.getItem('remoteterm-map-owned-only') === 'true';
+    } catch {
+      return false;
+    }
   });
-  const handleOwnedOnlyToggle = () => setShowOwnedOnly((p) => {
-    try { localStorage.setItem('remoteterm-map-owned-only', String(!p)); } catch {}
-    return !p;
-  });
+  const handleOwnedOnlyToggle = () =>
+    setShowOwnedOnly((p) => {
+      try {
+        localStorage.setItem('remoteterm-map-owned-only', String(!p));
+      } catch {
+        /* ignore storage errors */
+      }
+      return !p;
+    });
 
   // ── Cluster toggle ──────────────────────────────────────────────────────────
   const [clustered, setClustered] = useState(loadClusterPref);
-  const handleClusterToggle = () => setClustered((p) => { saveClusterPref(!p); return !p; });
+  const handleClusterToggle = () =>
+    setClustered((p) => {
+      saveClusterPref(!p);
+      return !p;
+    });
 
   // ── Heatmap toggle ──────────────────────────────────────────────────────────
   const [heatmap, setHeatmap] = useState(false);
 
   // ── Tile layer ──────────────────────────────────────────────────────────────
   const [tileKey, setTileKey] = useState<TileLayerKey>(loadTilePref);
-  const handleTileChange = (key: TileLayerKey) => { setTileKey(key); saveTilePref(key); };
+  const handleTileChange = (key: TileLayerKey) => {
+    setTileKey(key);
+    saveTilePref(key);
+  };
 
   // ── Filtered contacts ───────────────────────────────────────────────────────
-  const mappableContacts = useMemo(() => contacts.filter((c) => {
-    if (!isValidLocation(c.lat, c.lon)) return false;
-    if (c.public_key === focusedKey) return true;
-    if (c.last_seen == null || c.last_seen < effectiveStart || c.last_seen > effectiveEnd) return false;
-    if (showOwnedOnly && !(OWNER_CAPABLE_TYPES.has(c.type) && c.owner_id)) return false;
-    if (!visibleTypes[getTypeKey(c.type)]) return false;
-    const hmKey = getContactHashModeKeyForFilter(c);
-    const allHashModesEnabled = ALL_HASH_MODE_KEYS.every((k) => visibleHashModes[k]);
-    if (!allHashModesEnabled && !visibleHashModes[hmKey]) return false;
-    return true;
-  }), [contacts, focusedKey, effectiveStart, effectiveEnd, visibleTypes, visibleHashModes, showOwnedOnly]);
+  const mappableContacts = useMemo(
+    () =>
+      contacts.filter((c) => {
+        if (!isValidLocation(c.lat, c.lon)) return false;
+        if (c.public_key === focusedKey) return true;
+        if (c.last_seen == null || c.last_seen < effectiveStart || c.last_seen > effectiveEnd)
+          return false;
+        if (showOwnedOnly && !(OWNER_CAPABLE_TYPES.has(c.type) && c.owner_id)) return false;
+        if (!visibleTypes[getTypeKey(c.type)]) return false;
+        const hmKey = getContactHashModeKeyForFilter(c);
+        const allHashModesEnabled = ALL_HASH_MODE_KEYS.every((k) => visibleHashModes[k]);
+        if (!allHashModesEnabled && !visibleHashModes[hmKey]) return false;
+        return true;
+      }),
+    [
+      contacts,
+      focusedKey,
+      effectiveStart,
+      effectiveEnd,
+      visibleTypes,
+      visibleHashModes,
+      showOwnedOnly,
+    ]
+  );
 
-  const focusedContact = useMemo(() =>
-    focusedKey ? (mappableContacts.find((c) => c.public_key === focusedKey) ?? null) : null,
+  const focusedContact = useMemo(
+    () => (focusedKey ? (mappableContacts.find((c) => c.public_key === focusedKey) ?? null) : null),
     [focusedKey, mappableContacts]
   );
 
@@ -784,7 +1114,9 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
   useEffect(() => {
     const doFetch = () => {
       fetch('/api/packets/advert-warnings')
-        .then((r) => r.json() as Promise<{ warnings: Array<{ public_key: string; level: string }> }>)
+        .then(
+          (r) => r.json() as Promise<{ warnings: Array<{ public_key: string; level: string }> }>
+        )
         .then((d) => {
           const m = new Map<string, HealthLevel>();
           for (const w of d.warnings ?? []) {
@@ -792,7 +1124,9 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
           }
           setAdvertWarnings(m);
         })
-        .catch(() => {/* non-critical */});
+        .catch(() => {
+          /* non-critical */
+        });
     };
     doFetch();
     const id = setInterval(doFetch, 60_000);
@@ -808,7 +1142,10 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
     setHeatLoading(true);
     fetch('/api/contacts/heatmap')
       .then((r) => r.json())
-      .then((data) => { setHeatRawData(data); setHeatLoading(false); })
+      .then((data) => {
+        setHeatRawData(data);
+        setHeatLoading(false);
+      })
       .catch(() => setHeatLoading(false));
   }, [heatmap]);
 
@@ -826,6 +1163,18 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
       }));
   }, [heatmap, heatRawData, mappableContacts]);
 
+  // ── Path trace overlay ──────────────────────────────────────────────────────
+  // Segments of GPS points to draw as a Polyline over the main map
+  type PathSegment = [number, number][];
+  const [activePathTrace, setActivePathTrace] = useState<{
+    contactKey: string;
+    segments: PathSegment[];
+  } | null>(null);
+
+  const handleShowPathOnMap = useCallback((contactKey: string, segments: PathSegment[]) => {
+    setActivePathTrace(segments.length > 0 ? { contactKey, segments } : null);
+  }, []);
+
   // ── Contacts ref — kept current without triggering re-renders ───────────────
   const contactsRef = useRef<import('../types').Contact[]>(contacts);
   contactsRef.current = contacts;
@@ -838,7 +1187,10 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
 
   useEffect(() => {
     if (focusedContact) {
-      const timer = setTimeout(() => markerRefs.current[focusedContact.public_key]?.openPopup(), 100);
+      const timer = setTimeout(
+        () => markerRefs.current[focusedContact.public_key]?.openPopup(),
+        100
+      );
       return () => clearTimeout(timer);
     }
   }, [focusedContact]);
@@ -870,71 +1222,102 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
   // NOT when last_seen, name, notes, owner_id etc. change. This prevents MarkerClusterGroup
   // from calling clearLayers() (which closes open popups) on routine data updates.
   const mappableKey = useMemo(
-    () => mappableContacts.map((c) => `${c.public_key}:${c.lat?.toFixed(4)}:${c.lon?.toFixed(4)}:${c.type}`).join('|'),
+    () =>
+      mappableContacts
+        .map((c) => `${c.public_key}:${c.lat?.toFixed(4)}:${c.lon?.toFixed(4)}:${c.type}`)
+        .join('|'),
     [mappableContacts]
   );
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const markerElements = useMemo(() => mappableContacts.map((contact) => {
-    const typeKey = getTypeKey(contact.type);
-    const cfg = CONTACT_TYPE_CONFIG[typeKey];
-    const color = getMarkerColor(contact.last_seen);
-    const focused = contact.public_key === focusedKey;
-    // Initial icon — health rings applied imperatively via useEffect above
-    const icon = buildIcon(cfg.emoji, color, focused, null, cfg.small ?? false);
-    const displayName = contact.name || contact.public_key.slice(0, 12);
-    const lastHeardLabel = contact.last_seen != null ? formatTime(contact.last_seen) : 'Never heard by this server';
+  const markerElements = useMemo(
+    () =>
+      mappableContacts.map((contact) => {
+        const typeKey = getTypeKey(contact.type);
+        const cfg = CONTACT_TYPE_CONFIG[typeKey];
+        const color = getMarkerColor(contact.last_seen);
+        const focused = contact.public_key === focusedKey;
+        // Initial icon — health rings applied imperatively via useEffect above
+        const icon = buildIcon(cfg.emoji, color, focused, null, cfg.small ?? false);
+        const displayName = contact.name || contact.public_key.slice(0, 12);
+        const lastHeardLabel =
+          contact.last_seen != null ? formatTime(contact.last_seen) : 'Never heard by this server';
 
-    return (
-      <Marker
-        key={contact.public_key}
-        ref={(ref) => setMarkerRef(contact.public_key, ref)}
-        position={[contact.lat!, contact.lon!]}
-        icon={icon}
-      >
-        <Popup autoPan={false}>
-          <MapPopupContent
-            contact={contact}
-            contactsRef={contactsRef}
-            cfg={cfg}
-            displayName={displayName}
-            lastHeardLabel={lastHeardLabel}
-            health={null}
-            onSelectConversation={onSelectConversation}
-            onOpenPopup={openPopup}
-            connectedPublicKey={connectedPublicKey}
-          />
-        </Popup>
-      </Marker>
-    );
-    // Only recompute when marker identities/positions/types change (not data-only updates)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [mappableKey, focusedKey, onSelectConversation, openPopup, setMarkerRef]);
+        return (
+          <Marker
+            key={contact.public_key}
+            ref={(ref) => setMarkerRef(contact.public_key, ref)}
+            position={[contact.lat!, contact.lon!]}
+            icon={icon}
+          >
+            <Popup autoPan={false}>
+              <MapPopupContent
+                contact={contact}
+                contactsRef={contactsRef}
+                cfg={cfg}
+                displayName={displayName}
+                lastHeardLabel={lastHeardLabel}
+                health={null}
+                onSelectConversation={onSelectConversation}
+                onOpenPopup={openPopup}
+                onShowPathOnMap={handleShowPathOnMap}
+                connectedPublicKey={connectedPublicKey}
+              />
+            </Popup>
+          </Marker>
+        );
+        // Only recompute when marker identities/positions/types change (not data-only updates)
+      }),
+    [mappableKey, focusedKey, onSelectConversation, openPopup, setMarkerRef]
+  );
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
-
       {/* Info bar + recency legend */}
       <div className="px-4 py-2 bg-muted/50 text-xs text-muted-foreground flex items-center justify-between flex-wrap gap-2">
         <span>
           Showing {mappableContacts.length} contact{mappableContacts.length !== 1 ? 's' : ''}
-          {isFullRange ? ' (all time)' : isCustomActive ? ` · custom range` : ` · last ${activePreset}`}
-          {activeTypeCount < ALL_TYPE_KEYS.length ? ` · ${activeTypeCount}/${ALL_TYPE_KEYS.length} types` : ''}
-          {activeHashModeCount < ALL_HASH_MODE_KEYS.length ? ` · ${activeHashModeCount}/${ALL_HASH_MODE_KEYS.length} modes` : ''}
+          {isFullRange
+            ? ' (all time)'
+            : isCustomActive
+              ? ` · custom range`
+              : ` · last ${activePreset}`}
+          {activeTypeCount < ALL_TYPE_KEYS.length
+            ? ` · ${activeTypeCount}/${ALL_TYPE_KEYS.length} types`
+            : ''}
+          {activeHashModeCount < ALL_HASH_MODE_KEYS.length
+            ? ` · ${activeHashModeCount}/${ALL_HASH_MODE_KEYS.length} modes`
+            : ''}
           {heatmap ? ' · heatmap' : ''}
           {heatmap && heatLoading ? ' · loading…' : ''}
+          {activePathTrace && (
+            <span>
+              {' · '}
+              <span className="text-cyan-400">path overlay active</span>{' '}
+              <button
+                onClick={() => setActivePathTrace(null)}
+                className="underline text-muted-foreground hover:text-foreground transition"
+              >
+                clear
+              </button>
+            </span>
+          )}
         </span>
         {!heatmap && (
           <div className="flex items-center gap-3">
-            {([
-              { label: '<1h',   color: MAP_RECENCY_COLORS.recent },
-              { label: '<1d',   color: MAP_RECENCY_COLORS.today  },
-              { label: '<3d',   color: MAP_RECENCY_COLORS.stale  },
-              { label: 'older', color: MAP_RECENCY_COLORS.old    },
-            ] as const).map(({ label, color }) => (
+            {(
+              [
+                { label: '<1h', color: MAP_RECENCY_COLORS.recent },
+                { label: '<1d', color: MAP_RECENCY_COLORS.today },
+                { label: '<3d', color: MAP_RECENCY_COLORS.stale },
+                { label: 'older', color: MAP_RECENCY_COLORS.old },
+              ] as const
+            ).map(({ label, color }) => (
               <span key={label} className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full inline-block border border-[#0f172a]" style={{ backgroundColor: color }} />
+                <span
+                  className="w-2.5 h-2.5 rounded-full inline-block border border-[#0f172a]"
+                  style={{ backgroundColor: color }}
+                />
                 {label}
               </span>
             ))}
@@ -943,9 +1326,13 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
         {heatmap && (
           <div className="flex items-center gap-1.5 text-[10px]">
             <span>Low</span>
-            <span className="w-20 h-2 rounded" style={{
-              background: 'linear-gradient(to right, #0ea5e9, #22c55e, #eab308, #f97316, #ef4444)'
-            }} />
+            <span
+              className="w-20 h-2 rounded"
+              style={{
+                background:
+                  'linear-gradient(to right, #0ea5e9, #22c55e, #eab308, #f97316, #ef4444)',
+              }}
+            />
             <span>High</span>
           </div>
         )}
@@ -953,21 +1340,32 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
 
       {/* Type toggles + cluster + heatmap buttons */}
       <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Show:</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">
+          Show:
+        </span>
         {ALL_TYPE_KEYS.map((key) => {
           const cfg = CONTACT_TYPE_CONFIG[key];
           const active = visibleTypes[key];
-          const count = contacts.filter((c) =>
-            isValidLocation(c.lat, c.lon) && c.public_key !== focusedKey &&
-            c.last_seen != null && c.last_seen >= effectiveStart && c.last_seen <= effectiveEnd &&
-            getTypeKey(c.type) === key
+          const count = contacts.filter(
+            (c) =>
+              isValidLocation(c.lat, c.lon) &&
+              c.public_key !== focusedKey &&
+              c.last_seen != null &&
+              c.last_seen >= effectiveStart &&
+              c.last_seen <= effectiveEnd &&
+              getTypeKey(c.type) === key
           ).length;
           return (
-            <button key={key} onClick={() => toggleType(key)}
+            <button
+              key={key}
+              onClick={() => toggleType(key)}
               title={`${active ? 'Hide' : 'Show'} ${cfg.label} (${count})`}
               className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
-                active ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground opacity-50'
-              }`}>
+                active
+                  ? 'bg-primary/10 border-primary/40 text-foreground'
+                  : 'bg-muted border-border text-muted-foreground opacity-50'
+              }`}
+            >
               <span className="text-base leading-none">{cfg.emoji}</span>
               <span>{cfg.label}</span>
               <span className="tabular-nums text-[10px] text-muted-foreground">{count}</span>
@@ -975,37 +1373,60 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
           );
         })}
         {activeTypeCount < ALL_TYPE_KEYS.length && (
-          <button onClick={() => setVisibleTypes({ unknown: true, client: true, repeater: true, room: true, sensor: true })}
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            onClick={() =>
+              setVisibleTypes({
+                unknown: true,
+                client: true,
+                repeater: true,
+                room: true,
+                sensor: true,
+              })
+            }
+            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
             Show all
           </button>
         )}
 
         {/* Hash mode toggles */}
         <div className="flex items-center gap-1 border-l border-border pl-2">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-0.5">Hops:</span>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-0.5">
+            Hops:
+          </span>
           {ALL_HASH_MODE_KEYS.map((key) => {
             const cfg = HASH_MODE_CONFIG[key];
             const active = visibleHashModes[key];
-            const count = contacts.filter((c) =>
-              isValidLocation(c.lat, c.lon) && c.public_key !== focusedKey &&
-              c.last_seen != null && c.last_seen >= effectiveStart && c.last_seen <= effectiveEnd &&
-              getContactHashModeKeyForFilter(c) === key
+            const count = contacts.filter(
+              (c) =>
+                isValidLocation(c.lat, c.lon) &&
+                c.public_key !== focusedKey &&
+                c.last_seen != null &&
+                c.last_seen >= effectiveStart &&
+                c.last_seen <= effectiveEnd &&
+                getContactHashModeKeyForFilter(c) === key
             ).length;
             return (
-              <button key={key} onClick={() => toggleHashMode(key)}
+              <button
+                key={key}
+                onClick={() => toggleHashMode(key)}
                 title={`${active ? 'Hide' : 'Show'} ${cfg.label} nodes (${count})`}
                 className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono transition-colors border ${
-                  active ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground opacity-50'
-                }`}>
+                  active
+                    ? 'bg-primary/10 border-primary/40 text-foreground'
+                    : 'bg-muted border-border text-muted-foreground opacity-50'
+                }`}
+              >
                 <span>{cfg.label}</span>
                 <span className="tabular-nums text-[10px] text-muted-foreground">{count}</span>
               </button>
             );
           })}
           {activeHashModeCount < ALL_HASH_MODE_KEYS.length && (
-            <button onClick={() => setVisibleHashModes({ '1B': true, '2B': true, '3B': true })}
-              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+            <button
+              onClick={() => setVisibleHashModes({ '1B': true, '2B': true, '3B': true })}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
               all
             </button>
           )}
@@ -1015,32 +1436,44 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
 
         {/* Cluster toggle — hidden in heatmap mode */}
         {!heatmap && (
-          <button onClick={handleClusterToggle}
+          <button
+            onClick={handleClusterToggle}
             title={clustered ? 'Disable clustering' : 'Enable clustering'}
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
-              clustered ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground'
-            }`}>
+              clustered
+                ? 'bg-primary/10 border-primary/40 text-foreground'
+                : 'bg-muted border-border text-muted-foreground'
+            }`}
+          >
             <span className="text-base leading-none">🗂️</span>
             <span>Cluster</span>
           </button>
         )}
 
         {/* Heatmap toggle */}
-        <button onClick={() => setHeatmap((p) => !p)}
+        <button
+          onClick={() => setHeatmap((p) => !p)}
           title={heatmap ? 'Switch to markers' : 'Switch to heatmap'}
           className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
-            heatmap ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground'
-          }`}>
+            heatmap
+              ? 'bg-primary/10 border-primary/40 text-foreground'
+              : 'bg-muted border-border text-muted-foreground'
+          }`}
+        >
           <span className="text-base leading-none">🌡️</span>
           <span>Heatmap</span>
         </button>
 
         {/* Owned-only filter */}
-        <button onClick={handleOwnedOnlyToggle}
+        <button
+          onClick={handleOwnedOnlyToggle}
           title={showOwnedOnly ? 'Show all nodes' : 'Show only owned repeaters & rooms'}
           className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
-            showOwnedOnly ? 'bg-primary/10 border-primary/40 text-foreground' : 'bg-muted border-border text-muted-foreground'
-          }`}>
+            showOwnedOnly
+              ? 'bg-primary/10 border-primary/40 text-foreground'
+              : 'bg-muted border-border text-muted-foreground'
+          }`}
+        >
           <span className="text-base leading-none">🏠</span>
           <span>Owned</span>
         </button>
@@ -1048,14 +1481,16 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
         {/* Tile layer picker */}
         <div className="flex items-center gap-1 ml-1 border-l border-border pl-2">
           {(Object.keys(TILE_LAYERS) as TileLayerKey[]).map((key) => (
-            <button key={key}
+            <button
+              key={key}
               onClick={() => handleTileChange(key)}
               title={TILE_LAYERS[key].label}
               className={`px-2 py-0.5 text-[10px] rounded transition-colors border ${
                 tileKey === key
                   ? 'bg-primary/10 border-primary/40 text-foreground font-medium'
                   : 'bg-muted border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-              }`}>
+              }`}
+            >
               {TILE_LAYERS[key].label}
             </button>
           ))}
@@ -1073,7 +1508,10 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
             className="w-28 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50 text-foreground"
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="text-muted-foreground hover:text-foreground">
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-muted-foreground hover:text-foreground"
+            >
               <X className="h-3 w-3" />
             </button>
           )}
@@ -1109,20 +1547,36 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
 
       {/* Time window presets */}
       <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center gap-1.5 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Period:</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">
+          Period:
+        </span>
         {TIME_PRESETS.map(({ label }) => (
-          <button key={label} onClick={() => { setActivePreset(label); setShowCustom(false); }}
-            className={`px-2 py-0.5 text-[10px] rounded transition-colors ${activePreset === label
-              ? 'bg-primary text-primary-foreground font-medium'
-              : 'bg-background border border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
+          <button
+            key={label}
+            onClick={() => {
+              setActivePreset(label);
+              setShowCustom(false);
+            }}
+            className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+              activePreset === label
+                ? 'bg-primary text-primary-foreground font-medium'
+                : 'bg-background border border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+            }`}
+          >
             {label}
           </button>
         ))}
         <button
-          onClick={() => { setActivePreset('Custom'); setShowCustom(true); }}
-          className={`px-2 py-0.5 text-[10px] rounded transition-colors ${activePreset === 'Custom'
-            ? 'bg-primary text-primary-foreground font-medium'
-            : 'bg-background border border-border text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
+          onClick={() => {
+            setActivePreset('Custom');
+            setShowCustom(true);
+          }}
+          className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+            activePreset === 'Custom'
+              ? 'bg-primary text-primary-foreground font-medium'
+              : 'bg-background border border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+          }`}
+        >
           Custom…
         </button>
 
@@ -1148,8 +1602,18 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
       </div>
 
       {/* Map */}
-      <div className="flex-1 relative" style={{ zIndex: 0 }} role="img" aria-label="Map showing mesh node locations">
-        <MapContainer center={[20, 0]} zoom={2} className="h-full w-full" style={{ background: '#1a1a2e' }}>
+      <div
+        className="flex-1 relative"
+        style={{ zIndex: 0 }}
+        role="img"
+        aria-label="Map showing mesh node locations"
+      >
+        <MapContainer
+          center={[20, 0]}
+          zoom={2}
+          className="h-full w-full"
+          style={{ background: '#1a1a2e' }}
+        >
           <TileLayer
             attribution={TILE_LAYERS[tileKey].attribution}
             url={TILE_LAYERS[tileKey].url}
@@ -1167,15 +1631,30 @@ export function MapView({ contacts, focusedKey, onSelectConversation, connectedP
           {heatmap && <HeatmapLayer points={heatPoints} />}
 
           {/* Marker mode */}
-          {!heatmap && (
-            clustered ? (
-              <MarkerClusterGroup iconCreateFunction={buildClusterIcon} maxClusterRadius={60} disableClusteringAtZoom={14} showCoverageOnHover={false} chunkedLoading>
+          {!heatmap &&
+            (clustered ? (
+              <MarkerClusterGroup
+                iconCreateFunction={buildClusterIcon}
+                maxClusterRadius={60}
+                disableClusteringAtZoom={14}
+                showCoverageOnHover={false}
+                chunkedLoading
+              >
                 {markerElements}
               </MarkerClusterGroup>
             ) : (
               markerElements
-            )
-          )}
+            ))}
+
+          {/* Active path trace overlay */}
+          {activePathTrace &&
+            activePathTrace.segments.map((seg, i) => (
+              <Polyline
+                key={i}
+                positions={seg}
+                pathOptions={{ color: '#22d3ee', weight: 3, opacity: 0.85, dashArray: '8 5' }}
+              />
+            ))}
         </MapContainer>
       </div>
     </div>

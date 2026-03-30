@@ -86,10 +86,23 @@ type CollapseState = {
 
 // ─── Section ordering ────────────────────────────────────────────────────────
 
-type SidebarSection = 'tools' | 'favorites' | 'owned' | 'channels' | 'contacts' | 'rooms' | 'repeaters';
+type SidebarSection =
+  | 'tools'
+  | 'favorites'
+  | 'owned'
+  | 'channels'
+  | 'contacts'
+  | 'rooms'
+  | 'repeaters';
 
 const ALL_SECTIONS: SidebarSection[] = [
-  'tools', 'favorites', 'owned', 'channels', 'contacts', 'rooms', 'repeaters',
+  'tools',
+  'favorites',
+  'owned',
+  'channels',
+  'contacts',
+  'rooms',
+  'repeaters',
 ];
 
 const SECTION_LABELS: Record<SidebarSection, string> = {
@@ -109,7 +122,9 @@ function loadSectionOrder(): SidebarSection[] {
     const raw = localStorage.getItem(SIDEBAR_SECTION_ORDER_KEY);
     if (!raw) return [...ALL_SECTIONS];
     const parsed = JSON.parse(raw) as string[];
-    const valid = parsed.filter((s): s is SidebarSection => ALL_SECTIONS.includes(s as SidebarSection));
+    const valid = parsed.filter((s): s is SidebarSection =>
+      ALL_SECTIONS.includes(s as SidebarSection)
+    );
     const missing = ALL_SECTIONS.filter((s) => !valid.includes(s));
     return [...valid, ...missing];
   } catch {
@@ -145,7 +160,13 @@ const TOOL_LABELS: Record<ToolKey, string> = {
 };
 
 const ALL_TOOL_KEYS: ToolKey[] = [
-  'packet-feed', 'node-map', 'mesh-visualizer', 'message-search', 'my-node', 'mesh-health', 'room-finder',
+  'packet-feed',
+  'node-map',
+  'mesh-visualizer',
+  'message-search',
+  'my-node',
+  'mesh-health',
+  'room-finder',
   'mc-kms',
 ];
 
@@ -173,10 +194,20 @@ function saveToolOrder(order: ToolKey[]): void {
 const SIDEBAR_COLLAPSE_STATE_KEY = 'remoteterm-sidebar-collapse-state';
 
 const DEFAULT_COLLAPSE_STATE: CollapseState = {
-  tools: false, favorites: false, owned: false, channels: false,
-  contacts: false, rooms: false, repeaters: false,
-  favChannels: false, favContacts: false, favRooms: false, favRepeaters: false,
-  ownedRepeaters: false, ownedRooms: false, ownedSensors: false,
+  tools: false,
+  favorites: false,
+  owned: false,
+  channels: false,
+  contacts: false,
+  rooms: false,
+  repeaters: false,
+  favChannels: false,
+  favContacts: false,
+  favRooms: false,
+  favRepeaters: false,
+  ownedRepeaters: false,
+  ownedRooms: false,
+  ownedSensors: false,
 };
 
 function loadCollapsedState(): CollapseState {
@@ -338,14 +369,24 @@ export function Sidebar({
   const [contactsCollapsed, setContactsCollapsed] = useState(initialCollapsedState.contacts);
   const [roomsCollapsed, setRoomsCollapsed] = useState(initialCollapsedState.rooms);
   const [repeatersCollapsed, setRepeatersCollapsed] = useState(initialCollapsedState.repeaters);
-  const [favChannelsCollapsed, setFavChannelsCollapsed] = useState(initialCollapsedState.favChannels);
-  const [favContactsCollapsed, setFavContactsCollapsed] = useState(initialCollapsedState.favContacts);
+  const [favChannelsCollapsed, setFavChannelsCollapsed] = useState(
+    initialCollapsedState.favChannels
+  );
+  const [favContactsCollapsed, setFavContactsCollapsed] = useState(
+    initialCollapsedState.favContacts
+  );
   const [favRoomsCollapsed, setFavRoomsCollapsed] = useState(initialCollapsedState.favRooms);
-  const [favRepeatersCollapsed, setFavRepeatersCollapsed] = useState(initialCollapsedState.favRepeaters);
+  const [favRepeatersCollapsed, setFavRepeatersCollapsed] = useState(
+    initialCollapsedState.favRepeaters
+  );
   const [ownedCollapsed, setOwnedCollapsed] = useState(initialCollapsedState.owned);
-  const [ownedRepeatersCollapsed, setOwnedRepeatersCollapsed] = useState(initialCollapsedState.ownedRepeaters);
+  const [ownedRepeatersCollapsed, setOwnedRepeatersCollapsed] = useState(
+    initialCollapsedState.ownedRepeaters
+  );
   const [ownedRoomsCollapsed, setOwnedRoomsCollapsed] = useState(initialCollapsedState.ownedRooms);
-  const [ownedSensorsCollapsed, setOwnedSensorsCollapsed] = useState(initialCollapsedState.ownedSensors);
+  const [ownedSensorsCollapsed, setOwnedSensorsCollapsed] = useState(
+    initialCollapsedState.ownedSensors
+  );
   const listRef = useRef<HTMLDivElement>(null);
   const collapseSnapshotRef = useRef<CollapseState | null>(null);
   const sectionSortSourceRef = useRef(initialSectionSortState.source);
@@ -398,7 +439,16 @@ export function Sidebar({
   };
 
   const isActive = (
-    type: 'contact' | 'channel' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health' | 'kms',
+    type:
+      | 'contact'
+      | 'channel'
+      | 'raw'
+      | 'map'
+      | 'visualizer'
+      | 'search'
+      | 'node'
+      | 'mesh-health'
+      | 'kms',
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
@@ -427,7 +477,11 @@ export function Sidebar({
   );
 
   const uniqueChannels = useMemo(
-    () => channels.reduce<Channel[]>((acc, c) => (!acc.some((x) => x.key === c.key) ? [...acc, c] : acc), []),
+    () =>
+      channels.reduce<Channel[]>(
+        (acc, c) => (!acc.some((x) => x.key === c.key) ? [...acc, c] : acc),
+        []
+      ),
     [channels]
   );
 
@@ -440,7 +494,10 @@ export function Sidebar({
           if (!a.name && b.name) return 1;
           return (a.name || '').localeCompare(b.name || '');
         })
-        .reduce<Contact[]>((acc, c) => (!acc.some((x) => x.public_key === c.public_key) ? [...acc, c] : acc), []),
+        .reduce<Contact[]>(
+          (acc, c) => (!acc.some((x) => x.public_key === c.public_key) ? [...acc, c] : acc),
+          []
+        ),
     [contacts]
   );
 
@@ -495,7 +552,11 @@ export function Sidebar({
     (item: FavoriteItem) =>
       item.type === 'channel'
         ? item.channel.name
-        : getContactDisplayName(item.contact.name, item.contact.public_key, item.contact.last_advert),
+        : getContactDisplayName(
+            item.contact.name,
+            item.contact.public_key,
+            item.contact.last_advert
+          ),
     []
   );
 
@@ -503,8 +564,14 @@ export function Sidebar({
     (items: FavoriteItem[], order: SortOrder) =>
       [...items].sort((a, b) => {
         if (order === 'recent') {
-          const tA = a.type === 'channel' ? getLastMessageTime('channel', a.channel.key) : getContactRecentTime(a.contact);
-          const tB = b.type === 'channel' ? getLastMessageTime('channel', b.channel.key) : getContactRecentTime(b.contact);
+          const tA =
+            a.type === 'channel'
+              ? getLastMessageTime('channel', a.channel.key)
+              : getContactRecentTime(a.contact);
+          const tB =
+            b.type === 'channel'
+              ? getLastMessageTime('channel', b.channel.key)
+              : getContactRecentTime(b.contact);
           if (tA && tB) return tB - tA;
           if (tA) return -1;
           if (tB) return 1;
@@ -515,20 +582,31 @@ export function Sidebar({
   );
 
   const sortedNonRepeaterContacts = useMemo(
-    () => sortContactsByOrder(
-      uniqueContacts.filter((c) => c.type !== CONTACT_TYPE_REPEATER && c.type !== CONTACT_TYPE_ROOM),
-      sectionSortOrders.contacts
-    ),
+    () =>
+      sortContactsByOrder(
+        uniqueContacts.filter(
+          (c) => c.type !== CONTACT_TYPE_REPEATER && c.type !== CONTACT_TYPE_ROOM
+        ),
+        sectionSortOrders.contacts
+      ),
     [uniqueContacts, sectionSortOrders.contacts, sortContactsByOrder]
   );
 
   const sortedRooms = useMemo(
-    () => sortContactsByOrder(uniqueContacts.filter((c) => c.type === CONTACT_TYPE_ROOM), sectionSortOrders.rooms),
+    () =>
+      sortContactsByOrder(
+        uniqueContacts.filter((c) => c.type === CONTACT_TYPE_ROOM),
+        sectionSortOrders.rooms
+      ),
     [uniqueContacts, sectionSortOrders.rooms, sortContactsByOrder]
   );
 
   const sortedRepeaters = useMemo(
-    () => sortRepeatersByOrder(uniqueContacts.filter((c) => c.type === CONTACT_TYPE_REPEATER), sectionSortOrders.repeaters),
+    () =>
+      sortRepeatersByOrder(
+        uniqueContacts.filter((c) => c.type === CONTACT_TYPE_REPEATER),
+        sectionSortOrders.repeaters
+      ),
     [uniqueContacts, sectionSortOrders.repeaters, sortRepeatersByOrder]
   );
 
@@ -536,112 +614,238 @@ export function Sidebar({
   const isSearching = query.length > 0;
 
   const filteredChannels = useMemo(
-    () => query ? sortedChannels.filter((c) => c.name.toLowerCase().includes(query) || c.key.toLowerCase().includes(query)) : sortedChannels,
+    () =>
+      query
+        ? sortedChannels.filter(
+            (c) => c.name.toLowerCase().includes(query) || c.key.toLowerCase().includes(query)
+          )
+        : sortedChannels,
     [sortedChannels, query]
   );
 
   const filteredNonRepeaterContacts = useMemo(
-    () => query ? sortedNonRepeaterContacts.filter((c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)) : sortedNonRepeaterContacts,
+    () =>
+      query
+        ? sortedNonRepeaterContacts.filter(
+            (c) =>
+              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
+          )
+        : sortedNonRepeaterContacts,
     [sortedNonRepeaterContacts, query]
   );
 
   const filteredRooms = useMemo(
-    () => query ? sortedRooms.filter((c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)) : sortedRooms,
+    () =>
+      query
+        ? sortedRooms.filter(
+            (c) =>
+              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
+          )
+        : sortedRooms,
     [sortedRooms, query]
   );
 
   const filteredRepeaters = useMemo(
-    () => query ? sortedRepeaters.filter((c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)) : sortedRepeaters,
+    () =>
+      query
+        ? sortedRepeaters.filter(
+            (c) =>
+              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
+          )
+        : sortedRepeaters,
     [sortedRepeaters, query]
   );
 
   // Persist collapse state
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_COLLAPSE_STATE_KEY, JSON.stringify({
-      tools: toolsCollapsed, favorites: favoritesCollapsed, owned: ownedCollapsed,
-      channels: channelsCollapsed, contacts: contactsCollapsed, rooms: roomsCollapsed, repeaters: repeatersCollapsed,
-      favChannels: favChannelsCollapsed, favContacts: favContactsCollapsed,
-      favRooms: favRoomsCollapsed, favRepeaters: favRepeatersCollapsed,
-      ownedRepeaters: ownedRepeatersCollapsed, ownedRooms: ownedRoomsCollapsed, ownedSensors: ownedSensorsCollapsed,
-    }));
-  }, [toolsCollapsed, favoritesCollapsed, ownedCollapsed, channelsCollapsed, contactsCollapsed, roomsCollapsed, repeatersCollapsed,
-      favChannelsCollapsed, favContactsCollapsed, favRoomsCollapsed, favRepeatersCollapsed,
-      ownedRepeatersCollapsed, ownedRoomsCollapsed, ownedSensorsCollapsed]);
+    localStorage.setItem(
+      SIDEBAR_COLLAPSE_STATE_KEY,
+      JSON.stringify({
+        tools: toolsCollapsed,
+        favorites: favoritesCollapsed,
+        owned: ownedCollapsed,
+        channels: channelsCollapsed,
+        contacts: contactsCollapsed,
+        rooms: roomsCollapsed,
+        repeaters: repeatersCollapsed,
+        favChannels: favChannelsCollapsed,
+        favContacts: favContactsCollapsed,
+        favRooms: favRoomsCollapsed,
+        favRepeaters: favRepeatersCollapsed,
+        ownedRepeaters: ownedRepeatersCollapsed,
+        ownedRooms: ownedRoomsCollapsed,
+        ownedSensors: ownedSensorsCollapsed,
+      })
+    );
+  }, [
+    toolsCollapsed,
+    favoritesCollapsed,
+    ownedCollapsed,
+    channelsCollapsed,
+    contactsCollapsed,
+    roomsCollapsed,
+    repeatersCollapsed,
+    favChannelsCollapsed,
+    favContactsCollapsed,
+    favRoomsCollapsed,
+    favRepeatersCollapsed,
+    ownedRepeatersCollapsed,
+    ownedRoomsCollapsed,
+    ownedSensorsCollapsed,
+  ]);
 
   // Expand all while searching, restore on clear
   useEffect(() => {
     if (isSearching) {
       if (!collapseSnapshotRef.current) {
         collapseSnapshotRef.current = {
-          tools: toolsCollapsed, favorites: favoritesCollapsed, owned: ownedCollapsed,
-          channels: channelsCollapsed, contacts: contactsCollapsed, rooms: roomsCollapsed, repeaters: repeatersCollapsed,
-          favChannels: favChannelsCollapsed, favContacts: favContactsCollapsed,
-          favRooms: favRoomsCollapsed, favRepeaters: favRepeatersCollapsed,
-          ownedRepeaters: ownedRepeatersCollapsed, ownedRooms: ownedRoomsCollapsed, ownedSensors: ownedSensorsCollapsed,
+          tools: toolsCollapsed,
+          favorites: favoritesCollapsed,
+          owned: ownedCollapsed,
+          channels: channelsCollapsed,
+          contacts: contactsCollapsed,
+          rooms: roomsCollapsed,
+          repeaters: repeatersCollapsed,
+          favChannels: favChannelsCollapsed,
+          favContacts: favContactsCollapsed,
+          favRooms: favRoomsCollapsed,
+          favRepeaters: favRepeatersCollapsed,
+          ownedRepeaters: ownedRepeatersCollapsed,
+          ownedRooms: ownedRoomsCollapsed,
+          ownedSensors: ownedSensorsCollapsed,
         };
       }
-      const anyCollapsed = toolsCollapsed || favoritesCollapsed || ownedCollapsed || channelsCollapsed ||
-        contactsCollapsed || roomsCollapsed || repeatersCollapsed ||
-        favChannelsCollapsed || favContactsCollapsed || favRoomsCollapsed || favRepeatersCollapsed ||
-        ownedRepeatersCollapsed || ownedRoomsCollapsed || ownedSensorsCollapsed;
+      const anyCollapsed =
+        toolsCollapsed ||
+        favoritesCollapsed ||
+        ownedCollapsed ||
+        channelsCollapsed ||
+        contactsCollapsed ||
+        roomsCollapsed ||
+        repeatersCollapsed ||
+        favChannelsCollapsed ||
+        favContactsCollapsed ||
+        favRoomsCollapsed ||
+        favRepeatersCollapsed ||
+        ownedRepeatersCollapsed ||
+        ownedRoomsCollapsed ||
+        ownedSensorsCollapsed;
       if (anyCollapsed) {
-        setToolsCollapsed(false); setFavoritesCollapsed(false); setOwnedCollapsed(false);
-        setChannelsCollapsed(false); setContactsCollapsed(false); setRoomsCollapsed(false); setRepeatersCollapsed(false);
-        setFavChannelsCollapsed(false); setFavContactsCollapsed(false);
-        setFavRoomsCollapsed(false); setFavRepeatersCollapsed(false);
-        setOwnedRepeatersCollapsed(false); setOwnedRoomsCollapsed(false); setOwnedSensorsCollapsed(false);
+        setToolsCollapsed(false);
+        setFavoritesCollapsed(false);
+        setOwnedCollapsed(false);
+        setChannelsCollapsed(false);
+        setContactsCollapsed(false);
+        setRoomsCollapsed(false);
+        setRepeatersCollapsed(false);
+        setFavChannelsCollapsed(false);
+        setFavContactsCollapsed(false);
+        setFavRoomsCollapsed(false);
+        setFavRepeatersCollapsed(false);
+        setOwnedRepeatersCollapsed(false);
+        setOwnedRoomsCollapsed(false);
+        setOwnedSensorsCollapsed(false);
       }
       return;
     }
     if (collapseSnapshotRef.current) {
       const prev = collapseSnapshotRef.current;
       collapseSnapshotRef.current = null;
-      setToolsCollapsed(prev.tools); setFavoritesCollapsed(prev.favorites); setOwnedCollapsed(prev.owned);
-      setChannelsCollapsed(prev.channels); setContactsCollapsed(prev.contacts);
-      setRoomsCollapsed(prev.rooms); setRepeatersCollapsed(prev.repeaters);
-      setFavChannelsCollapsed(prev.favChannels); setFavContactsCollapsed(prev.favContacts);
-      setFavRoomsCollapsed(prev.favRooms); setFavRepeatersCollapsed(prev.favRepeaters);
-      setOwnedRepeatersCollapsed(prev.ownedRepeaters); setOwnedRoomsCollapsed(prev.ownedRooms);
+      setToolsCollapsed(prev.tools);
+      setFavoritesCollapsed(prev.favorites);
+      setOwnedCollapsed(prev.owned);
+      setChannelsCollapsed(prev.channels);
+      setContactsCollapsed(prev.contacts);
+      setRoomsCollapsed(prev.rooms);
+      setRepeatersCollapsed(prev.repeaters);
+      setFavChannelsCollapsed(prev.favChannels);
+      setFavContactsCollapsed(prev.favContacts);
+      setFavRoomsCollapsed(prev.favRooms);
+      setFavRepeatersCollapsed(prev.favRepeaters);
+      setOwnedRepeatersCollapsed(prev.ownedRepeaters);
+      setOwnedRoomsCollapsed(prev.ownedRooms);
       setOwnedSensorsCollapsed(prev.ownedSensors);
     }
-  }, [isSearching, toolsCollapsed, favoritesCollapsed, ownedCollapsed, channelsCollapsed, contactsCollapsed,
-      roomsCollapsed, repeatersCollapsed, favChannelsCollapsed, favContactsCollapsed,
-      favRoomsCollapsed, favRepeatersCollapsed, ownedRepeatersCollapsed, ownedRoomsCollapsed, ownedSensorsCollapsed]);
+  }, [
+    isSearching,
+    toolsCollapsed,
+    favoritesCollapsed,
+    ownedCollapsed,
+    channelsCollapsed,
+    contactsCollapsed,
+    roomsCollapsed,
+    repeatersCollapsed,
+    favChannelsCollapsed,
+    favContactsCollapsed,
+    favRoomsCollapsed,
+    favRepeatersCollapsed,
+    ownedRepeatersCollapsed,
+    ownedRoomsCollapsed,
+    ownedSensorsCollapsed,
+  ]);
 
   const {
-    favoriteItems, nonFavoriteChannels, nonFavoriteContacts, nonFavoriteRooms, nonFavoriteRepeaters,
-    ownedRepeaters, ownedRooms, ownedSensors,
+    favoriteItems,
+    nonFavoriteChannels,
+    nonFavoriteContacts,
+    nonFavoriteRooms,
+    nonFavoriteRepeaters,
+    ownedRepeaters,
+    ownedRooms,
+    ownedSensors,
   } = useMemo(() => {
-      const favChannels = filteredChannels.filter((c) => isFavorite(favorites, 'channel', c.key));
-      const nonFavChannels = filteredChannels.filter((c) => !isFavorite(favorites, 'channel', c.key));
-      const favContacts = filteredNonRepeaterContacts.filter((c) => isFavorite(favorites, 'contact', c.public_key));
-      const nonFavContacts = filteredNonRepeaterContacts.filter((c) => !isFavorite(favorites, 'contact', c.public_key));
-      const favRooms = filteredRooms.filter((c) => isFavorite(favorites, 'contact', c.public_key));
-      const nonFavRooms = filteredRooms.filter((c) => !isFavorite(favorites, 'contact', c.public_key));
-      const favRepeaters = filteredRepeaters.filter((c) => isFavorite(favorites, 'contact', c.public_key));
-      const nonFavRepeaters = filteredRepeaters.filter((c) => !isFavorite(favorites, 'contact', c.public_key));
-      const items: FavoriteItem[] = [
-        ...favChannels.map((channel) => ({ type: 'channel' as const, channel })),
-        ...favContacts.map((contact) => ({ type: 'contact' as const, contact })),
-        ...favRooms.map((contact) => ({ type: 'contact' as const, contact })),
-        ...favRepeaters.map((contact) => ({ type: 'contact' as const, contact })),
-      ];
-      // Owned: nodes with owner_id set — search ALL contacts (including favourites)
-      const ownedReps  = filteredRepeaters.filter((c) => c.owner_id);
-      const ownedRms   = filteredRooms.filter((c) => c.owner_id);
-      const ownedSnsr  = filteredNonRepeaterContacts.filter((c) => c.type === CONTACT_TYPE_SENSOR && c.owner_id);
-      return {
-        favoriteItems: sortFavoriteItemsByOrder(items, sectionSortOrders.favorites),
-        nonFavoriteChannels: nonFavChannels,
-        // Exclude owned items from their regular sections
-        nonFavoriteContacts: nonFavContacts.filter((c) => !(c.type === CONTACT_TYPE_SENSOR && c.owner_id)),
-        nonFavoriteRooms: nonFavRooms.filter((c) => !c.owner_id),
-        nonFavoriteRepeaters: nonFavRepeaters.filter((c) => !c.owner_id),
-        ownedRepeaters: ownedReps,
-        ownedRooms: ownedRms,
-        ownedSensors: ownedSnsr,
-      };
-    }, [filteredChannels, filteredNonRepeaterContacts, filteredRooms, filteredRepeaters, favorites, sectionSortOrders.favorites, sortFavoriteItemsByOrder]);
+    const favChannels = filteredChannels.filter((c) => isFavorite(favorites, 'channel', c.key));
+    const nonFavChannels = filteredChannels.filter((c) => !isFavorite(favorites, 'channel', c.key));
+    const favContacts = filteredNonRepeaterContacts.filter((c) =>
+      isFavorite(favorites, 'contact', c.public_key)
+    );
+    const nonFavContacts = filteredNonRepeaterContacts.filter(
+      (c) => !isFavorite(favorites, 'contact', c.public_key)
+    );
+    const favRooms = filteredRooms.filter((c) => isFavorite(favorites, 'contact', c.public_key));
+    const nonFavRooms = filteredRooms.filter(
+      (c) => !isFavorite(favorites, 'contact', c.public_key)
+    );
+    const favRepeaters = filteredRepeaters.filter((c) =>
+      isFavorite(favorites, 'contact', c.public_key)
+    );
+    const nonFavRepeaters = filteredRepeaters.filter(
+      (c) => !isFavorite(favorites, 'contact', c.public_key)
+    );
+    const items: FavoriteItem[] = [
+      ...favChannels.map((channel) => ({ type: 'channel' as const, channel })),
+      ...favContacts.map((contact) => ({ type: 'contact' as const, contact })),
+      ...favRooms.map((contact) => ({ type: 'contact' as const, contact })),
+      ...favRepeaters.map((contact) => ({ type: 'contact' as const, contact })),
+    ];
+    // Owned: nodes with owner_id set — search ALL contacts (including favourites)
+    const ownedReps = filteredRepeaters.filter((c) => c.owner_id);
+    const ownedRms = filteredRooms.filter((c) => c.owner_id);
+    const ownedSnsr = filteredNonRepeaterContacts.filter(
+      (c) => c.type === CONTACT_TYPE_SENSOR && c.owner_id
+    );
+    return {
+      favoriteItems: sortFavoriteItemsByOrder(items, sectionSortOrders.favorites),
+      nonFavoriteChannels: nonFavChannels,
+      // Exclude owned items from their regular sections
+      nonFavoriteContacts: nonFavContacts.filter(
+        (c) => !(c.type === CONTACT_TYPE_SENSOR && c.owner_id)
+      ),
+      nonFavoriteRooms: nonFavRooms.filter((c) => !c.owner_id),
+      nonFavoriteRepeaters: nonFavRepeaters.filter((c) => !c.owner_id),
+      ownedRepeaters: ownedReps,
+      ownedRooms: ownedRms,
+      ownedSensors: ownedSnsr,
+    };
+  }, [
+    filteredChannels,
+    filteredNonRepeaterContacts,
+    filteredRooms,
+    filteredRepeaters,
+    favorites,
+    sectionSortOrders.favorites,
+    sortFavoriteItemsByOrder,
+  ]);
 
   const buildChannelRow = (channel: Channel, keyPrefix: string): ConversationRow => ({
     key: `${keyPrefix}-${channel.key}`,
@@ -660,13 +864,17 @@ export function Sidebar({
     name: getContactDisplayName(contact.name, contact.public_key, contact.last_advert),
     unreadCount: getUnreadCount('contact', contact.public_key),
     isMention: hasMention('contact', contact.public_key),
-    notificationsEnabled: isConversationNotificationsEnabled?.('contact', contact.public_key) ?? false,
+    notificationsEnabled:
+      isConversationNotificationsEnabled?.('contact', contact.public_key) ?? false,
     contact,
   });
 
   const renderConversationRow = (row: ConversationRow) => {
     const highlightUnread =
-      row.isMention || (row.type === 'contact' && row.contact?.type !== CONTACT_TYPE_REPEATER && row.unreadCount > 0);
+      row.isMention ||
+      (row.type === 'contact' &&
+        row.contact?.type !== CONTACT_TYPE_REPEATER &&
+        row.unreadCount > 0);
 
     return (
       <div
@@ -683,7 +891,12 @@ export function Sidebar({
         onClick={() => handleSelectConversation({ type: row.type, id: row.id, name: row.name })}
       >
         {row.type === 'contact' && row.contact && (
-          <ContactAvatar name={row.contact.name} publicKey={row.contact.public_key} size={24} contactType={row.contact.type} />
+          <ContactAvatar
+            name={row.contact.name}
+            publicKey={row.contact.public_key}
+            size={24}
+            contactType={row.contact.type}
+          />
         )}
         <span className="name flex-1 truncate text-[13px]">{row.name}</span>
         <span className="ml-auto flex items-center gap-1">
@@ -711,9 +924,17 @@ export function Sidebar({
   };
 
   const renderSidebarActionRow = ({
-    key, active = false, icon, label, onClick,
+    key,
+    active = false,
+    icon,
+    label,
+    onClick,
   }: {
-    key: string; active?: boolean; icon: React.ReactNode; label: React.ReactNode; onClick: () => void;
+    key: string;
+    active?: boolean;
+    icon: React.ReactNode;
+    label: React.ReactNode;
+    onClick: () => void;
   }) => (
     <div
       key={key}
@@ -727,7 +948,9 @@ export function Sidebar({
       onKeyDown={handleKeyboardActivate}
       onClick={onClick}
     >
-      <span className="sidebar-tool-icon text-muted-foreground" aria-hidden="true">{icon}</span>
+      <span className="sidebar-tool-icon text-muted-foreground" aria-hidden="true">
+        {icon}
+      </span>
       <span className="sidebar-tool-label flex-1 truncate text-muted-foreground">{label}</span>
     </div>
   );
@@ -738,7 +961,9 @@ export function Sidebar({
   const sectionHasMention = (rows: ConversationRow[]): boolean => rows.some((row) => row.isMention);
 
   const favoriteRows = favoriteItems.map((item) =>
-    item.type === 'channel' ? buildChannelRow(item.channel, 'fav-chan') : buildContactRow(item.contact, 'fav-contact')
+    item.type === 'channel'
+      ? buildChannelRow(item.channel, 'fav-chan')
+      : buildContactRow(item.contact, 'fav-contact')
   );
 
   const favChannelRows = favoriteItems
@@ -781,39 +1006,56 @@ export function Sidebar({
   const contactsUnreadCount = getSectionUnreadCount(contactRows);
   const roomsUnreadCount = getSectionUnreadCount(roomRows);
   const repeatersUnreadCount = getSectionUnreadCount(repeaterRows);
-  const ownedUnreadCount = getSectionUnreadCount([...ownedRepeaterRows, ...ownedRoomRows, ...ownedSensorRows]);
+  const ownedUnreadCount = getSectionUnreadCount([
+    ...ownedRepeaterRows,
+    ...ownedRoomRows,
+    ...ownedSensorRows,
+  ]);
   const favoritesHasMention = sectionHasMention(favoriteRows);
   const channelsHasMention = sectionHasMention(channelRows);
 
   // Tool definitions keyed by ToolKey
   const toolDefinitions: Record<ToolKey, React.ReactNode> = {
     'packet-feed': renderSidebarActionRow({
-      key: 'tool-raw', active: isActive('raw', 'raw'),
-      icon: <Logs className="h-4 w-4" />, label: 'Packet Feed',
+      key: 'tool-raw',
+      active: isActive('raw', 'raw'),
+      icon: <Logs className="h-4 w-4" />,
+      label: 'Packet Feed',
       onClick: () => handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
     }),
     'node-map': renderSidebarActionRow({
-      key: 'tool-map', active: isActive('map', 'map'),
-      icon: <Map className="h-4 w-4" />, label: 'Node Map',
+      key: 'tool-map',
+      active: isActive('map', 'map'),
+      icon: <Map className="h-4 w-4" />,
+      label: 'Node Map',
       onClick: () => handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
     }),
     'mesh-visualizer': renderSidebarActionRow({
-      key: 'tool-visualizer', active: isActive('visualizer', 'visualizer'),
-      icon: <Waypoints className="h-4 w-4" />, label: 'Mesh Visualizer',
-      onClick: () => handleSelectConversation({ type: 'visualizer', id: 'visualizer', name: 'Mesh Visualizer' }),
+      key: 'tool-visualizer',
+      active: isActive('visualizer', 'visualizer'),
+      icon: <Waypoints className="h-4 w-4" />,
+      label: 'Mesh Visualizer',
+      onClick: () =>
+        handleSelectConversation({ type: 'visualizer', id: 'visualizer', name: 'Mesh Visualizer' }),
     }),
     'message-search': renderSidebarActionRow({
-      key: 'tool-search', active: isActive('search', 'search'),
-      icon: <SearchIcon className="h-4 w-4" />, label: 'Message Search',
-      onClick: () => handleSelectConversation({ type: 'search', id: 'search', name: 'Message Search' }),
+      key: 'tool-search',
+      active: isActive('search', 'search'),
+      icon: <SearchIcon className="h-4 w-4" />,
+      label: 'Message Search',
+      onClick: () =>
+        handleSelectConversation({ type: 'search', id: 'search', name: 'Message Search' }),
     }),
     'my-node': renderSidebarActionRow({
-      key: 'tool-node', active: isActive('node', 'node'),
-      icon: <BarChart2 className="h-4 w-4" />, label: 'My Node',
+      key: 'tool-node',
+      active: isActive('node', 'node'),
+      icon: <BarChart2 className="h-4 w-4" />,
+      label: 'My Node',
       onClick: () => handleSelectConversation({ type: 'node', id: 'node', name: 'My Node' }),
     }),
     'mesh-health': renderSidebarActionRow({
-      key: 'tool-mesh-health', active: isActive('mesh-health', 'mesh-health'),
+      key: 'tool-mesh-health',
+      active: isActive('mesh-health', 'mesh-health'),
       icon: <Activity className="h-4 w-4" />,
       label: (
         <span className="flex items-center justify-between w-full">
@@ -829,15 +1071,22 @@ export function Sidebar({
           )}
         </span>
       ),
-      onClick: () => handleSelectConversation({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' }),
+      onClick: () =>
+        handleSelectConversation({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' }),
     }),
     'room-finder': renderSidebarActionRow({
-      key: 'tool-cracker', active: showCracker,
+      key: 'tool-cracker',
+      active: showCracker,
       icon: <LockOpen className="h-4 w-4" />,
       label: (
         <>
           {showCracker ? 'Hide' : 'Show'} Channel Finder
-          <span className={cn('ml-1 text-[11px]', crackerRunning ? 'text-primary' : 'text-muted-foreground')}>
+          <span
+            className={cn(
+              'ml-1 text-[11px]',
+              crackerRunning ? 'text-primary' : 'text-muted-foreground'
+            )}
+          >
             ({crackerRunning ? 'running' : 'idle'})
           </span>
         </>
@@ -845,7 +1094,8 @@ export function Sidebar({
       onClick: onToggleCracker,
     }),
     'mc-kms': renderSidebarActionRow({
-      key: 'tool-mc-kms', active: isActive('kms', 'kms'),
+      key: 'tool-mc-kms',
+      active: isActive('kms', 'kms'),
       icon: <KeyRound className="h-4 w-4" />,
       label: 'MC-KMS',
       onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
@@ -875,20 +1125,36 @@ export function Sidebar({
             isSearching && 'cursor-default'
           )}
           aria-expanded={!effectiveCollapsed}
-          onClick={() => { if (!isSearching) onToggle(); }}
+          onClick={() => {
+            if (!isSearching) onToggle();
+          }}
           title={effectiveCollapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
-          {effectiveCollapsed
-            ? <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-            : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
-          <span>{title}{itemCount !== undefined && itemCount > 0 ? ` (${itemCount})` : ''}</span>
+          {effectiveCollapsed ? (
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+          <span>
+            {title}
+            {itemCount !== undefined && itemCount > 0 ? ` (${itemCount})` : ''}
+          </span>
         </button>
         <div className="ml-auto flex items-center gap-1.5">
           {sortSection && sectionSortOrder && (
             <button
               className="bg-transparent text-muted-foreground/60 px-1 py-0.5 text-[10px] rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => handleSortToggle(sortSection)}
-              title={sectionSortOrder === 'alpha' ? `Sort ${title} by recent` : `Sort ${title} alphabetically`}
+              aria-label={
+                sectionSortOrder === 'alpha'
+                  ? `Sort ${title} by recent`
+                  : `Sort ${title} alphabetically`
+              }
+              title={
+                sectionSortOrder === 'alpha'
+                  ? `Sort ${title} by recent`
+                  : `Sort ${title} alphabetically`
+              }
             >
               {sectionSortOrder === 'alpha' ? 'A-Z' : '⏱'}
             </button>
@@ -907,7 +1173,9 @@ export function Sidebar({
             <span
               className={cn(
                 'text-[10px] font-medium px-1.5 py-0.5 rounded-full',
-                highlightUnread ? 'bg-badge-mention text-badge-mention-foreground' : 'bg-secondary text-muted-foreground'
+                highlightUnread
+                  ? 'bg-badge-mention text-badge-mention-foreground'
+                  : 'bg-secondary text-muted-foreground'
               )}
               aria-label={`${unreadCount} unread`}
             >
@@ -934,10 +1202,14 @@ export function Sidebar({
         return favoriteItems.length > 0 ? (
           <div key="favorites">
             {renderSectionHeader(
-              'Favorites', favoritesCollapsed,
+              'Favorites',
+              favoritesCollapsed,
               () => setFavoritesCollapsed((p) => !p),
-              'favorites', favoritesUnreadCount, favoritesHasMention,
-              undefined, favoriteItems.length
+              'favorites',
+              favoritesUnreadCount,
+              favoritesHasMention,
+              undefined,
+              favoriteItems.length
             )}
             {(isSearching || !favoritesCollapsed) && (
               <>
@@ -948,12 +1220,15 @@ export function Sidebar({
                       onClick={() => setFavChannelsCollapsed((p) => !p)}
                       aria-expanded={!favChannelsCollapsed}
                     >
-                      {favChannelsCollapsed
-                        ? <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                        : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />}
+                      {favChannelsCollapsed ? (
+                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       Channels
                     </button>
-                    {(isSearching || !favChannelsCollapsed) && favChannelRows.map((row) => renderConversationRow(row))}
+                    {(isSearching || !favChannelsCollapsed) &&
+                      favChannelRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {favContactRows.length > 0 && (
@@ -963,12 +1238,15 @@ export function Sidebar({
                       onClick={() => setFavContactsCollapsed((p) => !p)}
                       aria-expanded={!favContactsCollapsed}
                     >
-                      {favContactsCollapsed
-                        ? <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                        : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />}
+                      {favContactsCollapsed ? (
+                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       Contacts
                     </button>
-                    {(isSearching || !favContactsCollapsed) && favContactRows.map((row) => renderConversationRow(row))}
+                    {(isSearching || !favContactsCollapsed) &&
+                      favContactRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {favRoomRows.length > 0 && (
@@ -978,12 +1256,15 @@ export function Sidebar({
                       onClick={() => setFavRoomsCollapsed((p) => !p)}
                       aria-expanded={!favRoomsCollapsed}
                     >
-                      {favRoomsCollapsed
-                        ? <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                        : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />}
+                      {favRoomsCollapsed ? (
+                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       Room Servers
                     </button>
-                    {(isSearching || !favRoomsCollapsed) && favRoomRows.map((row) => renderConversationRow(row))}
+                    {(isSearching || !favRoomsCollapsed) &&
+                      favRoomRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {favRepeaterRows.length > 0 && (
@@ -993,12 +1274,15 @@ export function Sidebar({
                       onClick={() => setFavRepeatersCollapsed((p) => !p)}
                       aria-expanded={!favRepeatersCollapsed}
                     >
-                      {favRepeatersCollapsed
-                        ? <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                        : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />}
+                      {favRepeatersCollapsed ? (
+                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       Repeaters
                     </button>
-                    {(isSearching || !favRepeatersCollapsed) && favRepeaterRows.map((row) => renderConversationRow(row))}
+                    {(isSearching || !favRepeatersCollapsed) &&
+                      favRepeaterRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
               </>
@@ -1010,10 +1294,14 @@ export function Sidebar({
         return totalOwned > 0 ? (
           <div key="owned">
             {renderSectionHeader(
-              'Owned', ownedCollapsed,
+              'Owned',
+              ownedCollapsed,
               () => setOwnedCollapsed((p) => !p),
-              null, ownedUnreadCount, false,
-              undefined, totalOwned
+              null,
+              ownedUnreadCount,
+              false,
+              undefined,
+              totalOwned
             )}
             {(isSearching || !ownedCollapsed) && (
               <>
@@ -1024,12 +1312,15 @@ export function Sidebar({
                       onClick={() => setOwnedRepeatersCollapsed((p) => !p)}
                       aria-expanded={!ownedRepeatersCollapsed}
                     >
-                      {ownedRepeatersCollapsed
-                        ? <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                        : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />}
+                      {ownedRepeatersCollapsed ? (
+                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       Repeaters
                     </button>
-                    {(isSearching || !ownedRepeatersCollapsed) && ownedRepeaterRows.map((row) => renderConversationRow(row))}
+                    {(isSearching || !ownedRepeatersCollapsed) &&
+                      ownedRepeaterRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {ownedRoomRows.length > 0 && (
@@ -1039,12 +1330,15 @@ export function Sidebar({
                       onClick={() => setOwnedRoomsCollapsed((p) => !p)}
                       aria-expanded={!ownedRoomsCollapsed}
                     >
-                      {ownedRoomsCollapsed
-                        ? <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                        : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />}
+                      {ownedRoomsCollapsed ? (
+                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       Room Servers
                     </button>
-                    {(isSearching || !ownedRoomsCollapsed) && ownedRoomRows.map((row) => renderConversationRow(row))}
+                    {(isSearching || !ownedRoomsCollapsed) &&
+                      ownedRoomRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {ownedSensorRows.length > 0 && (
@@ -1054,12 +1348,15 @@ export function Sidebar({
                       onClick={() => setOwnedSensorsCollapsed((p) => !p)}
                       aria-expanded={!ownedSensorsCollapsed}
                     >
-                      {ownedSensorsCollapsed
-                        ? <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                        : <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />}
+                      {ownedSensorsCollapsed ? (
+                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       Sensors
                     </button>
-                    {(isSearching || !ownedSensorsCollapsed) && ownedSensorRows.map((row) => renderConversationRow(row))}
+                    {(isSearching || !ownedSensorsCollapsed) &&
+                      ownedSensorRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
               </>
@@ -1070,29 +1367,68 @@ export function Sidebar({
       case 'channels':
         return nonFavoriteChannels.length > 0 ? (
           <div key="channels">
-            {renderSectionHeader('Channels', channelsCollapsed, () => setChannelsCollapsed((p) => !p), 'channels', channelsUnreadCount, channelsHasMention, onMarkAllRead, filteredChannels.length)}
-            {(isSearching || !channelsCollapsed) && channelRows.map((row) => renderConversationRow(row))}
+            {renderSectionHeader(
+              'Channels',
+              channelsCollapsed,
+              () => setChannelsCollapsed((p) => !p),
+              'channels',
+              channelsUnreadCount,
+              channelsHasMention,
+              onMarkAllRead,
+              filteredChannels.length
+            )}
+            {(isSearching || !channelsCollapsed) &&
+              channelRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
       case 'contacts':
         return nonFavoriteContacts.length > 0 ? (
           <div key="contacts">
-            {renderSectionHeader('Contacts', contactsCollapsed, () => setContactsCollapsed((p) => !p), 'contacts', contactsUnreadCount, contactsUnreadCount > 0, undefined, filteredNonRepeaterContacts.length)}
-            {(isSearching || !contactsCollapsed) && contactRows.map((row) => renderConversationRow(row))}
+            {renderSectionHeader(
+              'Contacts',
+              contactsCollapsed,
+              () => setContactsCollapsed((p) => !p),
+              'contacts',
+              contactsUnreadCount,
+              contactsUnreadCount > 0,
+              undefined,
+              filteredNonRepeaterContacts.length
+            )}
+            {(isSearching || !contactsCollapsed) &&
+              contactRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
       case 'rooms':
         return nonFavoriteRooms.length > 0 ? (
           <div key="rooms">
-            {renderSectionHeader('Room Servers', roomsCollapsed, () => setRoomsCollapsed((p) => !p), 'rooms', roomsUnreadCount, roomsUnreadCount > 0, undefined, filteredRooms.length)}
+            {renderSectionHeader(
+              'Room Servers',
+              roomsCollapsed,
+              () => setRoomsCollapsed((p) => !p),
+              'rooms',
+              roomsUnreadCount,
+              roomsUnreadCount > 0,
+              undefined,
+              filteredRooms.length
+            )}
             {(isSearching || !roomsCollapsed) && roomRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
       case 'repeaters':
         return nonFavoriteRepeaters.length > 0 ? (
           <div key="repeaters">
-            {renderSectionHeader('Repeaters', repeatersCollapsed, () => setRepeatersCollapsed((p) => !p), 'repeaters', repeatersUnreadCount, false, undefined, filteredRepeaters.length)}
-            {(isSearching || !repeatersCollapsed) && repeaterRows.map((row) => renderConversationRow(row))}
+            {renderSectionHeader(
+              'Repeaters',
+              repeatersCollapsed,
+              () => setRepeatersCollapsed((p) => !p),
+              'repeaters',
+              repeatersUnreadCount,
+              false,
+              undefined,
+              filteredRepeaters.length
+            )}
+            {(isSearching || !repeatersCollapsed) &&
+              repeaterRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
       default:
@@ -1101,10 +1437,14 @@ export function Sidebar({
   };
 
   const isEmpty =
-    nonFavoriteContacts.length === 0 && nonFavoriteRooms.length === 0 &&
-    nonFavoriteChannels.length === 0 && nonFavoriteRepeaters.length === 0 &&
+    nonFavoriteContacts.length === 0 &&
+    nonFavoriteRooms.length === 0 &&
+    nonFavoriteChannels.length === 0 &&
+    nonFavoriteRepeaters.length === 0 &&
     favoriteItems.length === 0 &&
-    ownedRepeaters.length === 0 && ownedRooms.length === 0 && ownedSensors.length === 0;
+    ownedRepeaters.length === 0 &&
+    ownedRooms.length === 0 &&
+    ownedSensors.length === 0;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -1153,7 +1493,9 @@ export function Sidebar({
           aria-label={showSettings ? 'Back to conversations' : 'Customize sidebar'}
           className={cn(
             'h-7 w-7 shrink-0 p-0 transition-colors',
-            showSettings ? 'text-primary hover:text-primary' : 'text-muted-foreground hover:text-foreground'
+            showSettings
+              ? 'text-primary hover:text-primary'
+              : 'text-muted-foreground hover:text-foreground'
           )}
         >
           <Settings className="h-4 w-4" />
@@ -1217,7 +1559,9 @@ export function Sidebar({
           </button>
           {/* Scroll to bottom */}
           <button
-            onClick={() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })}
+            onClick={() =>
+              listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
+            }
             title="Scroll to bottom"
             aria-label="Scroll to bottom"
             className="absolute bottom-1 left-1/2 -translate-x-1/2 z-10 rounded-full bg-card/80 border border-border p-0.5 text-muted-foreground/40 hover:text-foreground hover:opacity-100 transition opacity-40 backdrop-blur-sm pointer-events-auto"

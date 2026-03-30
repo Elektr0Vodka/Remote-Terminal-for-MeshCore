@@ -1,4 +1,28 @@
 # RemoteTerm for MeshCore
+> [!WARNING]
+> ## Security Notice
+> This fork is **not intended for production deployment on internet-facing systems**.
+>
+> It is designed for **local, trusted, or lab-style environments only**.
+>
+> This build includes development and administrative functionality that may interact with:
+> - private keys
+> - node identity data
+> - routing / diagnostics information
+> - radio / mesh management features
+>
+> **Do not expose this fork directly to the public internet.**
+>
+> Recommended usage:
+> - localhost only
+> - private LAN
+> - VPN-only access
+> - isolated management network
+>
+> If you choose to expose it publicly, you do so **entirely at your own risk**.
+> This fork may expose or process cryptographic identity material in ways that have **not been security-audited for public deployment**.
+
+# RemoteTerm for MeshCore
 
 Backend server + browser interface for MeshCore mesh radio networks. Connect your radio over Serial, TCP, or BLE, and then you can:
 
@@ -212,3 +236,52 @@ If you enable Basic Auth, protect the app with HTTPS. HTTP Basic credentials are
 - Advanced setup, troubleshooting, HTTPS, systemd, remediation variables, and debug logging: [README_ADVANCED.md](README_ADVANCED.md)
 - Contributing, tests, linting, E2E notes, and important AGENTS files: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Live API docs after the backend is running: http://localhost:8000/docs
+
+
+## Security / Deployment Warning
+
+This fork is intended for **development, testing, and trusted-network administration only**.
+
+It is **not designed, audited, or supported** as a secure internet-facing production service.
+
+### Why this matters
+
+This fork may include features or code paths that interact with sensitive operational data, including but not limited to:
+
+- private keys or identity material
+- node / repeater metadata
+- routing / trace information
+- diagnostics and RF tooling
+- remote node management features
+
+Because of this, deploying this fork on a publicly reachable host may introduce serious security risks.
+
+### Do NOT deploy this fork:
+
+- directly on a public IP
+- behind an open reverse proxy without strong access controls
+- in a multi-tenant or untrusted-user environment
+- as a general public web service
+
+### Recommended safe deployment
+
+If you want to run this fork, it should be limited to one of the following:
+
+- `localhost`
+- private LAN only
+- VPN-restricted access
+- isolated management workstation
+- isolated lab / development environment
+
+### Operator responsibility
+
+If you choose to run this fork in any environment exposed beyond a trusted local network, you accept full responsibility for:
+
+- key protection
+- access control
+- authentication hardening
+- transport security
+- reverse proxy configuration
+- exposure of sensitive node / radio functionality
+
+This repository should be treated as an **experimental or administrative tool**, not a hardened internet service.

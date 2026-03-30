@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MapView } from '../components/MapView';
@@ -15,11 +15,24 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   )),
+  Marker: forwardRef<unknown, { children: React.ReactNode }>(({ children }, ref) => {
+    useImperativeHandle(ref, () => ({ setIcon: vi.fn(), openPopup: vi.fn() }));
+    return <div>{children}</div>;
+  }),
+  Polyline: () => null,
   Popup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useMap: () => ({
     setView: vi.fn(),
     fitBounds: vi.fn(),
+    flyTo: vi.fn(),
+    getZoom: vi.fn(() => 10),
+    on: vi.fn(),
+    off: vi.fn(),
   }),
+}));
+
+vi.mock('react-leaflet-cluster', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 describe('MapView', () => {
@@ -47,9 +60,7 @@ describe('MapView', () => {
 
     render(<MapView contacts={[contact]} focusedKey={contact.public_key} />);
 
-    expect(
-      screen.getByText(/showing 1 contact heard in the last 7 days plus the focused contact/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/showing 1 contact/i)).toBeInTheDocument();
     expect(screen.getByText('Last heard: Never heard by this server')).toBeInTheDocument();
   });
 
@@ -81,12 +92,12 @@ describe('MapView', () => {
 
       const { rerender } = render(<MapView contacts={[contact]} focusedKey={null} />);
 
-      expect(screen.getByText(/showing 1 contact heard in the last 7 days/i)).toBeInTheDocument();
+      expect(screen.getByText(/showing 1 contact/i)).toBeInTheDocument();
 
       vi.advanceTimersByTime(2 * 60 * 1000);
       rerender(<MapView contacts={[contact]} focusedKey={null} />);
 
-      expect(screen.getByText(/showing 1 contact heard in the last 7 days/i)).toBeInTheDocument();
+      expect(screen.getByText(/showing 1 contact/i)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

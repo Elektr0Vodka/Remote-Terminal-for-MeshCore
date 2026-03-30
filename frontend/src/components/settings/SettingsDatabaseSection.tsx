@@ -247,9 +247,9 @@ export function SettingsDatabaseSection({
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          When enabled, the server runs a daily background job that removes undecrypted raw
-          packets older than the configured threshold. Does not affect already-decrypted
-          messages or your chat history.
+          When enabled, the server runs a daily background job that removes undecrypted raw packets
+          older than the configured threshold. Does not affect already-decrypted messages or your
+          chat history.
         </p>
       </div>
 

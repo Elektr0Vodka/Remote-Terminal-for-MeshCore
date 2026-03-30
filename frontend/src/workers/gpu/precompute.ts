@@ -31,7 +31,7 @@ function modInverse(a: bigint, m: bigint): bigint {
   return ((old_s % m) + m) % m;
 }
 
-const D = ((-121665n * modInverse(121666n, P)) % P + P) % P;
+const D = (((-121665n * modInverse(121666n, P)) % P) + P) % P;
 
 // Ed25519 base point (affine coordinates) — standard values from RFC 8032
 const Bx = 15112221349535400772501151409588531511454012693041857206046113283949847762202n;
@@ -44,20 +44,20 @@ function pointAdd(p1: Point4, p2: Point4): Point4 {
   const [X1, Y1, Z1, T1] = p1;
   const [X2, Y2, Z2, T2] = p2;
 
-  const A = (((Y1 - X1) * (Y2 - X2)) % P + P) % P;
-  const B = (((Y1 + X1) * (Y2 + X2)) % P + P) % P;
-  const C = ((T1 * 2n * D * T2) % P + P) % P;
-  const DD = ((Z1 * 2n * Z2) % P + P) % P;
-  const E = ((B - A) % P + P) % P;
-  const F = ((DD - C) % P + P) % P;
-  const G = ((DD + C) % P + P) % P;
-  const H = ((B + A) % P + P) % P;
+  const A = ((((Y1 - X1) * (Y2 - X2)) % P) + P) % P;
+  const B = ((((Y1 + X1) * (Y2 + X2)) % P) + P) % P;
+  const C = (((T1 * 2n * D * T2) % P) + P) % P;
+  const DD = (((Z1 * 2n * Z2) % P) + P) % P;
+  const E = (((B - A) % P) + P) % P;
+  const F = (((DD - C) % P) + P) % P;
+  const G = (((DD + C) % P) + P) % P;
+  const H = (((B + A) % P) + P) % P;
 
   return [
-    (E * F % P + P) % P,
-    (G * H % P + P) % P,
-    (F * G % P + P) % P,
-    (E * H % P + P) % P,
+    (((E * F) % P) + P) % P,
+    (((G * H) % P) + P) % P,
+    (((F * G) % P) + P) % P,
+    (((E * H) % P) + P) % P,
   ];
 }
 
@@ -65,7 +65,7 @@ function pointAdd(p1: Point4, p2: Point4): Point4 {
 // Each point in extended coordinates (X, Y, Z, T)
 export function computeBaseTable(): Point4[] {
   const identity: Point4 = [0n, 1n, 1n, 0n];
-  const base: Point4 = [Bx, By, 1n, (Bx * By % P + P) % P];
+  const base: Point4 = [Bx, By, 1n, (((Bx * By) % P) + P) % P];
 
   const table: Point4[] = [identity]; // 0*B
   let current: Point4 = base;
@@ -91,7 +91,7 @@ export function serializeTableForGPU(table: Point4[]): Uint32Array {
     const tLimbs = bigintToLimbs16(T, P);
 
     for (let j = 0; j < 16; j++) {
-      data[offset + j]      = xLimbs[j];
+      data[offset + j] = xLimbs[j];
       data[offset + 16 + j] = yLimbs[j];
       data[offset + 32 + j] = zLimbs[j];
       data[offset + 48 + j] = tLimbs[j];

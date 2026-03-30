@@ -16,7 +16,7 @@ interface StatusBarProps {
 }
 
 // Themes whose day/night toggle is meaningful (they have a clear light ↔ dark pairing)
-const LIGHT_THEMES  = new Set(['light', 'ios', 'paper-grove', 'monochrome']);
+const LIGHT_THEMES = new Set(['light', 'ios', 'paper-grove', 'monochrome']);
 const TOGGLE_THEMES = new Set(['original', 'light', 'ios', 'paper-grove', 'monochrome']);
 const PREV_DARK_KEY = 'remoteterm-prev-dark-theme';
 
@@ -40,16 +40,24 @@ interface ThemePickerProps {
 }
 
 function ThemePickerMenu({ currentTheme, onClose }: ThemePickerProps) {
-  const isLight    = LIGHT_THEMES.has(currentTheme);
+  const isLight = LIGHT_THEMES.has(currentTheme);
   const showToggle = TOGGLE_THEMES.has(currentTheme);
 
   const handleToggle = () => {
     if (isLight) {
       let prev = 'original';
-      try { prev = localStorage.getItem(PREV_DARK_KEY) ?? 'original'; } catch { /* ignore */ }
+      try {
+        prev = localStorage.getItem(PREV_DARK_KEY) ?? 'original';
+      } catch {
+        /* ignore */
+      }
       applyTheme(prev);
     } else {
-      try { localStorage.setItem(PREV_DARK_KEY, currentTheme); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(PREV_DARK_KEY, currentTheme);
+      } catch {
+        /* ignore */
+      }
       applyTheme('light');
     }
     onClose();
@@ -57,7 +65,6 @@ function ThemePickerMenu({ currentTheme, onClose }: ThemePickerProps) {
 
   return (
     <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border border-border bg-card shadow-xl py-2">
-
       {/* Light / dark toggle — only when this theme has a meaningful counterpart */}
       {showToggle && (
         <>
@@ -65,9 +72,11 @@ function ThemePickerMenu({ currentTheme, onClose }: ThemePickerProps) {
             onClick={handleToggle}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
           >
-            {isLight
-              ? <Moon className="h-3.5 w-3.5 text-muted-foreground" />
-              : <Sun  className="h-3.5 w-3.5 text-muted-foreground" />}
+            {isLight ? (
+              <Moon className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <Sun className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
             <span>{isLight ? 'Switch to dark mode' : 'Switch to light mode'}</span>
           </button>
           <div className="my-1.5 border-t border-border" />
@@ -81,7 +90,10 @@ function ThemePickerMenu({ currentTheme, onClose }: ThemePickerProps) {
           return (
             <button
               key={theme.id}
-              onClick={() => { applyTheme(theme.id); onClose(); }}
+              onClick={() => {
+                applyTheme(theme.id);
+                onClose();
+              }}
               className={cn(
                 'flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left transition-colors',
                 active
@@ -128,10 +140,10 @@ export function StatusBar({
             ? 'Radio OK'
             : 'Radio Disconnected';
 
-  const [reconnecting, setReconnecting]   = useState(false);
-  const [currentTheme, setCurrentTheme]   = useState(getSavedTheme);
-  const [pickerOpen, setPickerOpen]       = useState(false);
-  const pickerRef                         = useRef<HTMLDivElement>(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState(getSavedTheme);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   // Sync theme state when changed from anywhere (e.g. the Settings → Appearance page)
   useEffect(() => {
@@ -271,10 +283,7 @@ export function StatusBar({
         </button>
 
         {pickerOpen && (
-          <ThemePickerMenu
-            currentTheme={currentTheme}
-            onClose={() => setPickerOpen(false)}
-          />
+          <ThemePickerMenu currentTheme={currentTheme} onClose={() => setPickerOpen(false)} />
         )}
       </div>
     </header>

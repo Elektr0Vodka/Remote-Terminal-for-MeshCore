@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, MapPin } from 'lucide-react';
 import { api } from '../api';
 import { formatTime } from '../utils/messageParser';
-import {
-  getContactDisplayName,
-  isPrefixOnlyContact,
-} from '../utils/pubkey';
+import { getContactDisplayName, isPrefixOnlyContact } from '../utils/pubkey';
 import {
   isValidLocation,
   calculateDistance,
@@ -203,13 +200,31 @@ function WeeklyBarChart({ points }: { points: ContactAnalyticsWeeklyBucket[] }) 
   const barW = Math.max(2, plotW / points.length - 2);
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label="Messages per week">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full h-auto"
+      role="img"
+      aria-label="Messages per week"
+    >
       {[0, 0.5, 1].map((ratio) => {
         const y = pad.top + plotH - ratio * plotH;
         return (
           <g key={ratio}>
-            <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} stroke="hsl(var(--border))" strokeWidth={0.5} />
-            <text x={pad.left - 4} y={y + 4} textAnchor="end" fontSize={9} fill="hsl(var(--muted-foreground))">
+            <line
+              x1={pad.left}
+              x2={width - pad.right}
+              y1={y}
+              y2={y}
+              stroke="hsl(var(--border))"
+              strokeWidth={0.5}
+            />
+            <text
+              x={pad.left - 4}
+              y={y + 4}
+              textAnchor="end"
+              fontSize={9}
+              fill="hsl(var(--muted-foreground))"
+            >
               {Math.round(max * ratio)}
             </text>
           </g>
@@ -220,7 +235,16 @@ function WeeklyBarChart({ points }: { points: ContactAnalyticsWeeklyBucket[] }) 
         const barH = (p.message_count / max) * plotH;
         const y = pad.top + plotH - barH;
         return (
-          <rect key={p.bucket_start} x={x} y={y} width={barW} height={barH} fill="#16a34a" opacity={0.8} rx={1} />
+          <rect
+            key={p.bucket_start}
+            x={x}
+            y={y}
+            width={barW}
+            height={barH}
+            fill="#16a34a"
+            opacity={0.8}
+            rx={1}
+          />
         );
       })}
       {/* x-axis labels: first, middle, last */}
@@ -228,8 +252,18 @@ function WeeklyBarChart({ points }: { points: ContactAnalyticsWeeklyBucket[] }) 
         const p = points[idx];
         const x = pad.left + (idx / points.length) * plotW + plotW / points.length / 2;
         return (
-          <text key={idx} x={x} y={height - 4} textAnchor="middle" fontSize={9} fill="hsl(var(--muted-foreground))">
-            {new Date(p.bucket_start * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+          <text
+            key={idx}
+            x={x}
+            y={height - 4}
+            textAnchor="middle"
+            fontSize={9}
+            fill="hsl(var(--muted-foreground))"
+          >
+            {new Date(p.bucket_start * 1000).toLocaleDateString([], {
+              month: 'short',
+              day: 'numeric',
+            })}
           </text>
         );
       })}
@@ -289,9 +323,10 @@ export function ContactAnalyticsView({
     return calculateDistance(config.lat, config.lon, contact.lat, contact.lon);
   }, [contact, config]);
 
-  const hasHourlyActivity = analytics?.hourly_activity.some(
-    (b) => b.last_24h_count > 0 || b.last_week_average > 0 || b.all_time_average > 0
-  ) ?? false;
+  const hasHourlyActivity =
+    analytics?.hourly_activity.some(
+      (b) => b.last_24h_count > 0 || b.last_week_average > 0 || b.all_time_average > 0
+    ) ?? false;
 
   const hasWeeklyActivity = analytics?.weekly_activity.some((b) => b.message_count > 0) ?? false;
 
@@ -396,10 +431,7 @@ export function ContactAnalyticsView({
                       value={analytics.channel_message_count.toLocaleString()}
                     />
                     {analytics.advert_frequency !== null && (
-                      <StatTile
-                        label="Advert Freq"
-                        value={`${analytics.advert_frequency}/hr`}
-                      />
+                      <StatTile label="Advert Freq" value={`${analytics.advert_frequency}/hr`} />
                     )}
                     {contact?.first_seen && (
                       <StatTile label="First Heard" value={formatTime(contact.first_seen)} />
@@ -451,7 +483,8 @@ export function ContactAnalyticsView({
                 <p className="text-[11px] text-muted-foreground mt-1">
                   Compares the last 24 hours against 7-day and all-time averages for the same hour
                   slot.
-                  {!analytics.includes_direct_messages && ' Channel messages only (name-only contact).'}
+                  {!analytics.includes_direct_messages &&
+                    ' Channel messages only (name-only contact).'}
                 </p>
               </div>
             )}

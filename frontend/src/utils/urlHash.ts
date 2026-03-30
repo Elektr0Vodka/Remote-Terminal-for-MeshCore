@@ -4,7 +4,17 @@ import { getContactDisplayName } from './pubkey';
 import type { SettingsSection } from '../components/settings/settingsConstants';
 
 interface ParsedHashConversation {
-  type: 'channel' | 'contact' | 'raw' | 'map' | 'visualizer' | 'search' | 'node' | 'mesh-health' | 'kms' | 'contact-analytics';
+  type:
+    | 'channel'
+    | 'contact'
+    | 'raw'
+    | 'map'
+    | 'visualizer'
+    | 'search'
+    | 'node'
+    | 'mesh-health'
+    | 'kms'
+    | 'contact-analytics';
   /** Conversation identity token (channel key or contact public key, or legacy name token) */
   name: string;
   /** Optional human-readable label segment (ignored for identity resolution) */
@@ -59,7 +69,11 @@ export function parseHashConversation(): ParsedHashConversation | null {
     const pubkey = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
     const label = slashIdx === -1 ? '' : decodeURIComponent(rest.slice(slashIdx + 1));
     if (pubkey) {
-      return { type: 'contact-analytics', name: decodeURIComponent(pubkey), label: label || undefined };
+      return {
+        type: 'contact-analytics',
+        name: decodeURIComponent(pubkey),
+        label: label || undefined,
+      };
     }
     return null;
   }

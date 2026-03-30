@@ -91,7 +91,7 @@ export function useConversationRouter({
       setActiveConversationState({ type: 'search', id: 'search', name: 'Message Search' });
       hasSetDefaultConversation.current = true;
       return;
-    }	
+    }
     if (hashConv?.type === 'node') {
       setActiveConversationState({ type: 'node', id: 'node', name: 'My Node' });
       hasSetDefaultConversation.current = true;
@@ -134,7 +134,11 @@ export function useConversationRouter({
       const lastViewed = getLastViewedConversation();
       if (
         lastViewed &&
-        (lastViewed.type === 'raw' || lastViewed.type === 'map' || lastViewed.type === 'visualizer' || lastViewed.type === 'node' || lastViewed.type === 'mesh-health')
+        (lastViewed.type === 'raw' ||
+          lastViewed.type === 'map' ||
+          lastViewed.type === 'visualizer' ||
+          lastViewed.type === 'node' ||
+          lastViewed.type === 'mesh-health')
       ) {
         setActiveConversationState(lastViewed);
         hasSetDefaultConversation.current = true;

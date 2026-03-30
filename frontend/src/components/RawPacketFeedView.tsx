@@ -406,7 +406,9 @@ export function RawPacketFeedView({
         firstPacketTsRef.current = d.first_timestamp;
         setFirstPacketTs(d.first_timestamp);
       })
-      .catch(() => { /* fall back to session start */ });
+      .catch(() => {
+        /* fall back to session start */
+      });
   }, []);
 
   useEffect(() => {
@@ -440,7 +442,8 @@ export function RawPacketFeedView({
         <div>
           <h2 className="font-semibold text-base text-foreground">Raw Packet Feed</h2>
           <p className="text-xs text-muted-foreground">
-            Monitoring since {formatTimestamp(firstPacketTs ?? rawPacketStatsSession.sessionStartedAt)}
+            Monitoring since{' '}
+            {formatTimestamp(firstPacketTs ?? rawPacketStatsSession.sessionStartedAt)}
           </p>
         </div>
         <div className="flex items-center gap-2">

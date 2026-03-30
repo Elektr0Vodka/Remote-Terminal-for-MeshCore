@@ -6,9 +6,9 @@ from app.repository.contacts import (
     ContactRepository,
 )
 from app.repository.fanout import FanoutConfigRepository
+from app.repository.kms import KmsRepository
 from app.repository.messages import MessageRepository
 from app.repository.raw_packets import RawPacketRepository
-from app.repository.kms import KmsRepository
 from app.repository.settings import AppSettingsRepository, StatisticsRepository
 
 __all__ = [

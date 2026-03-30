@@ -401,7 +401,9 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 54)
         applied += 1
     if version < 55:
-        logger.info("Applying migration 55: add contacts.advert_hash_mode and backfill from advert paths")
+        logger.info(
+            "Applying migration 55: add contacts.advert_hash_mode and backfill from advert paths"
+        )
         await _migrate_055_add_contact_advert_hash_mode(conn)
         await set_version(conn, 55)
         applied += 1
@@ -411,7 +413,9 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 56)
         applied += 1
     if version < 57:
-        logger.info("Applying migration 57: add contacts.observed_hash_mode for packet-evidence tracking")
+        logger.info(
+            "Applying migration 57: add contacts.observed_hash_mode for packet-evidence tracking"
+        )
         await _migrate_057_add_contact_observed_hash_mode(conn)
         await set_version(conn, 57)
         applied += 1
@@ -2923,8 +2927,8 @@ async def _migrate_046_cleanup_orphaned_contact_child_rows(conn: aiosqlite.Conne
             )
 
     await conn.commit()
-    
-    
+
+
 async def _migrate_047_add_raw_packet_signal_columns(conn: aiosqlite.Connection) -> None:
     """
     Add rssi, snr, and payload_type columns to raw_packets.
@@ -2937,8 +2941,8 @@ async def _migrate_047_add_raw_packet_signal_columns(conn: aiosqlite.Connection)
     RSSI/SNR are not stored in the raw packet data itself).
     """
     for column, typedef in [
-        ("rssi",         "INTEGER"),
-        ("snr",          "REAL"),
+        ("rssi", "INTEGER"),
+        ("snr", "REAL"),
         ("payload_type", "TEXT"),
     ]:
         try:
@@ -2950,6 +2954,7 @@ async def _migrate_047_add_raw_packet_signal_columns(conn: aiosqlite.Connection)
             else:
                 raise
     await conn.commit()
+
 
 async def _migrate_048_add_show_warning_ticker(conn: aiosqlite.Connection) -> None:
     """Add show_warning_ticker column to app_settings (default: enabled)."""
@@ -2985,9 +2990,7 @@ async def _migrate_050_add_advert_path_signal(conn: aiosqlite.Connection) -> Non
     """
     for col, col_type in [("best_rssi", "REAL"), ("best_snr", "REAL")]:
         try:
-            await conn.execute(
-                f"ALTER TABLE contact_advert_paths ADD COLUMN {col} {col_type}"
-            )
+            await conn.execute(f"ALTER TABLE contact_advert_paths ADD COLUMN {col} {col_type}")
         except Exception as e:
             if "duplicate column name" in str(e).lower():
                 logger.debug("contact_advert_paths.%s already exists, skipping", col)
@@ -3059,7 +3062,9 @@ async def _migrate_055_add_contact_advert_hash_mode(conn: aiosqlite.Connection) 
         )
         logger.debug("Backfilled contacts.advert_hash_mode from contact_advert_paths")
     else:
-        logger.debug("Skipping advert_hash_mode backfill: contact_advert_paths.hash_mode not present")
+        logger.debug(
+            "Skipping advert_hash_mode backfill: contact_advert_paths.hash_mode not present"
+        )
     await conn.commit()
     logger.debug("Added contacts.advert_hash_mode and backfilled from contact_advert_paths")
 
@@ -3074,9 +3079,7 @@ async def _migrate_054_add_advert_path_hash_mode(conn: aiosqlite.Connection) -> 
     NULL means the row pre-dates this migration and the width is unknown.
     """
     try:
-        await conn.execute(
-            "ALTER TABLE contact_advert_paths ADD COLUMN hash_mode INTEGER"
-        )
+        await conn.execute("ALTER TABLE contact_advert_paths ADD COLUMN hash_mode INTEGER")
     except Exception:
         pass  # Column already exists
 
@@ -3124,9 +3127,7 @@ async def _migrate_057_add_contact_observed_hash_mode(conn: aiosqlite.Connection
     NULL means no packet evidence yet collected.
     """
     try:
-        await conn.execute(
-            "ALTER TABLE contacts ADD COLUMN observed_hash_mode INTEGER"
-        )
+        await conn.execute("ALTER TABLE contacts ADD COLUMN observed_hash_mode INTEGER")
     except Exception as e:
         if "duplicate column name" in str(e).lower():
             logger.debug("contacts.observed_hash_mode already exists, skipping")

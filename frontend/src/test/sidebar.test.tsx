@@ -99,8 +99,15 @@ function renderSidebar(overrides?: {
   return { ...view, flightChannel, opsChannel, aliceName, roomName };
 }
 
+function getSectionHeaderButton(title: string): HTMLElement {
+  const all = screen.getAllByRole('button', { name: new RegExp(`^${title}`) });
+  // Section header buttons have title="Expand/Collapse X"; Favorites sub-category buttons don't
+  const btn = all.find((b) => b.hasAttribute('title')) ?? all[0];
+  return btn as HTMLElement;
+}
+
 function getSectionHeaderContainer(title: string): HTMLElement {
-  const btn = screen.getByRole('button', { name: title });
+  const btn = getSectionHeaderButton(title);
   const container = btn.closest('div');
   if (!container) throw new Error(`Missing header container for section ${title}`);
   return container;
@@ -182,17 +189,17 @@ describe('Sidebar section summaries', () => {
   it('renders room servers in their own section', () => {
     const { roomName } = renderSidebar();
 
-    expect(screen.getByRole('button', { name: 'Room Servers' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Room Servers/ })).toBeInTheDocument();
     expect(screen.getByText(roomName)).toBeInTheDocument();
   });
 
   it('expands collapsed sections during search and restores collapse state after clearing search', async () => {
     const { opsChannel, aliceName, roomName } = renderSidebar();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Channels' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Contacts' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Room Servers' }));
+    fireEvent.click(getSectionHeaderButton('Tools'));
+    fireEvent.click(getSectionHeaderButton('Channels'));
+    fireEvent.click(getSectionHeaderButton('Contacts'));
+    fireEvent.click(getSectionHeaderButton('Room Servers'));
 
     expect(screen.queryByText('Packet Feed')).not.toBeInTheDocument();
     expect(screen.queryByText(opsChannel.name)).not.toBeInTheDocument();
@@ -219,10 +226,10 @@ describe('Sidebar section summaries', () => {
   it('persists collapsed section state across unmount and remount', () => {
     const { opsChannel, aliceName, roomName, unmount } = renderSidebar();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Channels' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Contacts' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Room Servers' }));
+    fireEvent.click(getSectionHeaderButton('Tools'));
+    fireEvent.click(getSectionHeaderButton('Channels'));
+    fireEvent.click(getSectionHeaderButton('Contacts'));
+    fireEvent.click(getSectionHeaderButton('Room Servers'));
 
     expect(screen.queryByText('Packet Feed')).not.toBeInTheDocument();
     expect(screen.queryByText(opsChannel.name)).not.toBeInTheDocument();

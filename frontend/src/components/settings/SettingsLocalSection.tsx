@@ -68,11 +68,17 @@ export function SettingsLocalSection({
     try {
       const update: AppSettingsUpdate = {};
       const newHighThreshold = parseInt(highAdvertThreshold, 10);
-      if (!isNaN(newHighThreshold) && newHighThreshold !== (appSettings.high_advert_threshold ?? 8)) {
+      if (
+        !isNaN(newHighThreshold) &&
+        newHighThreshold !== (appSettings.high_advert_threshold ?? 8)
+      ) {
         update.high_advert_threshold = newHighThreshold;
       }
       const newMediumThreshold = parseInt(mediumAdvertThreshold, 10);
-      if (!isNaN(newMediumThreshold) && newMediumThreshold !== (appSettings.medium_advert_threshold ?? 2)) {
+      if (
+        !isNaN(newMediumThreshold) &&
+        newMediumThreshold !== (appSettings.medium_advert_threshold ?? 2)
+      ) {
         update.medium_advert_threshold = newMediumThreshold;
       }
       if (showWarningTicker !== (appSettings.show_warning_ticker ?? true)) {
@@ -227,8 +233,9 @@ export function SettingsLocalSection({
                 <span className="text-sm">Show warning ticker in the top bar</span>
               </label>
               <p className="text-xs text-muted-foreground">
-                Displays a scrolling alert strip when nodes are advertising too frequently (HIGH or MEDIUM
-                severity). Updates every 60 seconds. Can be dismissed temporarily with the X button.
+                Displays a scrolling alert strip when nodes are advertising too frequently (HIGH or
+                MEDIUM severity). Updates every 60 seconds. Can be dismissed temporarily with the X
+                button.
               </p>
             </div>
 
@@ -238,11 +245,7 @@ export function SettingsLocalSection({
               </div>
             )}
 
-            <Button
-              onClick={handleSaveThresholds}
-              disabled={thresholdBusy}
-              className="w-full"
-            >
+            <Button onClick={handleSaveThresholds} disabled={thresholdBusy} className="w-full">
               {thresholdBusy ? 'Saving...' : 'Save Mesh Health Settings'}
             </Button>
           </div>

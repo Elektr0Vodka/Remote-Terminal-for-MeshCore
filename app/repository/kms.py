@@ -17,7 +17,9 @@ class KmsRepository:
             model=row["model"] if "model" in cols else None,
             placement_date=row["placement_date"] if "placement_date" in cols else None,
             last_maintenance=row["last_maintenance"] if "last_maintenance" in cols else None,
-            last_registered_failure=row["last_registered_failure"] if "last_registered_failure" in cols else None,
+            last_registered_failure=row["last_registered_failure"]
+            if "last_registered_failure" in cols
+            else None,
             assigned_to=row["assigned_to"] if "assigned_to" in cols else None,
             notes=row["notes"] if "notes" in cols else None,
             created_at=row["created_at"],
@@ -26,17 +28,13 @@ class KmsRepository:
 
     @staticmethod
     async def get_all() -> list[KmsKey]:
-        cursor = await db.conn.execute(
-            "SELECT * FROM kms_keys ORDER BY created_at DESC"
-        )
+        cursor = await db.conn.execute("SELECT * FROM kms_keys ORDER BY created_at DESC")
         rows = await cursor.fetchall()
         return [KmsRepository._row_to_key(r) for r in rows]
 
     @staticmethod
     async def get_by_id(key_id: int) -> KmsKey | None:
-        cursor = await db.conn.execute(
-            "SELECT * FROM kms_keys WHERE id = ?", (key_id,)
-        )
+        cursor = await db.conn.execute("SELECT * FROM kms_keys WHERE id = ?", (key_id,))
         row = await cursor.fetchone()
         return KmsRepository._row_to_key(row) if row else None
 
@@ -68,6 +66,7 @@ class KmsRepository:
         )
         await db.conn.commit()
         row_id = cursor.lastrowid
+        assert row_id is not None
         result = await KmsRepository.get_by_id(row_id)
         assert result is not None
         return result
@@ -96,8 +95,6 @@ class KmsRepository:
 
     @staticmethod
     async def delete(key_id: int) -> bool:
-        cursor = await db.conn.execute(
-            "DELETE FROM kms_keys WHERE id = ?", (key_id,)
-        )
+        cursor = await db.conn.execute("DELETE FROM kms_keys WHERE id = ?", (key_id,))
         await db.conn.commit()
         return cursor.rowcount > 0

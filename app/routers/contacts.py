@@ -1,17 +1,15 @@
 import asyncio
 import logging
 import random
-import aiosqlite
-
-from app.database import db
-
 from contextlib import suppress
 
+import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from meshcore import EventType
-
-from app.dependencies import require_connected
 from pydantic import BaseModel as _BaseModel
+
+from app.database import db
+from app.dependencies import require_connected
 from app.models import (
     Contact,
     ContactActiveRoom,
@@ -259,14 +257,15 @@ async def get_contact_analytics(
         raise HTTPException(status_code=400, detail="name is required")
     return await _build_name_only_contact_analytics(normalized_name)
 
+
 @router.get("/heatmap")
 async def get_contacts_heatmap() -> list[dict]:
     """
     Return per-contact packet heard counts with coordinates for heatmap rendering.
- 
+
     Sums heard_count from contact_advert_paths per contact, joined with the
     contacts table for lat/lon. Only returns contacts with valid GPS coordinates.
- 
+
     Response: [{ lat, lon, count }]
     """
     async with aiosqlite.connect(db.db_path) as conn:
@@ -291,11 +290,9 @@ async def get_contacts_heatmap() -> list[dict]:
             """
         ) as cursor:
             rows = await cursor.fetchall()
- 
-    return [
-        {"lat": row["lat"], "lon": row["lon"], "count": int(row["count"])}
-        for row in rows
-    ]
+
+    return [{"lat": row["lat"], "lon": row["lon"], "count": int(row["count"])} for row in rows]
+
 
 @router.post("", response_model=Contact)
 async def create_contact(
@@ -604,6 +601,7 @@ async def set_contact_routing_override(
 
 # ─── Node notes endpoints ─────────────────────────────────────────────────────
 
+
 class ContactNotesUpdate(_BaseModel):
     notes: str | None = None
 
@@ -628,6 +626,7 @@ async def update_contact_notes(public_key: str, body: ContactNotesUpdate) -> dic
 
 
 # ─── Owner ID endpoints ───────────────────────────────────────────────────────
+
 
 class ContactOwnerIdUpdate(_BaseModel):
     owner_id: str | None = None

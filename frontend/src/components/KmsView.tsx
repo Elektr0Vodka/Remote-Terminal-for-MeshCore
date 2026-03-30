@@ -87,17 +87,17 @@ interface DifficultyTier {
 }
 
 function getDifficultyTier(n: number): DifficultyTier {
-  if (n <= 1_000)           return { label: 'Very Easy', className: 'text-emerald-500' };
-  if (n <= 100_000)         return { label: 'Easy',      className: 'text-green-500' };
-  if (n <= 10_000_000)      return { label: 'Moderate',  className: 'text-yellow-500' };
-  if (n <= 1_000_000_000)   return { label: 'Hard',      className: 'text-orange-500' };
+  if (n <= 1_000) return { label: 'Very Easy', className: 'text-emerald-500' };
+  if (n <= 100_000) return { label: 'Easy', className: 'text-green-500' };
+  if (n <= 10_000_000) return { label: 'Moderate', className: 'text-yellow-500' };
+  if (n <= 1_000_000_000) return { label: 'Hard', className: 'text-orange-500' };
   if (n <= 100_000_000_000) return { label: 'Very Hard', className: 'text-red-500' };
-  return                       { label: 'Extreme',    className: 'text-purple-500' };
+  return { label: 'Extreme', className: 'text-purple-500' };
 }
 
 function downloadBatch(
   keys: Array<{ pub: string; priv: string; label?: string }>,
-  filename: string,
+  filename: string
 ) {
   const data =
     keys.length === 1
@@ -155,7 +155,9 @@ function KeyDisplay({
       </div>
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <label className="text-xs text-muted-foreground uppercase tracking-wide">Private Key</label>
+          <label className="text-xs text-muted-foreground uppercase tracking-wide">
+            Private Key
+          </label>
           <button
             onClick={onTogglePriv}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition"
@@ -237,7 +239,11 @@ function SingleKeyResult({
           disabled={saving}
           className="flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+          {saving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Database className="h-3.5 w-3.5" />
+          )}
           Save to Vault
         </button>
       </div>
@@ -263,7 +269,7 @@ function MultiKeyRow({
     <div
       className={cn(
         'rounded border p-3 space-y-2',
-        isFound ? 'border-success/40 bg-success/5' : 'border-border',
+        isFound ? 'border-success/40 bg-success/5' : 'border-border'
       )}
     >
       <div className="flex items-center gap-2 min-w-0">
@@ -389,12 +395,10 @@ export function KmsView() {
       gpu?: { requestAdapter: () => Promise<unknown> };
     };
     if (nav.gpu) {
-      nav.gpu
-        .requestAdapter()
-        .then(
-          (a) => setGpuAvailable(a !== null),
-          () => setGpuAvailable(false),
-        );
+      nav.gpu.requestAdapter().then(
+        (a) => setGpuAvailable(a !== null),
+        () => setGpuAvailable(false)
+      );
     } else {
       setGpuAvailable(false);
     }
@@ -424,7 +428,7 @@ export function KmsView() {
 
       if (msg.type === 'progress') {
         targetsRef.current = targetsRef.current.map((t, i) =>
-          i === idx ? { ...t, kps: msg.keysPerSecond, attempts: msg.attempts } : t,
+          i === idx ? { ...t, kps: msg.keysPerSecond, attempts: msg.attempts } : t
         );
         setTargets([...targetsRef.current]);
       } else if (msg.type === 'found') {
@@ -434,7 +438,7 @@ export function KmsView() {
           attempts: msg.attempts,
         };
         targetsRef.current = targetsRef.current.map((t, i) =>
-          i === idx ? { ...t, status: 'found', result, kps: 0 } : t,
+          i === idx ? { ...t, status: 'found', result, kps: 0 } : t
         );
         setTargets([...targetsRef.current]);
         worker.terminate();
@@ -445,7 +449,7 @@ export function KmsView() {
           const nextIdx = idx + 1;
           if (nextIdx < targetsRef.current.length) {
             targetsRef.current = targetsRef.current.map((t, i) =>
-              i === nextIdx ? { ...t, status: 'searching' } : t,
+              i === nextIdx ? { ...t, status: 'searching' } : t
             );
             setTargets([...targetsRef.current]);
             spawnRef.current(nextIdx);
@@ -484,7 +488,7 @@ export function KmsView() {
 
     // Mark this target as searching
     targetsRef.current = targetsRef.current.map((t, i) =>
-      i === targetIdx ? { ...t, status: 'searching' as const } : t,
+      i === targetIdx ? { ...t, status: 'searching' as const } : t
     );
     setTargets([...targetsRef.current]);
 
@@ -504,10 +508,10 @@ export function KmsView() {
           workerKpsRef.current.set(workerKey, msg.keysPerSecond);
           const totalKps = localWorkerKeys.reduce(
             (sum, k) => sum + (workerKpsRef.current.get(k) ?? 0),
-            0,
+            0
           );
           targetsRef.current = targetsRef.current.map((t, i) =>
-            i === targetIdx ? { ...t, kps: totalKps, attempts: msg.attempts } : t,
+            i === targetIdx ? { ...t, kps: totalKps, attempts: msg.attempts } : t
           );
           setTargets([...targetsRef.current]);
         } else if (msg.type === 'found') {
@@ -530,7 +534,7 @@ export function KmsView() {
             attempts: msg.attempts,
           };
           targetsRef.current = targetsRef.current.map((t, i) =>
-            i === targetIdx ? { ...t, status: 'found', result, kps: 0 } : t,
+            i === targetIdx ? { ...t, status: 'found', result, kps: 0 } : t
           );
           setTargets([...targetsRef.current]);
 
@@ -582,7 +586,9 @@ export function KmsView() {
   }
 
   function bytesToHex(b: Uint8Array): string {
-    return Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
+    return Array.from(b)
+      .map((x) => x.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   /** Run the GPU dispatch loop for target at `idx`, then chain to `idx+1`. */
@@ -615,7 +621,11 @@ export function KmsView() {
         const priv = await expandPrivateKeyFromSeed(match.seed);
         const privHex = bytesToHex(priv);
 
-        const result: GeneratedKey = { publicKey: pubHex, privateKey: privHex, attempts: totalAttempted };
+        const result: GeneratedKey = {
+          publicKey: pubHex,
+          privateKey: privHex,
+          attempts: totalAttempted,
+        };
         targetsRef.current = targetsRef.current.map((t, i) =>
           i === idx ? { ...t, status: 'found', result, kps: 0 } : t
         );
@@ -740,11 +750,10 @@ export function KmsView() {
   const copyToClipboard = (text: string, label: string) =>
     navigator.clipboard.writeText(text).then(
       () => toast.success(`${label} copied`),
-      () => toast.error('Clipboard not available'),
+      () => toast.error('Clipboard not available')
     );
 
-  const togglePriv = (key: string) =>
-    setShowPriv((p) => ({ ...p, [key]: !p[key] }));
+  const togglePriv = (key: string) => setShowPriv((p) => ({ ...p, [key]: !p[key] }));
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const foundTargets = targets.filter((t) => t.status === 'found' && t.result);
@@ -769,7 +778,7 @@ export function KmsView() {
                 'px-3 py-1 rounded text-xs font-medium transition-colors',
                 tab === t
                   ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
               )}
             >
               {t === 'generate' ? 'Generate' : 'Vault'}
@@ -798,34 +807,34 @@ export function KmsView() {
                   disabled={running}
                   className={cn(
                     'flex-1 rounded border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring transition',
-                    !prefixValid ? 'border-destructive' : 'border-border',
+                    !prefixValid ? 'border-destructive' : 'border-border'
                   )}
                 />
-                {!prefixValid && (
-                  <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-                )}
+                {!prefixValid && <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />}
               </div>
-              {difficulty && prefixValid && (() => {
-                const prefixLen = cleanPrefix.length + suffixLen;
-                const n = Math.pow(16, prefixLen);
-                const tier = getDifficultyTier(n);
-                const eta = totalKps > 0 ? formatEta(n / totalKps) : null;
-                return (
-                  <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                    <span className={cn('font-semibold', tier.className)}>{tier.label}</span>
-                    <span className="text-muted-foreground">·</span>
-                    <span className="text-muted-foreground">
-                      ~{formatAttempts(n)} attempts for a {prefixLen}-char prefix
-                    </span>
-                    {eta && (
-                      <>
-                        <span className="text-muted-foreground">·</span>
-                        <span className="text-muted-foreground">~{eta} at current rate</span>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
+              {difficulty &&
+                prefixValid &&
+                (() => {
+                  const prefixLen = cleanPrefix.length + suffixLen;
+                  const n = Math.pow(16, prefixLen);
+                  const tier = getDifficultyTier(n);
+                  const eta = totalKps > 0 ? formatEta(n / totalKps) : null;
+                  return (
+                    <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                      <span className={cn('font-semibold', tier.className)}>{tier.label}</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-muted-foreground">
+                        ~{formatAttempts(n)} attempts for a {prefixLen}-char prefix
+                      </span>
+                      {eta && (
+                        <>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="text-muted-foreground">~{eta} at current rate</span>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
             </section>
 
             {/* ── Number of Keys ────────────────────────────────────────────── */}
@@ -845,14 +854,22 @@ export function KmsView() {
                 />
                 {keyCount > 1 && cleanPrefix ? (
                   <p className="text-xs text-muted-foreground">
-                    Targets:{' '}
-                    <span className="font-mono">{cleanPrefix}1</span>
+                    Targets: <span className="font-mono">{cleanPrefix}1</span>
                     {keyCount > 2 && (
                       <>
-                        {' '}→ <span className="font-mono">{cleanPrefix}{keyCount - 1}</span>
+                        {' '}
+                        →{' '}
+                        <span className="font-mono">
+                          {cleanPrefix}
+                          {keyCount - 1}
+                        </span>
                       </>
-                    )}
-                    {' '}→ <span className="font-mono">{cleanPrefix}{keyCount}</span>
+                    )}{' '}
+                    →{' '}
+                    <span className="font-mono">
+                      {cleanPrefix}
+                      {keyCount}
+                    </span>
                   </p>
                 ) : keyCount > 1 ? (
                   <p className="text-xs text-muted-foreground">
@@ -897,7 +914,12 @@ export function KmsView() {
                       set: setAssignedTo,
                       placeholder: 'Team or person',
                     },
-                  ] as { label: string; value: string; set: (v: string) => void; placeholder: string }[]
+                  ] as {
+                    label: string;
+                    value: string;
+                    set: (v: string) => void;
+                    placeholder: string;
+                  }[]
                 ).map(({ label, value, set, placeholder }) => (
                   <div key={label} className="space-y-1">
                     <label className="text-xs text-muted-foreground">{label}</label>
@@ -935,7 +957,7 @@ export function KmsView() {
                       'px-3 py-1.5 font-medium transition-colors',
                       !useParallel
                         ? 'bg-primary text-primary-foreground'
-                        : 'bg-background text-muted-foreground hover:bg-accent/50',
+                        : 'bg-background text-muted-foreground hover:bg-accent/50'
                     )}
                   >
                     CPU
@@ -955,7 +977,7 @@ export function KmsView() {
                       useParallel
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-background text-muted-foreground hover:bg-accent/50',
-                      !gpuAvailable && 'opacity-40 cursor-not-allowed',
+                      !gpuAvailable && 'opacity-40 cursor-not-allowed'
                     )}
                   >
                     GPU
@@ -987,7 +1009,7 @@ export function KmsView() {
                     'flex items-center gap-1 px-2.5 py-1.5 rounded border text-xs font-medium transition-colors ml-1',
                     turboMode
                       ? 'bg-orange-500/20 border-orange-500/50 text-orange-400 hover:bg-orange-500/30'
-                      : 'bg-background border-border text-muted-foreground hover:bg-accent/50',
+                      : 'bg-background border-border text-muted-foreground hover:bg-accent/50'
                   )}
                 >
                   <Flame className="h-3.5 w-3.5" />
@@ -1005,7 +1027,7 @@ export function KmsView() {
                     running
                       ? 'bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/30'
                       : 'bg-primary text-primary-foreground hover:bg-primary/90',
-                    !prefixValid && 'opacity-50 cursor-not-allowed',
+                    !prefixValid && 'opacity-50 cursor-not-allowed'
                   )}
                 >
                   {running ? (
@@ -1053,7 +1075,7 @@ export function KmsView() {
                               priv: t.result!.privateKey,
                               label: t.label,
                             })),
-                            `meshcore_${cleanPrefix || 'keys'}_${Date.now()}.json`,
+                            `meshcore_${cleanPrefix || 'keys'}_${Date.now()}.json`
                           )
                         }
                         className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition"
@@ -1092,7 +1114,7 @@ export function KmsView() {
                             priv: targets[0].result.privateKey,
                           },
                         ],
-                        `meshcore_${cleanPrefix || 'key'}_${Date.now()}.json`,
+                        `meshcore_${cleanPrefix || 'key'}_${Date.now()}.json`
                       )
                     }
                     onSave={handleSaveAll}
@@ -1110,8 +1132,14 @@ export function KmsView() {
                         onDownload={() =>
                           t.result &&
                           downloadBatch(
-                            [{ pub: t.result.publicKey, priv: t.result.privateKey, label: t.label }],
-                            `meshcore_${t.label}_${Date.now()}.json`,
+                            [
+                              {
+                                pub: t.result.publicKey,
+                                priv: t.result.privateKey,
+                                label: t.label,
+                              },
+                            ],
+                            `meshcore_${t.label}_${Date.now()}.json`
                           )
                         }
                       />

@@ -34,7 +34,9 @@ function bytesToHex(b: Uint8Array): string {
 }
 
 /** Build prefix bytes + mask to support odd-nibble prefixes (e.g. "f8a"). */
-function buildPrefixMatcher(hex: string): { bytes: Uint8Array; mask: Uint8Array; len: number } | null {
+function buildPrefixMatcher(
+  hex: string
+): { bytes: Uint8Array; mask: Uint8Array; len: number } | null {
   if (!hex) return null;
   const padded = hex.length % 2 === 0 ? hex : hex + '0';
   const bytes = new Uint8Array(padded.length / 2);
@@ -51,7 +53,7 @@ function buildPrefixMatcher(hex: string): { bytes: Uint8Array; mask: Uint8Array;
 
 function matchesPrefix(
   pub: Uint8Array,
-  matcher: { bytes: Uint8Array; mask: Uint8Array; len: number },
+  matcher: { bytes: Uint8Array; mask: Uint8Array; len: number }
 ): boolean {
   for (let i = 0; i < matcher.len; i++) {
     if ((pub[i] & matcher.mask[i]) !== (matcher.bytes[i] & matcher.mask[i])) return false;
@@ -126,7 +128,11 @@ self.onmessage = async (event: MessageEvent<KeygenWorkerMessage>) => {
         const elapsed = now - periodStart;
         if (elapsed >= PROGRESS_INTERVAL_MS) {
           const kps = Math.round((periodAttempts / elapsed) * 1000);
-          self.postMessage({ type: 'progress', keysPerSecond: kps, attempts } satisfies KeygenWorkerResult);
+          self.postMessage({
+            type: 'progress',
+            keysPerSecond: kps,
+            attempts,
+          } satisfies KeygenWorkerResult);
           periodStart = now;
           periodAttempts = 0;
         }

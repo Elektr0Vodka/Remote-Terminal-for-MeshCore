@@ -98,9 +98,15 @@ class AppSettingsRepository:
             flood_scope=row["flood_scope"] or "",
             blocked_keys=blocked_keys,
             blocked_names=blocked_names,
-            show_warning_ticker=bool(row["show_warning_ticker"] if row["show_warning_ticker"] is not None else 1),
-            auto_delete_raw_enabled=bool(row["auto_delete_raw_enabled"] if row["auto_delete_raw_enabled"] is not None else 0),
-            auto_delete_raw_days=int(row["auto_delete_raw_days"] if row["auto_delete_raw_days"] is not None else 14),
+            show_warning_ticker=bool(
+                row["show_warning_ticker"] if row["show_warning_ticker"] is not None else 1
+            ),
+            auto_delete_raw_enabled=bool(
+                row["auto_delete_raw_enabled"] if row["auto_delete_raw_enabled"] is not None else 0
+            ),
+            auto_delete_raw_days=int(
+                row["auto_delete_raw_days"] if row["auto_delete_raw_days"] is not None else 14
+            ),
         )
 
     @staticmethod

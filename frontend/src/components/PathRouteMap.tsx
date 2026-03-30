@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isValidLocation } from '../utils/pathUtils';
@@ -83,9 +83,54 @@ function RouteMapBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
+/**
+ * Build an ordered sequence of GPS coordinates for the Polyline:
+ * sender → each hop's first unambiguous match → receiver.
+ * Gaps (unknown/ambiguous hops or missing GPS) break the chain so we
+ * draw as many connected segments as possible.
+ */
+function buildPolylineSegments(resolved: ResolvedPath): [number, number][][] {
+  const allPoints: ([number, number] | null)[] = [];
+
+  if (isValidLocation(resolved.sender.lat, resolved.sender.lon)) {
+    allPoints.push([resolved.sender.lat!, resolved.sender.lon!]);
+  } else {
+    allPoints.push(null);
+  }
+
+  for (const hop of resolved.hops) {
+    if (hop.matches.length === 1 && isValidLocation(hop.matches[0].lat, hop.matches[0].lon)) {
+      allPoints.push([hop.matches[0].lat!, hop.matches[0].lon!]);
+    } else {
+      allPoints.push(null); // gap
+    }
+  }
+
+  if (isValidLocation(resolved.receiver.lat, resolved.receiver.lon)) {
+    allPoints.push([resolved.receiver.lat!, resolved.receiver.lon!]);
+  } else {
+    allPoints.push(null);
+  }
+
+  // Split into contiguous non-null segments
+  const segments: [number, number][][] = [];
+  let current: [number, number][] = [];
+  for (const pt of allPoints) {
+    if (pt !== null) {
+      current.push(pt);
+    } else {
+      if (current.length >= 2) segments.push(current);
+      current = [];
+    }
+  }
+  if (current.length >= 2) segments.push(current);
+  return segments;
+}
+
 export function PathRouteMap({ resolved, senderInfo, height = 220 }: PathRouteMapProps) {
   const points = collectPoints(resolved);
   const hasAnyGps = points.length > 0;
+  const polylineSegments = buildPolylineSegments(resolved);
 
   // Check if some nodes are missing GPS
   let totalNodes = 2; // sender + receiver
@@ -131,6 +176,15 @@ export function PathRouteMap({ resolved, senderInfo, height = 220 }: PathRouteMa
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <RouteMapBounds points={points} />
+
+          {/* Route polyline — drawn behind markers */}
+          {polylineSegments.map((seg, i) => (
+            <Polyline
+              key={i}
+              positions={seg}
+              pathOptions={{ color: '#3b82f6', weight: 2.5, opacity: 0.7, dashArray: '6 4' }}
+            />
+          ))}
 
           {/* Sender marker */}
           {isValidLocation(resolved.sender.lat, resolved.sender.lon) && (

@@ -1,6 +1,6 @@
-import sys
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -70,7 +70,7 @@ async def _auto_delete_raw_loop() -> None:
             logger.exception("Error in auto-delete raw packets loop")
 
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 setup_logging()

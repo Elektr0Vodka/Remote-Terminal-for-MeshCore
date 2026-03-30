@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 #   asyncio.create_task(self.reader.handle_rx(self.inframe))
 # which means an uncaught exception escapes as an unretieved Task error.
 # Patching the class ensures the guard is always in place.
-import struct
+import struct  # noqa: E402
 
 try:
     from meshcore.reader import MessageReader as _MessageReader

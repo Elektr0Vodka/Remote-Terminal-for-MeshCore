@@ -261,7 +261,8 @@ export const api = {
 
   // Packets
   getPacket: (packetId: number) => fetchJson<RawPacket>(`/packets/${packetId}`),
-  getFirstPacketTimestamp: () => fetchJson<{ first_timestamp: number | null }>('/packets/first-timestamp'),
+  getFirstPacketTimestamp: () =>
+    fetchJson<{ first_timestamp: number | null }>('/packets/first-timestamp'),
   getAdvertWarnings: () =>
     fetchJson<{ warnings: AdvertWarning[]; generated_at: number }>('/packets/advert-warnings'),
   getUndecryptedPacketCount: () => fetchJson<{ count: number }>('/packets/undecrypted/count'),
@@ -432,6 +433,5 @@ export const api = {
     fetchJson<KmsKey>('/kms/keys', { method: 'POST', body: JSON.stringify(body) }),
   kmsUpdateKey: (id: number, body: KmsKeyUpdate) =>
     fetchJson<KmsKey>(`/kms/keys/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  kmsDeleteKey: (id: number) =>
-    fetch(`${API_BASE}/kms/keys/${id}`, { method: 'DELETE' }),
+  kmsDeleteKey: (id: number) => fetch(`${API_BASE}/kms/keys/${id}`, { method: 'DELETE' }),
 };

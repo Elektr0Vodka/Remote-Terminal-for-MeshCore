@@ -6,16 +6,43 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, ChevronDown, ChevronUp, ChevronsUpDown, Map, RefreshCw } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  Map,
+  RefreshCw,
+} from 'lucide-react';
 import type { RadioConfig } from '../types';
 
 // ─── Extra analytics types ───────────────────────────────────────────────────
 
-interface ScatterPoint { rssi: number; snr: number; }
-interface HeatmapCell { dow: number; hour: number; count: number; }
-interface HeatmapData { cells: HeatmapCell[]; max_count: number; total: number; }
-interface RelayPair { hop_a: string; hop_b: string; count: number; }
-interface ReachabilityRing { hops: number | null; count: number; label: string; }
+interface ScatterPoint {
+  rssi: number;
+  snr: number;
+}
+interface HeatmapCell {
+  dow: number;
+  hour: number;
+  count: number;
+}
+interface HeatmapData {
+  cells: HeatmapCell[];
+  max_count: number;
+  total: number;
+}
+interface RelayPair {
+  hop_a: string;
+  hop_b: string;
+  count: number;
+}
+interface ReachabilityRing {
+  hops: number | null;
+  count: number;
+  label: string;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -53,7 +80,15 @@ interface MeshHealthResponse {
   contacts: MeshHealthContact[];
 }
 
-type SortKey = 'name' | 'advert_count' | 'last_seen' | 'first_seen' | 'min_path_len' | 'distance' | 'status' | 'hash_mode';
+type SortKey =
+  | 'name'
+  | 'advert_count'
+  | 'last_seen'
+  | 'first_seen'
+  | 'min_path_len'
+  | 'distance'
+  | 'status'
+  | 'hash_mode';
 type SortDir = 'asc' | 'desc';
 
 // ─── Time windows ───────────────────────────────────────────────────────────
@@ -66,13 +101,13 @@ interface TimeWindow {
 }
 
 const TIME_WINDOWS: TimeWindow[] = [
-  { key: '30m', label: '30m', hours: 0.5,  autoRefresh: true  },
-  { key: '1h',  label: '1h',  hours: 1,    autoRefresh: true  },
-  { key: '3h',  label: '3h',  hours: 3,    autoRefresh: false },
-  { key: '6h',  label: '6h',  hours: 6,    autoRefresh: false },
-  { key: '12h', label: '12h', hours: 12,   autoRefresh: false },
-  { key: '24h', label: '24h', hours: 24,   autoRefresh: false },
-  { key: '7d',  label: '7d',  hours: 168,  autoRefresh: false },
+  { key: '30m', label: '30m', hours: 0.5, autoRefresh: true },
+  { key: '1h', label: '1h', hours: 1, autoRefresh: true },
+  { key: '3h', label: '3h', hours: 3, autoRefresh: false },
+  { key: '6h', label: '6h', hours: 6, autoRefresh: false },
+  { key: '12h', label: '12h', hours: 12, autoRefresh: false },
+  { key: '24h', label: '24h', hours: 24, autoRefresh: false },
+  { key: '7d', label: '7d', hours: 168, autoRefresh: false },
 ];
 
 const DEFAULT_WINDOW = TIME_WINDOWS[0]; // 0 = 30m default
@@ -104,18 +139,20 @@ function relTime(unixSec: number | null | undefined): string {
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function StatTile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="rounded border border-border bg-background p-2">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
       <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">{value}</div>
       {sub && <div className="text-[10px] text-muted-foreground">{sub}</div>}
     </div>
@@ -148,48 +185,97 @@ function DistBars({ items }: { items: { label: string; count: number; color: str
 
 function ScatterPlot({ points }: { points: ScatterPoint[] }) {
   if (!points.length) return null;
-  const W = 360, H = 180;
+  const W = 360,
+    H = 180;
   const pad = { top: 8, right: 10, bottom: 28, left: 34 };
   const pw = W - pad.left - pad.right;
   const ph = H - pad.top - pad.bottom;
 
   const rssis = points.map((p) => p.rssi);
-  const snrs  = points.map((p) => p.snr);
-  const minR = Math.min(...rssis), maxR = Math.max(...rssis, minR + 1);
-  const minS = Math.min(...snrs),  maxS = Math.max(...snrs,  minS + 1);
+  const snrs = points.map((p) => p.snr);
+  const minR = Math.min(...rssis),
+    maxR = Math.max(...rssis, minR + 1);
+  const minS = Math.min(...snrs),
+    maxS = Math.max(...snrs, minS + 1);
 
   const xOf = (r: number) => pad.left + ((r - minR) / (maxR - minR)) * pw;
-  const yOf = (s: number) => pad.top  + ph - ((s - minS) / (maxS - minS)) * ph;
+  const yOf = (s: number) => pad.top + ph - ((s - minS) / (maxS - minS)) * ph;
 
   // X-axis ticks
   const xTicks = [minR, Math.round((minR + maxR) / 2), maxR];
   const yTicks = [minS, Math.round((minS + maxS) / 2), maxS];
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="SNR vs RSSI scatter">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full h-auto"
+      role="img"
+      aria-label="SNR vs RSSI scatter"
+    >
       {/* Grid lines */}
       {yTicks.map((s) => (
         <g key={s}>
-          <line x1={pad.left} x2={W - pad.right} y1={yOf(s)} y2={yOf(s)}
-            stroke="hsl(var(--border))" strokeWidth={0.5} />
-          <text x={pad.left - 3} y={yOf(s) + 3} textAnchor="end" fontSize={8}
-            fill="hsl(var(--muted-foreground))">{s}</text>
+          <line
+            x1={pad.left}
+            x2={W - pad.right}
+            y1={yOf(s)}
+            y2={yOf(s)}
+            stroke="hsl(var(--border))"
+            strokeWidth={0.5}
+          />
+          <text
+            x={pad.left - 3}
+            y={yOf(s) + 3}
+            textAnchor="end"
+            fontSize={8}
+            fill="hsl(var(--muted-foreground))"
+          >
+            {s}
+          </text>
         </g>
       ))}
       {xTicks.map((r) => (
-        <text key={r} x={xOf(r)} y={H - 4} textAnchor="middle" fontSize={8}
-          fill="hsl(var(--muted-foreground))">{r}</text>
+        <text
+          key={r}
+          x={xOf(r)}
+          y={H - 4}
+          textAnchor="middle"
+          fontSize={8}
+          fill="hsl(var(--muted-foreground))"
+        >
+          {r}
+        </text>
       ))}
       {/* Axis labels */}
-      <text x={W / 2} y={H - 1} textAnchor="middle" fontSize={7}
-        fill="hsl(var(--muted-foreground))">RSSI (dBm)</text>
-      <text x={9} y={H / 2} textAnchor="middle" fontSize={7}
+      <text
+        x={W / 2}
+        y={H - 1}
+        textAnchor="middle"
+        fontSize={7}
         fill="hsl(var(--muted-foreground))"
-        transform={`rotate(-90, 9, ${H / 2})`}>SNR (dB)</text>
+      >
+        RSSI (dBm)
+      </text>
+      <text
+        x={9}
+        y={H / 2}
+        textAnchor="middle"
+        fontSize={7}
+        fill="hsl(var(--muted-foreground))"
+        transform={`rotate(-90, 9, ${H / 2})`}
+      >
+        SNR (dB)
+      </text>
       {/* Points */}
       {points.map((p, i) => (
-        <circle key={i} cx={xOf(p.rssi)} cy={yOf(p.snr)} r={1.8}
-          fill="#2563eb" fillOpacity={0.45} />
+        <circle
+          key={i}
+          cx={xOf(p.rssi)}
+          cy={yOf(p.snr)}
+          r={1.8}
+          fill="#2563eb"
+          fillOpacity={0.45}
+        />
       ))}
     </svg>
   );
@@ -212,27 +298,35 @@ function HourlyHeatmap({ data }: { data: HeatmapData }) {
     if (!count) return 'hsl(var(--muted))';
     const ratio = count / maxCount;
     if (ratio < 0.25) return '#1e40af';
-    if (ratio < 0.5)  return '#2563eb';
+    if (ratio < 0.5) return '#2563eb';
     if (ratio < 0.75) return '#f59e0b';
     return '#ef4444';
   };
 
   return (
     <div className="overflow-x-auto">
-      <div className="grid gap-px" style={{ display: 'grid', gridTemplateColumns: '28px repeat(24, 1fr)', minWidth: 380 }}>
+      <div
+        className="grid gap-px"
+        style={{ display: 'grid', gridTemplateColumns: '28px repeat(24, 1fr)', minWidth: 380 }}
+      >
         {/* Empty corner + hour headers */}
         <div />
         {Array.from({ length: 24 }, (_, h) => (
-          <div key={h} className="text-center text-[8px] text-muted-foreground pb-0.5"
-            style={{ lineHeight: 1 }}>
+          <div
+            key={h}
+            className="text-center text-[8px] text-muted-foreground pb-0.5"
+            style={{ lineHeight: 1 }}
+          >
             {h % 6 === 0 ? `${h}h` : ''}
           </div>
         ))}
         {/* Rows: one per day */}
         {Array.from({ length: 7 }, (_, dow) => (
           <div key={dow} style={{ display: 'contents' }}>
-            <div className="text-[8px] text-muted-foreground flex items-center pr-1"
-              style={{ justifyContent: 'flex-end' }}>
+            <div
+              className="text-[8px] text-muted-foreground flex items-center pr-1"
+              style={{ justifyContent: 'flex-end' }}
+            >
               {DOW_LABELS[dow]}
             </div>
             {Array.from({ length: 24 }, (_, h) => {
@@ -271,14 +365,21 @@ function RelayPairBars({ pairs }: { pairs: RelayPair[] }) {
     <div className="space-y-1.5">
       {pairs.slice(0, 10).map((p, i) => (
         <div key={i} className="flex items-center gap-2">
-          <span className="w-32 flex-shrink-0 font-mono text-[9px] text-muted-foreground truncate"
-            title={`${p.hop_a} → ${p.hop_b}`}>
+          <span
+            className="w-32 flex-shrink-0 font-mono text-[9px] text-muted-foreground truncate"
+            title={`${p.hop_a} → ${p.hop_b}`}
+          >
             {p.hop_a}→{p.hop_b}
           </span>
           <div className="flex-1 overflow-hidden rounded-full bg-muted h-1.5">
-            <div className="h-full rounded-full" style={{ width: `${(p.count / max) * 100}%`, background: 'hsl(var(--primary))' }} />
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${(p.count / max) * 100}%`, background: 'hsl(var(--primary))' }}
+            />
           </div>
-          <span className="w-6 flex-shrink-0 text-right text-[9px] tabular-nums text-muted-foreground">{p.count}</span>
+          <span className="w-6 flex-shrink-0 text-right text-[9px] tabular-nums text-muted-foreground">
+            {p.count}
+          </span>
         </div>
       ))}
     </div>
@@ -287,9 +388,11 @@ function RelayPairBars({ pairs }: { pairs: RelayPair[] }) {
 
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
   if (col !== sortKey) return <ChevronsUpDown className="ml-1 inline h-3 w-3 opacity-40" />;
-  return sortDir === 'asc'
-    ? <ChevronUp className="ml-1 inline h-3 w-3" />
-    : <ChevronDown className="ml-1 inline h-3 w-3" />;
+  return sortDir === 'asc' ? (
+    <ChevronUp className="ml-1 inline h-3 w-3" />
+  ) : (
+    <ChevronDown className="ml-1 inline h-3 w-3" />
+  );
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
@@ -305,14 +408,14 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(0);
 
-  const lastFetchRef  = useRef<number>(0);
-  const focusRowRef   = useRef<HTMLTableRowElement>(null);
-  const focusDoneRef  = useRef(false);
+  const lastFetchRef = useRef<number>(0);
+  const focusRowRef = useRef<HTMLTableRowElement>(null);
+  const focusDoneRef = useRef(false);
 
   // ── Extra analytics state ─────────────────────────────────────────────────
-  const [scatter,      setScatter]      = useState<ScatterPoint[]>([]);
-  const [heatmapData,  setHeatmapData]  = useState<HeatmapData | null>(null);
-  const [relayPairs,   setRelayPairs]   = useState<RelayPair[]>([]);
+  const [scatter, setScatter] = useState<ScatterPoint[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
+  const [relayPairs, setRelayPairs] = useState<RelayPair[]>([]);
   const [reachability, setReachability] = useState<ReachabilityRing[]>([]);
 
   const fetchHealth = useCallback((win: TimeWindow) => {
@@ -327,7 +430,10 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<MeshHealthResponse>;
       })
-      .then((d) => { setData(d); setLoading(false); })
+      .then((d) => {
+        setData(d);
+        setLoading(false);
+      })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load');
         setLoading(false);
@@ -377,7 +483,9 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
   }, [selectedWindow, fetchHealth]);
 
   // Reset page when sort changes
-  useEffect(() => { setPage(0); }, [sortKey, sortDir]);
+  useEffect(() => {
+    setPage(0);
+  }, [sortKey, sortDir]);
 
   // Scroll to focused node after data loads (only once per focusKey)
   useEffect(() => {
@@ -453,19 +561,19 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
   const hopDist = useMemo(() => {
     if (!contactsWithDist.length) return [];
     const b = [
-      { label: 'Direct',  count: 0, color: 'hsl(var(--success))' },
-      { label: '1 hop',   count: 0, color: 'hsl(var(--primary))' },
-      { label: '2 hops',  count: 0, color: 'hsl(var(--info))' },
+      { label: 'Direct', count: 0, color: 'hsl(var(--success))' },
+      { label: '1 hop', count: 0, color: 'hsl(var(--primary))' },
+      { label: '2 hops', count: 0, color: 'hsl(var(--info))' },
       { label: '3+ hops', count: 0, color: 'hsl(var(--warning))' },
       { label: 'Unknown', count: 0, color: 'hsl(var(--muted-foreground))' },
     ];
     for (const c of contactsWithDist) {
       const h = c.min_path_len;
-      if (h === null)   b[4].count++;
+      if (h === null) b[4].count++;
       else if (h === 0) b[0].count++;
       else if (h === 1) b[1].count++;
       else if (h === 2) b[2].count++;
-      else              b[3].count++;
+      else b[3].count++;
     }
     return b.filter((x) => x.count > 0);
   }, [contactsWithDist]);
@@ -473,22 +581,23 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
   const hashModeDist = useMemo(() => {
     if (!contactsWithDist.length) return [];
     const b = [
-      { label: '1-byte',  count: 0, color: 'hsl(var(--primary))' },
-      { label: '2-byte',  count: 0, color: 'hsl(var(--info))' },
-      { label: '3-byte',  count: 0, color: 'hsl(var(--success))' },
+      { label: '1-byte', count: 0, color: 'hsl(var(--primary))' },
+      { label: '2-byte', count: 0, color: 'hsl(var(--info))' },
+      { label: '3-byte', count: 0, color: 'hsl(var(--success))' },
       { label: 'Unknown', count: 0, color: 'hsl(var(--muted-foreground))' },
     ];
     for (const c of contactsWithDist) {
       const m = c.hash_mode;
-      if (m === null)   b[3].count++;
+      if (m === null) b[3].count++;
       else if (m === 0) b[0].count++;
       else if (m === 1) b[1].count++;
-      else              b[2].count++;
+      else b[2].count++;
     }
     return b.filter((x) => x.count > 0);
   }, [contactsWithDist]);
 
-  const thClass = 'px-2 py-1.5 font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors';
+  const thClass =
+    'px-2 py-1.5 font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors';
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -500,9 +609,13 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {selectedWindow.autoRefresh ? (
-            <span className="text-[10px] text-muted-foreground hidden sm:inline">auto-refresh 30s</span>
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">
+              auto-refresh 30s
+            </span>
           ) : (
-            <span className="text-[10px] text-muted-foreground hidden sm:inline">manual refresh only</span>
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">
+              manual refresh only
+            </span>
           )}
           <button
             onClick={() => fetchHealth(selectedWindow)}
@@ -517,7 +630,6 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl space-y-4 p-4">
-
           {/* Time window selector */}
           <div className="flex gap-1">
             {TIME_WINDOWS.map((w) => (
@@ -544,16 +656,35 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
           {/* Summary tiles */}
           {data && (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <StatTile label="Contacts Heard" value={data.total_contacts} sub={`last ${selectedWindow.label}`} />
-              <StatTile label="HIGH Alerts" value={data.high_alert_count} sub={`> ${data.high_advert_threshold} adverts`} />
-              <StatTile label="MEDIUM Alerts" value={data.medium_alert_count} sub={`> ${data.medium_advert_threshold} adverts`} />
-              <StatTile label="Window" value={selectedWindow.label} sub={`${data.window_hours.toFixed(1)}h`} />
+              <StatTile
+                label="Contacts Heard"
+                value={data.total_contacts}
+                sub={`last ${selectedWindow.label}`}
+              />
+              <StatTile
+                label="HIGH Alerts"
+                value={data.high_alert_count}
+                sub={`> ${data.high_advert_threshold} adverts`}
+              />
+              <StatTile
+                label="MEDIUM Alerts"
+                value={data.medium_alert_count}
+                sub={`> ${data.medium_advert_threshold} adverts`}
+              />
+              <StatTile
+                label="Window"
+                value={selectedWindow.label}
+                sub={`${data.window_hours.toFixed(1)}h`}
+              />
             </div>
           )}
           {loading && !data && (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="h-16 animate-pulse rounded border border-border bg-background" />
+                <div
+                  key={i}
+                  className="h-16 animate-pulse rounded border border-border bg-background"
+                />
               ))}
             </div>
           )}
@@ -626,7 +757,9 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
             <div className="rounded-lg border border-destructive/40 bg-card overflow-hidden">
               <div className="border-b border-destructive/30 bg-destructive/10 px-3 py-2 flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                <span className="text-sm font-semibold text-destructive">HIGH - Advertising Too Frequently</span>
+                <span className="text-sm font-semibold text-destructive">
+                  HIGH - Advertising Too Frequently
+                </span>
                 <span className="ml-auto text-[10px] text-destructive/70">
                   {highAlerts.length} node{highAlerts.length !== 1 ? 's' : ''}
                 </span>
@@ -634,7 +767,15 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
               <div className="divide-y divide-border">
                 {highAlerts.map((a) => {
                   const contact = data?.contacts.find((c) => c.public_key === a.public_key);
-                  return <AlertRow key={a.public_key} alert={a} lat={contact?.lat} lon={contact?.lon} onNavigateToMap={onNavigateToMap} />;
+                  return (
+                    <AlertRow
+                      key={a.public_key}
+                      alert={a}
+                      lat={contact?.lat}
+                      lon={contact?.lon}
+                      onNavigateToMap={onNavigateToMap}
+                    />
+                  );
                 })}
               </div>
             </div>
@@ -645,7 +786,9 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
             <div className="rounded-lg border border-yellow-500/40 bg-card overflow-hidden">
               <div className="border-b border-yellow-500/30 bg-yellow-500/10 px-3 py-2 flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
-                <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">MEDIUM - Above Normal Advert Rate</span>
+                <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">
+                  MEDIUM - Above Normal Advert Rate
+                </span>
                 <span className="ml-auto text-[10px] text-yellow-600/70 dark:text-yellow-400/70">
                   {mediumAlerts.length} node{mediumAlerts.length !== 1 ? 's' : ''}
                 </span>
@@ -653,7 +796,15 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
               <div className="divide-y divide-border">
                 {mediumAlerts.map((a) => {
                   const contact = data?.contacts.find((c) => c.public_key === a.public_key);
-                  return <AlertRow key={a.public_key} alert={a} lat={contact?.lat} lon={contact?.lon} onNavigateToMap={onNavigateToMap} />;
+                  return (
+                    <AlertRow
+                      key={a.public_key}
+                      alert={a}
+                      lat={contact?.lat}
+                      lon={contact?.lon}
+                      onNavigateToMap={onNavigateToMap}
+                    />
+                  );
                 })}
               </div>
             </div>
@@ -669,7 +820,9 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
           {data && data.contacts.length > 0 && (
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <div className="border-b border-border px-3 py-2 flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-foreground">All Advertised Contacts Heard (In Selected Time-Span)</span>
+                <span className="text-sm font-semibold text-foreground">
+                  All Advertised Contacts Heard (In Selected Time-Span)
+                </span>
                 <span className="text-[10px] text-muted-foreground">
                   {sorted.length} nodes · last {selectedWindow.label}
                   {totalPages > 1 && ` · page ${page + 1} of ${totalPages}`}
@@ -680,11 +833,10 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-background">
-                      <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground w-8">ID</th>
-                      <th
-                        className={`${thClass} text-left`}
-                        onClick={() => handleSort('name')}
-                      >
+                      <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground w-8">
+                        ID
+                      </th>
+                      <th className={`${thClass} text-left`} onClick={() => handleSort('name')}>
                         Name <SortIcon col="name" sortKey={sortKey} sortDir={sortDir} />
                       </th>
                       <th
@@ -703,7 +855,8 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
                         className={`${thClass} text-right hidden sm:table-cell`}
                         onClick={() => handleSort('first_seen')}
                       >
-                        First Heard <SortIcon col="first_seen" sortKey={sortKey} sortDir={sortDir} />
+                        First Heard{' '}
+                        <SortIcon col="first_seen" sortKey={sortKey} sortDir={sortDir} />
                       </th>
                       <th
                         className={`${thClass} text-right hidden md:table-cell`}
@@ -724,10 +877,7 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
                       >
                         Distance <SortIcon col="distance" sortKey={sortKey} sortDir={sortDir} />
                       </th>
-                      <th
-                        className={`${thClass} text-right`}
-                        onClick={() => handleSort('status')}
-                      >
+                      <th className={`${thClass} text-right`} onClick={() => handleSort('status')}>
                         Status <SortIcon col="status" sortKey={sortKey} sortDir={sortDir} />
                       </th>
                     </tr>
@@ -746,16 +896,22 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
                             isFocused ? 'bg-primary/10 outline outline-1 outline-primary' : ''
                           }`}
                         >
-                          <td className="px-2 py-1.5 font-mono text-[10px] text-muted-foreground">{shortId}</td>
+                          <td className="px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+                            {shortId}
+                          </td>
                           <td className="px-2 py-1.5 font-medium text-foreground max-w-[180px] truncate">
                             {n.name ?? n.public_key.slice(0, 12)}
                           </td>
                           <td className="px-2 py-1.5 text-right tabular-nums">
-                            <span className={
-                              isHighAlert ? 'font-semibold text-destructive'
-                              : isMedAlert ? 'font-semibold text-yellow-600 dark:text-yellow-400'
-                              : 'text-muted-foreground'
-                            }>
+                            <span
+                              className={
+                                isHighAlert
+                                  ? 'font-semibold text-destructive'
+                                  : isMedAlert
+                                    ? 'font-semibold text-yellow-600 dark:text-yellow-400'
+                                    : 'text-muted-foreground'
+                              }
+                            >
                               {n.advert_count}
                             </span>
                           </td>
@@ -784,11 +940,13 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
                             {n.distKm != null ? `${n.distKm.toFixed(0)} km` : '—'}
                           </td>
                           <td className="px-2 py-1.5 text-right">
-                            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                              n.isActive
-                                ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                                : 'bg-muted text-muted-foreground'
-                            }`}>
+                            <span
+                              className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                n.isActive
+                                  ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                                  : 'bg-muted text-muted-foreground'
+                              }`}
+                            >
                               {n.isActive ? 'ACTIVE' : 'INACTIVE'}
                             </span>
                           </td>
@@ -803,7 +961,8 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
               {totalPages > 1 && (
                 <div className="border-t border-border px-3 py-2 flex items-center justify-between gap-2">
                   <span className="text-[10px] text-muted-foreground">
-                    {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, sorted.length)} of {sorted.length}
+                    {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, sorted.length)} of{' '}
+                    {sorted.length}
                   </span>
                   <div className="flex items-center gap-1">
                     <button
@@ -860,7 +1019,6 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
               No contacts heard in the last {selectedWindow.label}.
             </div>
           )}
-
         </div>
       </div>
     </div>
@@ -886,11 +1044,15 @@ function AlertRow({
 
   return (
     <div className="flex items-center gap-3 px-3 py-2">
-      <span className="font-mono text-[10px] text-muted-foreground w-8 flex-shrink-0">{shortId}</span>
+      <span className="font-mono text-[10px] text-muted-foreground w-8 flex-shrink-0">
+        {shortId}
+      </span>
       <span className="flex-1 truncate font-medium text-foreground text-xs">
         {alert.name ?? alert.public_key.slice(0, 12)}
       </span>
-      <span className="text-xs tabular-nums text-muted-foreground">{alert.advert_count} adverts</span>
+      <span className="text-xs tabular-nums text-muted-foreground">
+        {alert.advert_count} adverts
+      </span>
       <span className="text-xs tabular-nums text-muted-foreground hidden sm:inline">
         {alert.adverts_per_hour.toFixed(1)}/hr
       </span>
@@ -904,11 +1066,13 @@ function AlertRow({
           <span className="hidden sm:inline">Map</span>
         </button>
       )}
-      <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-        isHigh
-          ? 'bg-destructive/15 text-destructive'
-          : 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300'
-      }`}>
+      <span
+        className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+          isHigh
+            ? 'bg-destructive/15 text-destructive'
+            : 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300'
+        }`}
+      >
         {alert.level}
       </span>
     </div>

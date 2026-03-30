@@ -174,8 +174,12 @@ class ContactRepository:
             owner_id=row["owner_id"] if "owner_id" in available_columns else None,
             last_rssi=row["last_rssi"] if "last_rssi" in available_columns else None,
             last_snr=row["last_snr"] if "last_snr" in available_columns else None,
-            advert_hash_mode=row["advert_hash_mode"] if "advert_hash_mode" in available_columns else None,
-            observed_hash_mode=row["observed_hash_mode"] if "observed_hash_mode" in available_columns else None,
+            advert_hash_mode=row["advert_hash_mode"]
+            if "advert_hash_mode" in available_columns
+            else None,
+            observed_hash_mode=row["observed_hash_mode"]
+            if "observed_hash_mode" in available_columns
+            else None,
         )
 
     @staticmethod
@@ -463,9 +467,7 @@ class ContactRepository:
         except Exception as e:
             if "no such column" in str(e).lower():
                 # Column missing — migration hasn't applied yet. Add it now and retry.
-                await db.conn.execute(
-                    "ALTER TABLE contacts ADD COLUMN advert_hash_mode INTEGER"
-                )
+                await db.conn.execute("ALTER TABLE contacts ADD COLUMN advert_hash_mode INTEGER")
                 await db.conn.commit()
                 await db.conn.execute(
                     "UPDATE contacts SET advert_hash_mode = ? WHERE public_key = ?",
@@ -497,9 +499,7 @@ class ContactRepository:
             await db.conn.commit()
         except Exception as e:
             if "no such column" in str(e).lower():
-                await db.conn.execute(
-                    "ALTER TABLE contacts ADD COLUMN observed_hash_mode INTEGER"
-                )
+                await db.conn.execute("ALTER TABLE contacts ADD COLUMN observed_hash_mode INTEGER")
                 await db.conn.commit()
                 await db.conn.execute(
                     """

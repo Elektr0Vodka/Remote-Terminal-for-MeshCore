@@ -31,7 +31,9 @@ function loadSuppressed(): Set<string> {
 function saveSuppressed(s: Set<string>): void {
   try {
     localStorage.setItem(SUPPRESSED_KEY, JSON.stringify([...s]));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 interface Props {
@@ -40,12 +42,12 @@ interface Props {
 }
 
 export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
-  const [warnings, setWarnings]         = useState<AdvertWarning[]>([]);
-  const [dismissed, setDismissed]       = useState(false);
-  const [suppressed, setSuppressed]     = useState<Set<string>>(loadSuppressed);
-  const [showMenu, setShowMenu]         = useState(false);
-  const menuRef                         = useRef<HTMLDivElement>(null);
-  const fetchedRef                      = useRef(false);
+  const [warnings, setWarnings] = useState<AdvertWarning[]>([]);
+  const [dismissed, setDismissed] = useState(false);
+  const [suppressed, setSuppressed] = useState<Set<string>>(loadSuppressed);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const fetchedRef = useRef(false);
 
   // Close dismiss menu on outside click
   useEffect(() => {
@@ -73,7 +75,9 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
           }
           fetchedRef.current = true;
         })
-        .catch(() => { /* silently ignore — ticker is non-critical */ });
+        .catch(() => {
+          /* silently ignore — ticker is non-critical */
+        });
     };
 
     doFetch();
@@ -94,11 +98,11 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
   if (dismissed || visibleWarnings.length === 0) return null;
 
   const highCount = visibleWarnings.filter((w) => w.level === 'HIGH').length;
-  const medCount  = visibleWarnings.filter((w) => w.level === 'MEDIUM').length;
+  const medCount = visibleWarnings.filter((w) => w.level === 'MEDIUM').length;
 
   const items = visibleWarnings.map((w) => {
     const isHigh = w.level === 'HIGH';
-    const name   = w.name ?? w.public_key.slice(0, 8).toUpperCase();
+    const name = w.name ?? w.public_key.slice(0, 8).toUpperCase();
     return (
       <span
         key={w.public_key}
@@ -118,11 +122,13 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
           <span className="font-medium">{name}</span>
         )}
         <span className="opacity-70">({w.advert_count} adverts/hr)</span>
-        <span className={`ml-1 rounded px-1 py-0.5 text-[9px] font-bold ${
-          isHigh
-            ? 'bg-destructive/20 text-destructive'
-            : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300'
-        }`}>
+        <span
+          className={`ml-1 rounded px-1 py-0.5 text-[9px] font-bold ${
+            isHigh
+              ? 'bg-destructive/20 text-destructive'
+              : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300'
+          }`}
+        >
           {w.level}
         </span>
       </span>
@@ -136,9 +142,7 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
         <AlertTriangle className="h-3 w-3" />
         <span className="font-semibold text-[10px] uppercase tracking-wide">
           Mesh Alerts
-          {highCount > 0 && (
-            <span className="ml-1 text-destructive">{highCount} HIGH</span>
-          )}
+          {highCount > 0 && <span className="ml-1 text-destructive">{highCount} HIGH</span>}
           {medCount > 0 && (
             <span className="ml-1 text-yellow-600 dark:text-yellow-400">{medCount} MED</span>
           )}
@@ -172,14 +176,15 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
             {/* Temporary dismiss */}
             <button
               className="w-full text-left px-3 py-1.5 hover:bg-accent text-foreground"
-              onClick={() => { setDismissed(true); setShowMenu(false); }}
+              onClick={() => {
+                setDismissed(true);
+                setShowMenu(false);
+              }}
             >
               Dismiss until next warning
             </button>
 
-            {visibleWarnings.length > 0 && (
-              <div className="border-t border-border my-1" />
-            )}
+            {visibleWarnings.length > 0 && <div className="border-t border-border my-1" />}
 
             {/* Per-node suppress options */}
             {visibleWarnings.map((w) => {

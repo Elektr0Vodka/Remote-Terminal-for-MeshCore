@@ -28,7 +28,9 @@ const VisualizerView = lazy(() =>
   import('./VisualizerView').then((m) => ({ default: m.VisualizerView }))
 );
 const MyNodeView = lazy(() => import('./MyNodeView'));
-const MeshHealthView = lazy(() => import('./MeshHealthView').then((m) => ({ default: m.MeshHealthView })));
+const MeshHealthView = lazy(() =>
+  import('./MeshHealthView').then((m) => ({ default: m.MeshHealthView }))
+);
 const KmsView = lazy(() => import('./KmsView').then((m) => ({ default: m.KmsView })));
 const ContactAnalyticsView = lazy(() =>
   import('./ContactAnalyticsView').then((m) => ({ default: m.ContactAnalyticsView }))
@@ -178,7 +180,12 @@ export function ConversationPane({
         </h2>
         <div className="flex-1 overflow-hidden">
           <Suspense fallback={<LoadingPane label="Loading map..." />}>
-            <MapView contacts={contacts} focusedKey={activeConversation.mapFocusKey} onSelectConversation={onSelectConversation} connectedPublicKey={config?.public_key} />
+            <MapView
+              contacts={contacts}
+              focusedKey={activeConversation.mapFocusKey}
+              onSelectConversation={onSelectConversation}
+              connectedPublicKey={config?.public_key}
+            />
           </Suspense>
         </div>
       </>
@@ -252,7 +259,12 @@ export function ConversationPane({
             if (focusKey) window.location.hash = `map/focus/${focusKey}`;
             // Use the passed-in select handler from props to properly update React state
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (onSelectConversation as any)?.({ type: 'map', id: 'map', name: 'Map', mapFocusKey: focusKey });
+            (onSelectConversation as any)?.({
+              type: 'map',
+              id: 'map',
+              name: 'Map',
+              mapFocusKey: focusKey,
+            });
           }}
         />
       </Suspense>

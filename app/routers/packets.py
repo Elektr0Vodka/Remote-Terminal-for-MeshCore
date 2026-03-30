@@ -10,7 +10,12 @@ from app.database import db
 from app.decoder import parse_packet, try_decrypt_packet_with_channel_key
 from app.models import RawPacketDecryptedInfo, RawPacketDetail
 from app.packet_processor import create_message_from_decrypted, run_historical_dm_decryption
-from app.repository import AppSettingsRepository, ChannelRepository, MessageRepository, RawPacketRepository
+from app.repository import (
+    AppSettingsRepository,
+    ChannelRepository,
+    MessageRepository,
+    RawPacketRepository,
+)
 from app.websocket import broadcast_success
 
 logger = logging.getLogger(__name__)
@@ -56,6 +61,7 @@ class MaintenanceResult(BaseModel):
 
 
 # ─── Timeseries models ────────────────────────────────────────────────────────
+
 
 class TimeseriesBin(BaseModel):
     start_ts: int
@@ -356,21 +362,23 @@ async def get_recent_packets(limit: int = 500) -> list[dict]:
 
     # Reverse so oldest-first for natural append order on frontend
     packets = []
-    for row in reversed(rows):
+    for row in reversed(list(rows)):
         raw_hex = bytes(row["data"]).hex()
         payload_type = row["payload_type"] or "Unknown"
-        packets.append({
-            "id": row["id"],
-            # observation_id not meaningful for historical — use id as stand-in
-            "observation_id": row["id"],
-            "timestamp": row["timestamp"],
-            "data": raw_hex,
-            "payload_type": payload_type,
-            "snr": row["snr"],
-            "rssi": row["rssi"],
-            "decrypted": row["message_id"] is not None,
-            "decrypted_info": None,
-        })
+        packets.append(
+            {
+                "id": row["id"],
+                # observation_id not meaningful for historical — use id as stand-in
+                "observation_id": row["id"],
+                "timestamp": row["timestamp"],
+                "data": raw_hex,
+                "payload_type": payload_type,
+                "snr": row["snr"],
+                "rssi": row["rssi"],
+                "decrypted": row["message_id"] is not None,
+                "decrypted_info": None,
+            }
+        )
 
     return packets
 
@@ -515,14 +523,16 @@ async def get_packet_timeseries(
             if b["type_counts"]:
                 has_type_data = True
 
-            bins.append(TimeseriesBin(
-                start_ts=t,
-                packet_count=b["packet_count"],
-                byte_count=b["byte_count"],
-                avg_rssi=avg_rssi_out,
-                avg_snr=avg_snr_out,
-                type_counts=b["type_counts"],
-            ))
+            bins.append(
+                TimeseriesBin(
+                    start_ts=t,
+                    packet_count=b["packet_count"],
+                    byte_count=b["byte_count"],
+                    avg_rssi=avg_rssi_out,
+                    avg_snr=avg_snr_out,
+                    type_counts=b["type_counts"],
+                )
+            )
             total_packets += b["packet_count"]
             total_bytes += b["byte_count"]
         else:
@@ -539,6 +549,7 @@ async def get_packet_timeseries(
         has_type_data=has_type_data,
     )
 
+
 @router.get("/historical-stats", response_model=HistoricalStatsResponse)
 async def get_historical_stats(
     start_ts: int,
@@ -547,29 +558,29 @@ async def get_historical_stats(
     """
     Return DB-computed stats for a time window, used by the My Node page for
     historical windows where session data is incomplete or unavailable.
- 
+
     Unlike /timeseries this returns aggregate stats (not bins), including:
     - Packet/byte totals and rate
     - Signal averages (rssi/snr) if migration 47 columns are present
     - Payload type breakdown if migration 47 columns are present
     - Top neighbors by heard count and by signal, from contact_advert_paths
- 
+
     Neighbors are sourced from contact_advert_paths which tracks every
     advertisement heard — no 500-packet limit, full history.
     """
     if end_ts <= start_ts:
         raise HTTPException(status_code=400, detail="end_ts must be greater than start_ts")
- 
+
     duration_seconds = max(end_ts - start_ts, 1)
- 
+
     async with aiosqlite.connect(db.db_path) as conn:
         conn.row_factory = aiosqlite.Row
- 
+
         # Check which columns exist (migration 47)
         async with conn.execute("PRAGMA table_info(raw_packets)") as cur:
             columns = {row[1] for row in await cur.fetchall()}
         has_signal_cols = "rssi" in columns and "snr" in columns and "payload_type" in columns
- 
+
         # ── Packet totals ──────────────────────────────────────────────────
         async with conn.execute(
             """
@@ -582,11 +593,11 @@ async def get_historical_stats(
             (start_ts, end_ts),
         ) as cur:
             row = await cur.fetchone()
-            total_packets = int(row["total_packets"] or 0)
-            total_bytes = int(row["total_bytes"] or 0)
- 
+            total_packets = int((row["total_packets"] if row else None) or 0)
+            total_bytes = int((row["total_bytes"] if row else None) or 0)
+
         packets_per_minute = total_packets / max(duration_seconds / 60, 1 / 60)
- 
+
         # ── Signal + type stats (migration 47) ────────────────────────────
         avg_rssi: float | None = None
         avg_snr: float | None = None
@@ -594,7 +605,7 @@ async def get_historical_stats(
         type_counts: dict[str, int] = {}
         has_signal_data = False
         has_type_data = False
- 
+
         if has_signal_cols:
             async with conn.execute(
                 """
@@ -609,12 +620,12 @@ async def get_historical_stats(
                 (start_ts, end_ts),
             ) as cur:
                 row = await cur.fetchone()
-                if row["avg_rssi"] is not None:
+                if row is not None and row["avg_rssi"] is not None:
                     avg_rssi = float(row["avg_rssi"])
-                    avg_snr  = float(row["avg_snr"]) if row["avg_snr"] is not None else None
+                    avg_snr = float(row["avg_snr"]) if row["avg_snr"] is not None else None
                     best_rssi = float(row["best_rssi"])
                     has_signal_data = True
- 
+
             async with conn.execute(
                 """
                 SELECT payload_type, COUNT(*) AS cnt
@@ -630,7 +641,7 @@ async def get_historical_stats(
                 if rows:
                     type_counts = {row["payload_type"]: int(row["cnt"]) for row in rows}
                     has_type_data = True
- 
+
         # ── Neighbors from contact_advert_paths ───────────────────────────
         # Sum heard_count per contact over all time (advert paths don't have
         # timestamps beyond first_seen/last_seen). Filter by last_seen in window.
@@ -761,6 +772,7 @@ async def get_historical_stats(
 
 # ─── Mesh Health models ───────────────────────────────────────────────────────
 
+
 class MeshHealthContact(BaseModel):
     public_key: str
     name: str | None
@@ -863,17 +875,19 @@ async def get_mesh_health(
 
     for row in rows:
         advert_count = int(row["advert_count"])
-        contacts.append(MeshHealthContact(
-            public_key=row["public_key"],
-            name=row["name"],
-            advert_count=advert_count,
-            first_seen=row["first_seen"],
-            last_seen=row["last_seen"],
-            lat=row["lat"],
-            lon=row["lon"],
-            min_path_len=row["min_path_len"],
-            hash_mode=row["hash_mode"],
-        ))
+        contacts.append(
+            MeshHealthContact(
+                public_key=row["public_key"],
+                name=row["name"],
+                advert_count=advert_count,
+                first_seen=row["first_seen"],
+                last_seen=row["last_seen"],
+                lat=row["lat"],
+                lon=row["lon"],
+                min_path_len=row["min_path_len"],
+                hash_mode=row["hash_mode"],
+            )
+        )
 
         adverts_per_hour = advert_count / max(window_hours, 0.01)
         if advert_count > settings.high_advert_threshold:
@@ -885,13 +899,15 @@ async def get_mesh_health(
         else:
             continue
 
-        alerts.append(MeshHealthAlert(
-            level=level,
-            public_key=row["public_key"],
-            name=row["name"],
-            advert_count=advert_count,
-            adverts_per_hour=round(adverts_per_hour, 2),
-        ))
+        alerts.append(
+            MeshHealthAlert(
+                level=level,
+                public_key=row["public_key"],
+                name=row["name"],
+                advert_count=advert_count,
+                adverts_per_hour=round(adverts_per_hour, 2),
+            )
+        )
 
     return MeshHealthResponse(
         start_ts=start_ts,
@@ -964,14 +980,16 @@ async def get_advert_warnings() -> dict:
     for row in rows:
         advert_count = int(row["advert_count"])
         level = "HIGH" if advert_count > 8 else "MEDIUM"
-        warnings.append({
-            "public_key": row["public_key"],
-            "name": row["name"],
-            "level": level,
-            "advert_count": advert_count,
-            "lat": row["lat"],
-            "lon": row["lon"],
-        })
+        warnings.append(
+            {
+                "public_key": row["public_key"],
+                "name": row["name"],
+                "level": level,
+                "advert_count": advert_count,
+                "lat": row["lat"],
+                "lon": row["lon"],
+            }
+        )
     return {"warnings": warnings, "generated_at": end_ts}
 
 
@@ -1005,7 +1023,9 @@ async def get_snr_rssi_scatter(
             {"start_ts": effective_start, "end_ts": effective_end, "limit": min(limit, 5000)},
         ) as cur:
             rows = await cur.fetchall()
-    return [{"rssi": int(r["rssi"]), "snr": float(r["snr"]), "ts": int(r["timestamp"])} for r in rows]
+    return [
+        {"rssi": int(r["rssi"]), "snr": float(r["snr"]), "ts": int(r["timestamp"])} for r in rows
+    ]
 
 
 @router.get("/hourly-heatmap")
@@ -1071,8 +1091,10 @@ async def get_relay_pairs(limit: int = 20) -> list[dict]:
         hex_per_hop = (hash_mode + 1) * 2  # bytes→hex chars
         if len(path_hex) < path_len * hex_per_hop:
             continue
-        hops = [path_hex[i : i + hex_per_hop] for i in range(0, path_len * hex_per_hop, hex_per_hop)]
-        for a, b in zip(hops, hops[1:]):
+        hops = [
+            path_hex[i : i + hex_per_hop] for i in range(0, path_len * hex_per_hop, hex_per_hop)
+        ]
+        for a, b in zip(hops, hops[1:], strict=False):
             pair_counts[(a, b)] = pair_counts.get((a, b), 0) + heard
 
     top = sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[: min(limit, 50)]
@@ -1122,11 +1144,7 @@ async def get_reachability_rings(
 
     label_map = {0: "Direct (0-hop)", 1: "1 hop", 2: "2 hops", 3: "3+ hops", None: "Unknown"}
     order = [0, 1, 2, 3, None]
-    return [
-        {"hops": h, "count": buckets[h], "label": label_map[h]}
-        for h in order
-        if h in buckets
-    ]
+    return [{"hops": h, "count": buckets[h], "label": label_map[h]} for h in order if h in buckets]
 
 
 # NOTE: This route MUST remain last in the file. FastAPI matches routes in

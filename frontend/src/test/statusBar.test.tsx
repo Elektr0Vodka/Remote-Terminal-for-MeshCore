@@ -61,18 +61,21 @@ describe('StatusBar', () => {
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
   });
 
-  it('toggles between classic and light themes from the shortcut button', () => {
+  it('switches themes via the theme picker', () => {
     localStorage.setItem('remoteterm-theme', 'cyberpunk');
 
     render(<StatusBar health={baseHealth} config={null} onSettingsClick={vi.fn()} />);
 
-    const themeToggle = screen.getByRole('button', { name: 'Switch to light theme' });
-    fireEvent.click(themeToggle);
+    // Open picker and select Light theme
+    fireEvent.click(screen.getByRole('button', { name: 'Change theme' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Light' }));
 
     expect(localStorage.getItem('remoteterm-theme')).toBe('light');
     expect(document.documentElement.dataset.theme).toBe('light');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Switch to classic theme' }));
+    // Open picker again and select Original theme
+    fireEvent.click(screen.getByRole('button', { name: 'Change theme' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Original' }));
 
     expect(localStorage.getItem('remoteterm-theme')).toBe('original');
     expect(document.documentElement.dataset.theme).toBeUndefined();

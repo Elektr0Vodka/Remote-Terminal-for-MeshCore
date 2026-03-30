@@ -76,18 +76,18 @@ export function App() {
 
   const messageInputRef = useRef<MessageInputHandle>(null);
   const [rawPackets, setRawPackets] = useState<RawPacket[]>([]);
-	  // Seed packet feed from DB history on first load
-	  useEffect(() => {
-       fetch('/api/packets/recent?limit=500')
-       .then((r) => r.json())
-       .then((data: RawPacket[]) => {
-         if (Array.isArray(data) && data.length > 0) {
-           setRawPackets(data);
-          }
-       })
-       .catch(() => {});
-   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-   
+  // Seed packet feed from DB history on first load
+  useEffect(() => {
+    fetch('/api/packets/recent?limit=500')
+      .then((r) => r.json())
+      .then((data: RawPacket[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setRawPackets(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const [channelUnreadMarker, setChannelUnreadMarker] = useState<ChannelUnreadMarker | null>(null);
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   const lastUnreadBackfillAttemptRef = useRef<string | null>(null);
@@ -512,6 +512,7 @@ export function App() {
     config,
     health,
     appSettings,
+    contacts,
     onSave: handleSaveConfig,
     onSaveAppSettings: handleSaveAppSettings,
     onSetPrivateKey: handleSetPrivateKey,

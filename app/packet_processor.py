@@ -260,9 +260,9 @@ async def process_raw_packet(
 ) -> dict:
     """
     Process an incoming raw packet.
- 
+
     This is the main entry point for all incoming RF packets.
- 
+
     Note: Packets are deduplicated by payload hash in the database. If we receive
     a duplicate packet (same payload, different path), we still broadcast it to
     the frontend (for the real-time packet feed) but skip decryption processing
@@ -270,14 +270,14 @@ async def process_raw_packet(
     """
     ts = timestamp or int(time.time())
     observation_id = next(_raw_observation_counter)
- 
+
     # Parse packet FIRST so payload_type_name is always bound before create()
     payload_type_name = "Unknown"
     packet_info = parse_packet(raw_bytes)
     payload_type = packet_info.payload_type if packet_info else None
     if payload_type is not None:
         payload_type_name = payload_type.name
- 
+
     packet_id, is_new_packet = await RawPacketRepository.create(
         raw_bytes,
         ts,
@@ -286,14 +286,14 @@ async def process_raw_packet(
         payload_type=payload_type_name,
     )
     raw_hex = raw_bytes.hex()
- 
+
     if packet_info is None and len(raw_bytes) > 2:
         logger.warning(
             "Failed to parse %d-byte packet (id=%d); stored undecrypted",
             len(raw_bytes),
             packet_id,
         )
- 
+
     # Log packet arrival at debug level
     path_hex = packet_info.path.hex() if packet_info and packet_info.path else ""
     logger.debug(
@@ -303,7 +303,7 @@ async def process_raw_packet(
         packet_id,
         path_hex[:8] if path_hex else "(direct)",
     )
- 
+
     result = {
         "packet_id": packet_id,
         "timestamp": ts,
@@ -316,24 +316,24 @@ async def process_raw_packet(
         "channel_name": None,
         "sender": None,
     }
- 
+
     # Process packets based on payload type
     if payload_type == PayloadType.GROUP_TEXT:
         decrypt_result = await _process_group_text(raw_bytes, packet_id, ts, packet_info)
         if decrypt_result:
             result.update(decrypt_result)
- 
+
     elif payload_type == PayloadType.ADVERT:
         await _process_advertisement(raw_bytes, ts, packet_info, rssi=rssi, snr=snr)
- 
+
     elif payload_type == PayloadType.TEXT_MESSAGE:
         decrypt_result = await _process_direct_message(raw_bytes, packet_id, ts, packet_info)
         if decrypt_result:
             result.update(decrypt_result)
- 
+
     elif payload_type == PayloadType.PATH:
         await _process_path_packet(raw_bytes, ts, packet_info)
- 
+
     # Always broadcast raw packet for the packet feed UI (even duplicates)
     broadcast_payload = RawPacketBroadcast(
         id=packet_id,
@@ -354,7 +354,7 @@ async def process_raw_packet(
         else None,
     )
     broadcast_event("raw_packet", broadcast_payload.model_dump())
- 
+
     return result
 
 

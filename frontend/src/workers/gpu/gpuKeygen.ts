@@ -11,7 +11,7 @@ import { getBaseTableBuffer } from './precompute';
 const MAX_WORKGROUPS_PER_SUBMIT = 64;
 
 export interface GpuMatch {
-  seed: Uint8Array;   // 32 bytes
+  seed: Uint8Array; // 32 bytes
   pubkey: Uint8Array; // 32 bytes
 }
 
@@ -88,9 +88,7 @@ export class GPUKeyGenerator {
       },
     });
 
-    this.device.lost.then((info) =>
-      console.error('GPU device lost:', info.message, info.reason)
-    );
+    this.device.lost.then((info) => console.error('GPU device lost:', info.message, info.reason));
 
     // Compile shader from inlined WGSL source
     const shaderModule = this.device.createShaderModule({ code: ED25519_WGSL });
@@ -108,7 +106,7 @@ export class GPUKeyGenerator {
         size: configSize,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
-    this.configBuffer  = makeConfig();
+    this.configBuffer = makeConfig();
     this.configBuffer1 = makeConfig();
     this.configBuffer2 = makeConfig();
     this.configBuffer3 = makeConfig();
@@ -118,7 +116,13 @@ export class GPUKeyGenerator {
       size: tableData.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    this.device.queue.writeBuffer(this.baseTableBuffer, 0, tableData.buffer as ArrayBuffer, tableData.byteOffset, tableData.byteLength);
+    this.device.queue.writeBuffer(
+      this.baseTableBuffer,
+      0,
+      tableData.buffer as ArrayBuffer,
+      tableData.byteOffset,
+      tableData.byteLength
+    );
 
     const matchBufferSize = 64 * 16 * 4; // 64 matches × 16 u32 × 4 bytes
     this.matchBuffer = this.device.createBuffer({
@@ -163,7 +167,7 @@ export class GPUKeyGenerator {
         ],
       });
 
-    this.bindGroup  = makeBindGroup(this.configBuffer);
+    this.bindGroup = makeBindGroup(this.configBuffer);
     this.bindGroup1 = makeBindGroup(this.configBuffer1);
     this.bindGroup2 = makeBindGroup(this.configBuffer2);
     this.bindGroup3 = makeBindGroup(this.configBuffer3);
@@ -171,7 +175,11 @@ export class GPUKeyGenerator {
     this.isReady = true;
   }
 
-  private _encodePrefix(targetPrefix: string): { prefix0: number; prefix1: number; nibbles: number } {
+  private _encodePrefix(targetPrefix: string): {
+    prefix0: number;
+    prefix1: number;
+    nibbles: number;
+  } {
     const nibbles = targetPrefix.length;
     const bytes = new Uint8Array(8);
     for (let i = 0; i < nibbles; i++) {
@@ -190,7 +198,10 @@ export class GPUKeyGenerator {
     };
   }
 
-  async dispatchBatch(targetPrefix: string, options: { allowWorkgroupReduce?: boolean } = {}): Promise<GpuBatchResult> {
+  async dispatchBatch(
+    targetPrefix: string,
+    options: { allowWorkgroupReduce?: boolean } = {}
+  ): Promise<GpuBatchResult> {
     if (!this.isReady) throw new Error('GPU not initialized');
 
     // Single submit: dispatch all numWorkgroups in one command buffer, one mapAsync wait.
@@ -205,7 +216,7 @@ export class GPUKeyGenerator {
     targetPrefix: string,
     allowWorkgroupReduce: boolean,
     workgroupsOverride: number | null,
-    dispatchesPerSubmit = 1,
+    dispatchesPerSubmit = 1
   ): Promise<GpuBatchResult> {
     const prefixConfig = this._encodePrefix(targetPrefix);
     const workgroupsToUse = workgroupsOverride !== null ? workgroupsOverride : this.numWorkgroups;
@@ -235,16 +246,16 @@ export class GPUKeyGenerator {
     const passEncoder = commandEncoder.beginComputePass();
     passEncoder.setPipeline(this.pipeline!);
 
-    const multiDispatch =
-      dispatchesPerSubmit > 1 && workgroupsToUse === MAX_WORKGROUPS_PER_SUBMIT;
+    const multiDispatch = dispatchesPerSubmit > 1 && workgroupsToUse === MAX_WORKGROUPS_PER_SUBMIT;
 
     if (multiDispatch) {
       const configBuffers = [
-        this.configBuffer!, this.configBuffer1!, this.configBuffer2!, this.configBuffer3!,
+        this.configBuffer!,
+        this.configBuffer1!,
+        this.configBuffer2!,
+        this.configBuffer3!,
       ];
-      const bindGroups = [
-        this.bindGroup!, this.bindGroup1!, this.bindGroup2!, this.bindGroup3!,
-      ];
+      const bindGroups = [this.bindGroup!, this.bindGroup1!, this.bindGroup2!, this.bindGroup3!];
       for (let i = 0; i < dispatchesPerSubmit; i++) {
         writeConfig(configBuffers[i], i * MAX_WORKGROUPS_PER_SUBMIT * this.workgroupSize);
       }
@@ -261,7 +272,11 @@ export class GPUKeyGenerator {
     passEncoder.end();
     commandEncoder.copyBufferToBuffer(this.matchCountBuffer!, 0, this.readbackCountBuffer!, 0, 8);
     commandEncoder.copyBufferToBuffer(
-      this.matchBuffer!, 0, this.readbackBuffer!, 0, this.readbackBuffer!.size
+      this.matchBuffer!,
+      0,
+      this.readbackBuffer!,
+      0,
+      this.readbackBuffer!.size
     );
 
     const submitStart = performance.now();
@@ -286,11 +301,11 @@ export class GPUKeyGenerator {
         const seedWords = new Uint32Array(8);
         const pubkeyWords = new Uint32Array(8);
         for (let j = 0; j < 8; j++) {
-          seedWords[j]   = matchData[offset + j];
+          seedWords[j] = matchData[offset + j];
           pubkeyWords[j] = matchData[offset + 8 + j];
         }
         matches.push({
-          seed:   new Uint8Array(seedWords.buffer.slice(0)),
+          seed: new Uint8Array(seedWords.buffer.slice(0)),
           pubkey: new Uint8Array(pubkeyWords.buffer.slice(0)),
         });
       }
@@ -302,7 +317,12 @@ export class GPUKeyGenerator {
     // the GPU may be underutilised at low workgroup counts, giving a misleading fast reading.
     // Instead, keep scaling up every batch while batches complete under the target.
     // Once a batch finally meets or exceeds the target (or the cap is reached) we lock in.
-    if (allowWorkgroupReduce && workgroupsOverride === null && completedCount > 0 && dispatchElapsedMs > 5) {
+    if (
+      allowWorkgroupReduce &&
+      workgroupsOverride === null &&
+      completedCount > 0 &&
+      dispatchElapsedMs > 5
+    ) {
       if (dispatchElapsedMs < this.dispatchTargetMs && this.numWorkgroups < this._maxWorkgroups) {
         // Batch finished faster than target: scale up (cap growth at 4× per step to avoid overshoot)
         const scaleFactor = Math.min(this.dispatchTargetMs / dispatchElapsedMs, 4.0);
@@ -313,7 +333,10 @@ export class GPUKeyGenerator {
       } else if (!this._batchSizeTuned) {
         // First batch that meets or exceeds the target: apply a one-shot scale-down if needed, then lock in
         if (dispatchElapsedMs > this.dispatchTargetMs) {
-          const tuned = Math.max(4, Math.round(this.numWorkgroups * this.dispatchTargetMs / dispatchElapsedMs));
+          const tuned = Math.max(
+            4,
+            Math.round((this.numWorkgroups * this.dispatchTargetMs) / dispatchElapsedMs)
+          );
           this.numWorkgroups = Math.min(this._maxWorkgroups, tuned);
         }
         this._batchSizeTuned = true;

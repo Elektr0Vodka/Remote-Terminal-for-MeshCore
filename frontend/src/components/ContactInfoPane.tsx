@@ -479,7 +479,8 @@ export function ContactInfoPane({
                       .then((r) => {
                         if (!r.ok) throw new Error(`HTTP ${r.status}`);
                         toast.success('Removed from map', {
-                          description: 'Location cleared — the node will reappear when it next advertises with GPS.',
+                          description:
+                            'Location cleared — the node will reappear when it next advertises with GPS.',
                         });
                       })
                       .catch((err) => {
