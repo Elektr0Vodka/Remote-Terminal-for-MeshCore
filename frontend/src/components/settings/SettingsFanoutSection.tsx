@@ -1,10 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Info } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { toast } from '../ui/sonner';
 import { cn } from '@/lib/utils';
 import { api } from '../../api';
@@ -309,6 +316,80 @@ const CREATE_INTEGRATION_DEFINITIONS_BY_VALUE = Object.fromEntries(
   CREATE_INTEGRATION_DEFINITIONS.map((definition) => [definition.value, definition])
 ) as Record<DraftType, CreateIntegrationDefinition>;
 
+function getNumberInputValue(value: unknown, fallback: number): string | number {
+  if (value === '') return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return fallback;
+}
+
+function getOptionalNumberInputValue(value: unknown): string | number {
+  if (value === '') return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return '';
+}
+
+function parseIntegerInputValue(value: string): number | string {
+  if (value === '') return '';
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? value : parsed;
+}
+
+function parseFloatInputValue(value: string): number | string {
+  if (value === '') return '';
+  const parsed = Number.parseFloat(value);
+  return Number.isNaN(parsed) ? value : parsed;
+}
+
+function normalizeIntegrationConfigForSave(
+  configType: string,
+  config: Record<string, unknown>
+): Record<string, unknown> {
+  const normalized = { ...config };
+
+  if (configType === 'mqtt_private') {
+    const port = normalized.broker_port;
+    if (port === '' || port === undefined || port === null) {
+      normalized.broker_port = 1883;
+    } else if (typeof port === 'string') {
+      const parsed = Number.parseInt(port, 10);
+      normalized.broker_port = Number.isNaN(parsed) ? 1883 : parsed;
+    }
+
+    const topicPrefix = String(normalized.topic_prefix ?? '').trim();
+    normalized.topic_prefix = topicPrefix || 'meshcore';
+  }
+
+  if (configType === 'mqtt_community') {
+    const brokerHost = String(normalized.broker_host ?? '').trim();
+    normalized.broker_host = brokerHost || DEFAULT_COMMUNITY_BROKER_HOST;
+
+    const port = normalized.broker_port;
+    if (port === '' || port === undefined || port === null) {
+      normalized.broker_port = DEFAULT_COMMUNITY_BROKER_PORT;
+    } else if (typeof port === 'string') {
+      const parsed = Number.parseInt(port, 10);
+      normalized.broker_port = Number.isNaN(parsed) ? DEFAULT_COMMUNITY_BROKER_PORT : parsed;
+    }
+
+    const topicTemplate = String(normalized.topic_template ?? '').trim();
+    normalized.topic_template = topicTemplate || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE;
+  }
+
+  if (configType === 'map_upload') {
+    const radius = normalized.geofence_radius_km;
+    if (radius === '' || radius === undefined || radius === null) {
+      normalized.geofence_radius_km = 0;
+    } else if (typeof radius === 'string') {
+      const parsed = Number.parseFloat(radius);
+      normalized.geofence_radius_km = Number.isNaN(parsed) ? 0 : parsed;
+    }
+  }
+
+  return normalized;
+}
+
 function isDraftType(value: string): value is DraftType {
   return value in CREATE_INTEGRATION_DEFINITIONS_BY_VALUE;
 }
@@ -331,7 +412,7 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
       throw new Error('MeshRank packet topic is required');
     }
 
-    return {
+    return normalizeIntegrationConfigForSave('mqtt_community', {
       ...config,
       broker_host: DEFAULT_MESHRANK_BROKER_HOST,
       broker_port: DEFAULT_MESHRANK_BROKER_PORT,
@@ -345,7 +426,7 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
       topic_template: topicTemplate,
       username: '',
       password: '',
-    };
+    });
   }
 
   if (draftType === 'mqtt_community_letsmesh_us' || draftType === 'mqtt_community_letsmesh_eu') {
@@ -353,7 +434,7 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
       draftType === 'mqtt_community_letsmesh_eu'
         ? DEFAULT_COMMUNITY_BROKER_HOST_EU
         : DEFAULT_COMMUNITY_BROKER_HOST;
-    return {
+    return normalizeIntegrationConfigForSave('mqtt_community', {
       ...config,
       broker_host: brokerHost,
       broker_port: DEFAULT_COMMUNITY_BROKER_PORT,
@@ -365,10 +446,13 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
       topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
       username: '',
       password: '',
-    };
+    });
   }
 
-  return config;
+  return normalizeIntegrationConfigForSave(
+    getCreateIntegrationDefinition(draftType).savedType,
+    config
+  );
 }
 
 function normalizeDraftScope(draftType: DraftType, scope: Record<string, unknown>) {
@@ -642,9 +726,9 @@ function MqttPrivateConfigEditor({
             type="number"
             min="1"
             max="65535"
-            value={(config.broker_port as number) || 1883}
+            value={getNumberInputValue(config.broker_port, 1883)}
             onChange={(e) =>
-              onChange({ ...config, broker_port: parseInt(e.target.value, 10) || 1883 })
+              onChange({ ...config, broker_port: parseIntegerInputValue(e.target.value) })
             }
           />
         </div>
@@ -702,7 +786,8 @@ function MqttPrivateConfigEditor({
         <Input
           id="fanout-mqtt-prefix"
           type="text"
-          value={(config.topic_prefix as string) || 'meshcore'}
+          placeholder="meshcore"
+          value={(config.topic_prefix as string | undefined) ?? ''}
           onChange={(e) => onChange({ ...config, topic_prefix: e.target.value })}
         />
       </div>
@@ -738,7 +823,7 @@ function MqttCommunityConfigEditor({
             id="fanout-comm-host"
             type="text"
             placeholder={DEFAULT_COMMUNITY_BROKER_HOST}
-            value={(config.broker_host as string) || DEFAULT_COMMUNITY_BROKER_HOST}
+            value={(config.broker_host as string | undefined) ?? ''}
             onChange={(e) => onChange({ ...config, broker_host: e.target.value })}
           />
         </div>
@@ -749,11 +834,11 @@ function MqttCommunityConfigEditor({
             type="number"
             min="1"
             max="65535"
-            value={(config.broker_port as number) || DEFAULT_COMMUNITY_BROKER_PORT}
+            value={getNumberInputValue(config.broker_port, DEFAULT_COMMUNITY_BROKER_PORT)}
             onChange={(e) =>
               onChange({
                 ...config,
-                broker_port: parseInt(e.target.value, 10) || DEFAULT_COMMUNITY_BROKER_PORT,
+                broker_port: parseIntegerInputValue(e.target.value),
               })
             }
           />
@@ -888,7 +973,8 @@ function MqttCommunityConfigEditor({
         <Input
           id="fanout-comm-topic-template"
           type="text"
-          value={(config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE}
+          placeholder={DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE}
+          value={(config.topic_template as string | undefined) ?? ''}
           onChange={(e) => onChange({ ...config, topic_template: e.target.value })}
         />
         <p className="text-xs text-muted-foreground">
@@ -1208,11 +1294,11 @@ function MapUploadConfigEditor({
               min="0"
               step="any"
               placeholder="e.g. 100"
-              value={(config.geofence_radius_km as number | undefined) ?? ''}
+              value={getOptionalNumberInputValue(config.geofence_radius_km)}
               onChange={(e) =>
                 onChange({
                   ...config,
-                  geofence_radius_km: e.target.value === '' ? 0 : parseFloat(e.target.value),
+                  geofence_radius_km: parseFloatInputValue(e.target.value),
                 })
               }
             />
@@ -1854,6 +1940,10 @@ export function SettingsFanoutSection({
   const [inlineEditName, setInlineEditName] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedCreateType, setSelectedCreateType] = useState<DraftType | null>(null);
+  const [errorDialogState, setErrorDialogState] = useState<{
+    integrationName: string;
+    error: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loadConfigs = useCallback(async () => {
@@ -1986,9 +2076,10 @@ export function SettingsFanoutSection({
         if (!currentEditingId) {
           throw new Error('Missing fanout config id for update');
         }
+        const editingType = configs.find((cfg) => cfg.id === currentEditingId)?.type ?? '';
         const update: Record<string, unknown> = {
           name: editName,
-          config: editConfig,
+          config: normalizeIntegrationConfigForSave(editingType, editConfig),
           scope: editScope,
         };
         if (enabled !== undefined) update.enabled = enabled;
@@ -2207,6 +2298,31 @@ export function SettingsFanoutSection({
         }}
       />
 
+      <Dialog
+        open={errorDialogState !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setErrorDialogState(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="border-b border-border px-5 py-4">
+            <DialogTitle>
+              {errorDialogState ? `${errorDialogState.integrationName} Error` : 'Integration Error'}
+            </DialogTitle>
+            <DialogDescription>
+              Most recent backend error retained for this integration.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-5 py-4 text-sm text-muted-foreground">
+            <p className="whitespace-pre-wrap break-words font-mono text-foreground">
+              {errorDialogState?.error}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {configGroups.length > 0 && (
         <div className="columns-1 gap-4 md:columns-2">
           {configGroups.map((group) => (
@@ -2220,6 +2336,7 @@ export function SettingsFanoutSection({
                 {group.configs.map((cfg) => {
                   const statusEntry = health?.fanout_statuses?.[cfg.id];
                   const status = cfg.enabled ? statusEntry?.status : undefined;
+                  const lastError = cfg.enabled ? statusEntry?.last_error : null;
                   const communityConfig = cfg.config as Record<string, unknown>;
                   return (
                     <div
@@ -2285,6 +2402,25 @@ export function SettingsFanoutSection({
                         <span className="text-xs text-muted-foreground hidden sm:inline">
                           {cfg.enabled ? getStatusLabel(status, cfg.type) : 'Disabled'}
                         </span>
+
+                        {lastError && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 px-0"
+                            onClick={() =>
+                              setErrorDialogState({
+                                integrationName: cfg.name,
+                                error: lastError,
+                              })
+                            }
+                            aria-label={`View error details for ${cfg.name}`}
+                            title="View latest error"
+                          >
+                            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                          </Button>
+                        )}
 
                         <Button
                           type="button"
