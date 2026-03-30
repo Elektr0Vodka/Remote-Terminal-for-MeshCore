@@ -699,6 +699,10 @@ class RadioDiscoveryResult(BaseModel):
     """One mesh node heard during a discovery sweep."""
 
     public_key: str = Field(description="Discovered node public key as hex")
+    name: str | None = Field(
+        default=None,
+        description="Known name for this node from contacts DB, if any",
+    )
     node_type: Literal["repeater", "sensor"] = Field(description="Discovered node class")
     heard_count: int = Field(default=1, description="How many responses were heard from this node")
     local_snr: float | None = Field(
@@ -904,6 +908,27 @@ class KmsKeyUpdate(BaseModel):
     triple_byte_pct: float
 
 
+class NoiseFloorSample(BaseModel):
+    timestamp: int = Field(description="Unix timestamp of the sampled reading")
+    noise_floor_dbm: int = Field(description="Noise floor in dBm")
+
+
+class NoiseFloorHistoryStats(BaseModel):
+    sample_interval_seconds: int = Field(description="Expected spacing between samples")
+    coverage_seconds: int = Field(description="How much of the last 24 hours is represented")
+    latest_noise_floor_dbm: int | None = Field(
+        default=None, description="Most recent sampled noise floor in dBm"
+    )
+    latest_timestamp: int | None = Field(
+        default=None, description="Unix timestamp of the most recent sample"
+    )
+    supported: bool | None = Field(
+        default=None,
+        description="Whether the connected radio appears to support radio stats sampling",
+    )
+    samples: list[NoiseFloorSample] = Field(default_factory=list)
+
+
 class StatisticsResponse(BaseModel):
     busiest_channels_24h: list[BusyChannel]
     contact_count: int
@@ -919,3 +944,4 @@ class StatisticsResponse(BaseModel):
     repeaters_heard: ContactActivityCounts
     known_channels_active: ContactActivityCounts
     path_hash_width_24h: PathHashWidthStats | None = None
+    noise_floor_24h: NoiseFloorHistoryStats

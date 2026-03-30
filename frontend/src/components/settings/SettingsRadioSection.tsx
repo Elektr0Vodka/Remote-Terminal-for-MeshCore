@@ -852,7 +852,7 @@ export function SettingsRadioSection({
                       c.public_key === result.public_key ||
                       c.public_key.startsWith(result.public_key.slice(0, 12))
                   );
-                  const friendlyName = knownContact?.name ?? null;
+                  const friendlyName = knownContact?.name ?? result.name ?? null;
                   const hashMode =
                     knownContact?.advert_hash_mode ?? knownContact?.observed_hash_mode ?? null;
                   const shortId = getContactShortId(result.public_key, hashMode, contacts);
