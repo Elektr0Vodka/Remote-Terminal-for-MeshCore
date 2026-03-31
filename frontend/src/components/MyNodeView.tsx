@@ -1664,7 +1664,6 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
                       <StatTile
                         label="Best RSSI"
                         value={fmtRssi(sessionSnapshot.bestRssi)}
-                        sub={sessionSnapshot.strongestPacketPayloadType ?? undefined}
                       />
                       <StatTile
                         label="Median RSSI"

@@ -1467,35 +1467,16 @@ export function Sidebar({
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
-        <div className="relative min-w-0 flex-1">
-          <Input
-            type="text"
-            placeholder="Search channels/contacts..."
-            aria-label="Search conversations"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn('h-7 text-[13px] bg-background/50', searchQuery ? 'pr-8' : 'pr-3')}
-          />
-          {searchQuery && (
-            <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-              onClick={() => setSearchQuery('')}
-              title="Clear search"
-              aria-label="Clear search"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={onNewMessage}
-          title="New Message"
-          aria-label="New message"
-          className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground transition-colors"
+          title="Add channel or contact"
+          aria-label="Add channel or contact"
+          className="h-8 flex-1 justify-start gap-2 px-3 text-[13px]"
         >
           <SquarePen className="h-4 w-4" />
+          <span>Add Channel/Contact</span>
         </Button>
         <Button
           variant="ghost"
@@ -1559,7 +1540,30 @@ export function Sidebar({
         </div>
       ) : (
         /* Main list */
-        <div className="relative flex-1 min-h-0 overflow-hidden">
+        <div className="relative flex-1 min-h-0 overflow-hidden flex flex-col">
+          {/* Search */}
+          <div className="px-3 py-2 border-b border-border/60 flex-shrink-0">
+            <div className="relative min-w-0">
+              <Input
+                type="text"
+                placeholder="Search channels/contacts..."
+                aria-label="Search conversations"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={cn('h-7 text-[13px] bg-background/50', searchQuery ? 'pr-8' : 'pr-3')}
+              />
+              {searchQuery && (
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  onClick={() => setSearchQuery('')}
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
           {/* Scroll to top */}
           <button
             onClick={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -1580,7 +1584,7 @@ export function Sidebar({
           >
             <ChevronsDown className="h-3.5 w-3.5" />
           </button>
-          <div ref={listRef} className="h-full overflow-y-auto [contain:layout_paint]">
+          <div ref={listRef} className="flex-1 overflow-y-auto [contain:layout_paint]">
             {sectionOrder.map((section) => renderSection(section))}
             {isEmpty && (
               <div className="p-5 text-center text-muted-foreground">

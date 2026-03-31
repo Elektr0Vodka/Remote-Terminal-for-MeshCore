@@ -73,6 +73,7 @@ interface ConversationPaneProps {
   onOpenContactInfo: (publicKey: string, fromChannel?: boolean) => void;
   onOpenChannelInfo: (channelKey: string) => void;
   onSenderClick: (sender: string) => void;
+  onChannelReferenceClick?: (channelName: string) => void;
   onLoadOlder: () => Promise<void>;
   onResendChannelMessage: (messageId: number, newTimestamp?: boolean) => Promise<void>;
   onTargetReached: () => void;
@@ -140,6 +141,7 @@ export function ConversationPane({
   onOpenContactInfo,
   onOpenChannelInfo,
   onSenderClick,
+  onChannelReferenceClick,
   onLoadOlder,
   onResendChannelMessage,
   onTargetReached,
@@ -355,6 +357,7 @@ export function ConversationPane({
             activeConversation.type === 'channel' ? onDismissUnreadMarker : undefined
           }
           onSenderClick={activeConversation.type === 'channel' ? onSenderClick : undefined}
+          onChannelReferenceClick={onChannelReferenceClick}
           onLoadOlder={onLoadOlder}
           onResendChannelMessage={
             activeConversation.type === 'channel' ? onResendChannelMessage : undefined
