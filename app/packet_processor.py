@@ -324,7 +324,7 @@ async def process_raw_packet(
             result.update(decrypt_result)
 
     elif payload_type == PayloadType.ADVERT:
-        await _process_advertisement(raw_bytes, ts, packet_info, rssi=rssi, snr=snr)
+        await _process_advertisement(raw_bytes, ts, packet_info, rssi=rssi, snr=snr, is_new_packet=is_new_packet)
 
     elif payload_type == PayloadType.TEXT_MESSAGE:
         decrypt_result = await _process_direct_message(raw_bytes, packet_id, ts, packet_info)
@@ -440,11 +440,16 @@ async def _process_advertisement(
     packet_info: PacketInfo | None = None,
     rssi: int | float | None = None,
     snr: float | None = None,
+    is_new_packet: bool = True,
 ) -> None:
     """
     Process an advertisement packet.
 
     Extracts contact info and updates the database/broadcasts to clients.
+
+    is_new_packet=False indicates a relay duplicate (same payload already stored).
+    Path observations are still recorded so relay diversity is tracked, but the
+    contact upsert and broadcast are skipped since the data is unchanged.
     """
     # Parse packet to get path info if not already provided
     if packet_info is None:
@@ -481,7 +486,8 @@ async def _process_advertisement(
         advert.device_role if advert.device_role > 0 else (existing.type if existing else 0)
     )
 
-    # Keep recent unique advert paths for all contacts.
+    # Always record the relay path so diversity tracking is complete, but only
+    # count heard_count for the first (non-duplicate) arrival of each payload.
     await ContactAdvertPathRepository.record_observation(
         public_key=advert.public_key.lower(),
         path_hex=new_path_hex,
@@ -492,7 +498,13 @@ async def _process_advertisement(
         snr=snr,
         # hash_size is bytes per hop (1/2/3); hash_mode is hash_size - 1 (0/1/2)
         hash_mode=packet_info.path_hash_size - 1 if packet_info.path_hash_size else None,
+        is_new_packet=is_new_packet,
     )
+
+    # Relay duplicates carry identical contact data — skip the upsert and
+    # broadcast to avoid redundant DB writes and frontend re-renders.
+    if not is_new_packet:
+        return
 
     contact_upsert = ContactUpsert(
         public_key=advert.public_key.lower(),

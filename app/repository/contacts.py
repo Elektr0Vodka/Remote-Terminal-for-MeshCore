@@ -739,12 +739,18 @@ class ContactAdvertPathRepository:
         rssi: int | float | None = None,
         snr: float | None = None,
         hash_mode: int | None = None,
+        is_new_packet: bool = True,
     ) -> None:
         """
         Upsert a unique advert path observation for a contact and prune to N most recent.
 
         rssi/snr are stored as the best (highest) values seen on this path.
         hash_mode: 0=1-byte hops, 1=2-byte hops, 2=3-byte hops (None=unknown).
+
+        is_new_packet=False means this is a relay duplicate of an already-counted advert.
+        The path is still recorded (for path diversity tracking) but heard_count is not
+        incremented so that mesh health advert counts reflect unique transmissions, not
+        relay copies.
         """
         if max_paths < 1:
             max_paths = 1
@@ -753,31 +759,59 @@ class ContactAdvertPathRepository:
         normalized_path = path_hex.lower()
         path_len = hop_count if hop_count is not None else len(normalized_path) // 2
 
-        await db.conn.execute(
-            """
-            INSERT INTO contact_advert_paths
-                (public_key, path_hex, path_len, first_seen, last_seen, heard_count,
-                 best_rssi, best_snr, hash_mode)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
-            ON CONFLICT(public_key, path_hex, path_len) DO UPDATE SET
-                last_seen = MAX(contact_advert_paths.last_seen, excluded.last_seen),
-                heard_count = contact_advert_paths.heard_count + 1,
-                hash_mode = COALESCE(excluded.hash_mode, contact_advert_paths.hash_mode),
-                best_rssi = CASE
-                    WHEN excluded.best_rssi IS NULL THEN contact_advert_paths.best_rssi
-                    WHEN contact_advert_paths.best_rssi IS NULL THEN excluded.best_rssi
-                    WHEN excluded.best_rssi > contact_advert_paths.best_rssi THEN excluded.best_rssi
-                    ELSE contact_advert_paths.best_rssi
-                END,
-                best_snr = CASE
-                    WHEN excluded.best_snr IS NULL THEN contact_advert_paths.best_snr
-                    WHEN contact_advert_paths.best_snr IS NULL THEN excluded.best_snr
-                    WHEN excluded.best_snr > contact_advert_paths.best_snr THEN excluded.best_snr
-                    ELSE contact_advert_paths.best_snr
-                END
-            """,
-            (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr, hash_mode),
-        )
+        if is_new_packet:
+            await db.conn.execute(
+                """
+                INSERT INTO contact_advert_paths
+                    (public_key, path_hex, path_len, first_seen, last_seen, heard_count,
+                     best_rssi, best_snr, hash_mode)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+                ON CONFLICT(public_key, path_hex, path_len) DO UPDATE SET
+                    last_seen = MAX(contact_advert_paths.last_seen, excluded.last_seen),
+                    heard_count = contact_advert_paths.heard_count + 1,
+                    hash_mode = COALESCE(excluded.hash_mode, contact_advert_paths.hash_mode),
+                    best_rssi = CASE
+                        WHEN excluded.best_rssi IS NULL THEN contact_advert_paths.best_rssi
+                        WHEN contact_advert_paths.best_rssi IS NULL THEN excluded.best_rssi
+                        WHEN excluded.best_rssi > contact_advert_paths.best_rssi THEN excluded.best_rssi
+                        ELSE contact_advert_paths.best_rssi
+                    END,
+                    best_snr = CASE
+                        WHEN excluded.best_snr IS NULL THEN contact_advert_paths.best_snr
+                        WHEN contact_advert_paths.best_snr IS NULL THEN excluded.best_snr
+                        WHEN excluded.best_snr > contact_advert_paths.best_snr THEN excluded.best_snr
+                        ELSE contact_advert_paths.best_snr
+                    END
+                """,
+                (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr, hash_mode),
+            )
+        else:
+            # Relay duplicate: record path if not yet seen, but don't inflate heard_count.
+            # Signal values are still tracked in case this relay copy had a better signal.
+            await db.conn.execute(
+                """
+                INSERT INTO contact_advert_paths
+                    (public_key, path_hex, path_len, first_seen, last_seen, heard_count,
+                     best_rssi, best_snr, hash_mode)
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
+                ON CONFLICT(public_key, path_hex, path_len) DO UPDATE SET
+                    last_seen = MAX(contact_advert_paths.last_seen, excluded.last_seen),
+                    hash_mode = COALESCE(excluded.hash_mode, contact_advert_paths.hash_mode),
+                    best_rssi = CASE
+                        WHEN excluded.best_rssi IS NULL THEN contact_advert_paths.best_rssi
+                        WHEN contact_advert_paths.best_rssi IS NULL THEN excluded.best_rssi
+                        WHEN excluded.best_rssi > contact_advert_paths.best_rssi THEN excluded.best_rssi
+                        ELSE contact_advert_paths.best_rssi
+                    END,
+                    best_snr = CASE
+                        WHEN excluded.best_snr IS NULL THEN contact_advert_paths.best_snr
+                        WHEN contact_advert_paths.best_snr IS NULL THEN excluded.best_snr
+                        WHEN excluded.best_snr > contact_advert_paths.best_snr THEN excluded.best_snr
+                        ELSE contact_advert_paths.best_snr
+                    END
+                """,
+                (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr, hash_mode),
+            )
 
         # Keep only the N most recent unique paths per contact.
         await db.conn.execute(
