@@ -419,6 +419,13 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_057_add_contact_observed_hash_mode(conn)
         await set_version(conn, 57)
         applied += 1
+    # Migration 58: Add statistics indexes for time-windowed scans (upstream migration 47)
+    if version < 58:
+        logger.info("Applying migration 58: add statistics indexes")
+        await _migrate_058_add_statistics_indexes(conn)
+        await set_version(conn, 58)
+        applied += 1
+
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -3150,4 +3157,38 @@ async def _migrate_051_add_contact_owner_id(conn: aiosqlite.Connection) -> None:
             logger.debug("contacts.owner_id already exists, skipping")
         else:
             raise
+    await conn.commit()
+
+
+async def _migrate_058_add_statistics_indexes(conn: aiosqlite.Connection) -> None:
+    """Add indexes used by the statistics endpoint's time-windowed scans."""
+    cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = {row[0] for row in await cursor.fetchall()}
+
+    if "raw_packets" in tables:
+        cursor = await conn.execute("PRAGMA table_info(raw_packets)")
+        raw_packet_columns = {row[1] for row in await cursor.fetchall()}
+        if "timestamp" in raw_packet_columns:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_raw_packets_timestamp ON raw_packets(timestamp)"
+            )
+
+    if "contacts" in tables:
+        cursor = await conn.execute("PRAGMA table_info(contacts)")
+        contact_columns = {row[1] for row in await cursor.fetchall()}
+        if {"type", "last_seen"}.issubset(contact_columns):
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_contacts_type_last_seen ON contacts(type, last_seen)"
+            )
+
+    if "messages" in tables:
+        cursor = await conn.execute("PRAGMA table_info(messages)")
+        message_columns = {row[1] for row in await cursor.fetchall()}
+        if {"type", "received_at", "conversation_key"}.issubset(message_columns):
+            await conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_messages_type_received_conversation
+                ON messages(type, received_at, conversation_key)
+                """
+            )
     await conn.commit()
