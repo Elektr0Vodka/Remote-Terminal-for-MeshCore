@@ -7,7 +7,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Contact, HealthStatus, RadioConfig, RawPacket, StatisticsResponse } from '../types';
+import type { Contact, HealthStatus, NoiseFloorSample, RadioConfig, RawPacket, StatisticsResponse } from '../types';
+import { api } from '../api';
 import {
   buildRawPacketStatsSnapshot,
   type RawPacketStatsSessionState,
@@ -740,6 +741,141 @@ function StackedBarChart({ bins, windowSeconds }: { bins: Bin[]; windowSeconds: 
   );
 }
 
+// ─── NoiseFloorLineChart ────────────────────────────────────────────────────
+
+function NoiseFloorLineChart({
+  samples,
+  windowSeconds,
+}: {
+  samples: NoiseFloorSample[];
+  windowSeconds: number;
+}) {
+  const [hov, setHov] = useState<number | null>(null);
+  if (samples.length < 2)
+    return (
+      <svg width="100%" viewBox={`0 0 ${CW} ${CH}`} style={{ display: 'block' }}>
+        <text
+          x={(PAD_L + INNER_W / 2).toFixed(1)}
+          y={(CH / 2).toFixed(1)}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="9"
+          fill="hsl(var(--muted-foreground))"
+        >
+          {samples.length === 0 ? 'No data yet' : 'Need more samples'}
+        </text>
+      </svg>
+    );
+
+  const values = samples.map((s) => s.noise_floor_dbm);
+  const timestamps = samples.map((s) => s.timestamp * 1000);
+  const yMin = Math.min(...values);
+  const yMax = Math.max(...values);
+  const range = yMax - yMin || 1;
+  const tMin = timestamps[0];
+  const tMax = timestamps[timestamps.length - 1];
+  const tRange = tMax - tMin || 1;
+  const color = '#8b5cf6';
+  const id = 'noise-floor-grad';
+
+  function xPos(i: number): number {
+    return PAD_L + ((timestamps[i] - tMin) / tRange) * INNER_W;
+  }
+  function yPos(v: number): number {
+    return INNER_H - ((v - yMin) / range) * INNER_H;
+  }
+
+  const yLabels = [yMin, Math.round((yMin + yMax) / 2), yMax];
+
+  let linePath = '';
+  let areaPath = `M${xPos(0).toFixed(1)},${INNER_H} `;
+  for (let i = 0; i < samples.length; i++) {
+    const x = xPos(i).toFixed(1);
+    const y = yPos(values[i]).toFixed(1);
+    linePath += `${i === 0 ? 'M' : 'L'}${x},${y}`;
+    areaPath += `L${x},${y} `;
+  }
+  areaPath += `L${xPos(samples.length - 1).toFixed(1)},${INNER_H} Z`;
+
+  const showIdx = [0, Math.floor(samples.length / 2), samples.length - 1];
+
+  let tipX = 0, tipY = 0, tipVal: number | null = null;
+  if (hov !== null) {
+    tipVal = values[hov];
+    tipX = xPos(hov);
+    tipY = yPos(tipVal) - 20;
+    if (tipX < PAD_L + 28) tipX = PAD_L + 28;
+    if (tipX > CW - 28) tipX = CW - 28;
+    if (tipY < 2) tipY = 2;
+  }
+
+  const hovZoneW = INNER_W / samples.length;
+
+  return (
+    <svg
+      width="100%"
+      viewBox={`0 0 ${CW} ${CH}`}
+      preserveAspectRatio="none"
+      style={{ display: 'block', overflow: 'visible' }}
+    >
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      {yLabels.map((v, li) => {
+        const y = yPos(v);
+        return (
+          <g key={li}>
+            <line x1={PAD_L} x2={CW} y1={y.toFixed(1)} y2={y.toFixed(1)} stroke="hsl(var(--border))" strokeWidth="0.5" strokeDasharray="2,2" />
+            <text x={PAD_L - 3} y={y.toFixed(1)} textAnchor="end" dominantBaseline="middle" fontSize="8" fill="hsl(var(--muted-foreground))">{v}</text>
+          </g>
+        );
+      })}
+      <path d={areaPath} fill={`url(#${id})`} />
+      <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      {hov !== null && tipVal != null && (
+        <circle cx={xPos(hov).toFixed(1)} cy={yPos(tipVal).toFixed(1)} r="3" fill={color} stroke="hsl(var(--background))" strokeWidth="1.5" />
+      )}
+      {hov !== null && tipVal !== null && (
+        <g transform={`translate(${tipX.toFixed(1)},${tipY.toFixed(1)})`}>
+          <rect x="-28" y="-11" width="56" height="22" rx="2" fill="hsl(var(--popover))" stroke="hsl(var(--border))" strokeWidth="0.5" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }} />
+          <text textAnchor="middle" y="1" fontSize="8.5" fontWeight="600" fill="hsl(var(--popover-foreground))">{tipVal} dBm</text>
+          <text textAnchor="middle" fontSize="6.5" fill="hsl(var(--muted-foreground))" dy="-12">
+            NF · {fmtTime(timestamps[hov], windowSeconds)}
+          </text>
+        </g>
+      )}
+      <line x1={PAD_L} x2={CW} y1={INNER_H} y2={INNER_H} stroke="hsl(var(--border))" strokeWidth="0.5" />
+      {showIdx.map((i) => (
+        <text
+          key={i}
+          x={xPos(i).toFixed(1)}
+          y={CH - 2}
+          textAnchor={i === 0 ? 'start' : i === samples.length - 1 ? 'end' : 'middle'}
+          fontSize="7"
+          fill="hsl(var(--muted-foreground))"
+        >
+          {fmtTime(timestamps[i], windowSeconds)}
+        </text>
+      ))}
+      {samples.map((_, i) => (
+        <rect
+          key={i}
+          x={(PAD_L + i * hovZoneW).toFixed(1)}
+          y="0"
+          width={hovZoneW.toFixed(1)}
+          height={`${INNER_H}`}
+          fill="transparent"
+          onMouseEnter={() => setHov(i)}
+          onMouseLeave={() => setHov(null)}
+        />
+      ))}
+    </svg>
+  );
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────
 
 function Skeleton({ className = '' }: { className?: string }) {
@@ -883,7 +1019,12 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
       ]);
       setConfig(cfg);
       if (healthRes.ok) setHealth(await healthRes.json());
-      if (statsRes.ok) setStats(await statsRes.json());
+      if (statsRes.ok) {
+        const statsData: StatisticsResponse = await statsRes.json();
+        setStats(statsData);
+        setNoiseFloorSupported(statsData.noise_floor_24h.supported);
+        setNoiseFloorSamples(statsData.noise_floor_24h.samples);
+      }
       loadedAt.current = Date.now();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
@@ -953,6 +1094,10 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
   const [historicalStatsError, setHistoricalStatsError] = useState<string | null>(null);
   const [statsSource, setStatsSource] = useState<'session' | 'db'>('session');
 
+  // Noise floor
+  const [noiseFloorSamples, setNoiseFloorSamples] = useState<NoiseFloorSample[]>([]);
+  const [noiseFloorSupported, setNoiseFloorSupported] = useState<boolean | null>(null);
+
   // Fetch DB historical stats whenever the time window changes (uses nowSec which ticks every 30s)
   useEffect(() => {
     const windowDef = TIME_WINDOWS.find((w) => w.label === selectedWindow.label);
@@ -975,6 +1120,25 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
         setHistoricalStatsLoading(false);
       });
   }, [selectedWindow.label, nowSec]);
+
+  // Noise floor: filter live samples for live window; fetch from DB for historical windows
+  useEffect(() => {
+    if (noiseFloorSupported === false) return;
+    if (selectedWindow.useLive) {
+      // Filter in-memory stats samples to the live window (20m)
+      const cutoff = nowSec - (selectedWindow.seconds ?? 20 * 60);
+      setNoiseFloorSamples((prev) => prev.filter((s) => s.timestamp >= cutoff));
+      return;
+    }
+    if (selectedWindow.key === 'custom') return; // handled by Apply button
+    const endTs = nowSec;
+    const startTs = selectedWindow.seconds !== null ? endTs - selectedWindow.seconds : 0;
+    api.getNoiseFloorHistory(startTs, endTs).then(
+      (samples) => setNoiseFloorSamples(samples),
+      () => {} // silently ignore — chart will just show no data
+    );
+  }, [selectedWindow.key, selectedWindow.useLive, selectedWindow.seconds, nowSec, noiseFloorSupported]);
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const windowSeconds = useMemo((): number => {
     if (selectedWindow.key === 'custom' && customStart && customEnd)
@@ -1401,6 +1565,18 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
                     windowSeconds={windowSeconds}
                   />
                 </ChartCard>
+                {noiseFloorSupported !== false && (
+                  <ChartCard
+                    title="Noise Floor"
+                    stat={
+                      noiseFloorSamples.length > 0
+                        ? `${noiseFloorSamples[noiseFloorSamples.length - 1].noise_floor_dbm} dBm`
+                        : undefined
+                    }
+                  >
+                    <NoiseFloorLineChart samples={noiseFloorSamples} windowSeconds={windowSeconds} />
+                  </ChartCard>
+                )}
               </div>
 
               {!selectedWindow.useLive && (

@@ -36,6 +36,7 @@ import type {
   RepeaterRadioSettingsResponse,
   RepeaterStatusResponse,
   StatisticsResponse,
+  NoiseFloorSample,
   TraceResponse,
   UnreadCounts,
 } from './types';
@@ -370,6 +371,8 @@ export const api = {
 
   // Statistics
   getStatistics: () => fetchJson<StatisticsResponse>('/statistics'),
+  getNoiseFloorHistory: (startTs: number, endTs: number) =>
+    fetchJson<NoiseFloorSample[]>(`/statistics/noise-floor?start_ts=${startTs}&end_ts=${endTs}`),
 
   // Granular repeater endpoints
   repeaterLogin: (publicKey: string, password: string) =>

@@ -425,6 +425,11 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_058_add_statistics_indexes(conn)
         await set_version(conn, 58)
         applied += 1
+    if version < 59:
+        logger.info("Applying migration 59: create noise_floor_samples table")
+        await _migrate_059_create_noise_floor_samples(conn)
+        await set_version(conn, 59)
+        applied += 1
 
     if applied > 0:
         logger.info(
@@ -3191,4 +3196,20 @@ async def _migrate_058_add_statistics_indexes(conn: aiosqlite.Connection) -> Non
                 ON messages(type, received_at, conversation_key)
                 """
             )
+    await conn.commit()
+
+
+async def _migrate_059_create_noise_floor_samples(conn: aiosqlite.Connection) -> None:
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS noise_floor_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            noise_floor_dbm INTEGER NOT NULL
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_noise_floor_samples_timestamp ON noise_floor_samples(timestamp)"
+    )
     await conn.commit()

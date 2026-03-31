@@ -1,4 +1,4 @@
-"""In-memory local-radio noise floor history sampling."""
+"""Local-radio noise floor history sampling with DB persistence."""
 
 import asyncio
 import logging
@@ -8,6 +8,7 @@ from collections import deque
 from meshcore import EventType
 
 from app.radio import RadioDisconnectedError, RadioOperationBusyError
+from app.repository.noise_floor import NoiseFloorRepository
 from app.services.radio_runtime import radio_runtime as radio_manager
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,12 @@ async def sample_noise_floor_once(*, blocking: bool = False) -> None:
         return
 
     _noise_floor_supported = True
-    await _append_sample(int(time.time()), noise_floor)
+    ts = int(time.time())
+    await _append_sample(ts, noise_floor)
+    try:
+        await NoiseFloorRepository.insert(ts, noise_floor)
+    except Exception as exc:
+        logger.debug("Failed to persist noise floor sample to DB: %s", exc)
 
 
 async def _noise_floor_sampling_loop() -> None:
@@ -68,6 +74,15 @@ async def start_noise_floor_sampling() -> None:
     global _noise_floor_task
     if _noise_floor_task is not None and not _noise_floor_task.done():
         return
+    # Seed in-memory deque from DB (last 24h)
+    try:
+        rows = await NoiseFloorRepository.get_last_n_hours(24)
+        async with _samples_lock:
+            for row in rows:
+                _noise_floor_samples.append((row["timestamp"], row["noise_floor_dbm"]))
+        logger.debug("Loaded %d noise floor samples from DB", len(rows))
+    except Exception as exc:
+        logger.debug("Could not load noise floor history from DB: %s", exc)
     _noise_floor_task = asyncio.create_task(_noise_floor_sampling_loop())
 
 

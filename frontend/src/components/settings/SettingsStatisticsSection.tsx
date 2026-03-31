@@ -376,14 +376,14 @@ export function SettingsStatisticsSection({ className }: { className?: string })
                   <NoiseFloorChart samples={stats.noise_floor_24h.samples} />
                 ) : stats.noise_floor_24h.samples.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No noise floor samples collected yet. Samples are collected every five minutes,
-                    and retained until server restart.
+                    No noise floor samples collected yet. Samples are collected every five minutes
+                    and persisted across server restarts.
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     Only one sample so far ({stats.noise_floor_24h.samples[0].noise_floor_dbm} dBm).
-                    More data needed for a chart. Samples are collected every five minutes, and
-                    retained until server restart.
+                    More data needed for a chart. Samples are collected every five minutes and
+                    persisted across server restarts.
                   </p>
                 )}
               </div>
