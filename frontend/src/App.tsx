@@ -469,6 +469,7 @@ export function App() {
     loadingNewer,
     messageInputRef,
     onTrace: handleTrace,
+    onRunTracePath: api.requestRadioTrace,
     onPathDiscovery: handlePathDiscovery,
     onToggleFavorite: handleToggleFavorite,
     onDeleteContact: handleDeleteContact,

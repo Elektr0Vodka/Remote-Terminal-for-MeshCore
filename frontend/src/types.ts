@@ -296,7 +296,7 @@ export interface ResendChannelMessageResponse {
   message?: Message;
 }
 
-// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page, 'kms' for MC-KMS, 'contact-analytics' for per-contact analytics
+// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page, 'kms' for MC-KMS, 'contact-analytics' for per-contact analytics, 'trace' for Trace tool
 type ConversationType =
   | 'contact'
   | 'channel'
@@ -307,7 +307,8 @@ type ConversationType =
   | 'node'
   | 'mesh-health'
   | 'kms'
-  | 'contact-analytics';
+  | 'contact-analytics'
+  | 'trace';
 
 export interface Conversation {
   type: ConversationType;
@@ -505,6 +506,25 @@ export interface TraceResponse {
   remote_snr: number | null;
   local_snr: number | null;
   path_len: number;
+}
+
+export interface RadioTraceNode {
+  role: 'repeater' | 'custom' | 'local';
+  public_key: string | null;
+  name: string | null;
+  observed_hash: string | null;
+  snr: number | null;
+}
+
+export interface RadioTraceHopRequest {
+  public_key?: string | null;
+  hop_hex?: string | null;
+}
+
+export interface RadioTraceResponse {
+  path_len: number;
+  timeout_seconds: number;
+  nodes: RadioTraceNode[];
 }
 
 export interface PathDiscoveryRoute {

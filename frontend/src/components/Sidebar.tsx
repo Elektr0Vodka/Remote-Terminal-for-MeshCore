@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   BarChart2,
   Bell,
+  Cable,
+  ChartNetwork,
   CheckCheck,
   CheckCircle2,
   ChevronDown,
@@ -19,7 +21,6 @@ import {
   Search as SearchIcon,
   Settings,
   SquarePen,
-  Waypoints,
   X,
 } from 'lucide-react';
 import {
@@ -146,7 +147,8 @@ type ToolKey =
   | 'my-node'
   | 'mesh-health'
   | 'room-finder'
-  | 'mc-kms';
+  | 'mc-kms'
+  | 'trace';
 
 const TOOL_LABELS: Record<ToolKey, string> = {
   'packet-feed': 'Packet Feed',
@@ -157,6 +159,7 @@ const TOOL_LABELS: Record<ToolKey, string> = {
   'mesh-health': 'Mesh Health',
   'room-finder': 'Room Finder',
   'mc-kms': 'MC-KMS',
+  'trace': 'Trace',
 };
 
 const ALL_TOOL_KEYS: ToolKey[] = [
@@ -168,6 +171,7 @@ const ALL_TOOL_KEYS: ToolKey[] = [
   'mesh-health',
   'room-finder',
   'mc-kms',
+  'trace',
 ];
 
 const SIDEBAR_TOOL_ORDER_KEY = 'remoteterm-sidebar-tool-order';
@@ -448,7 +452,8 @@ export function Sidebar({
       | 'search'
       | 'node'
       | 'mesh-health'
-      | 'kms',
+      | 'kms'
+      | 'trace',
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
@@ -1033,7 +1038,7 @@ export function Sidebar({
     'mesh-visualizer': renderSidebarActionRow({
       key: 'tool-visualizer',
       active: isActive('visualizer', 'visualizer'),
-      icon: <Waypoints className="h-4 w-4" />,
+      icon: <ChartNetwork className="h-4 w-4" />,
       label: 'Mesh Visualizer',
       onClick: () =>
         handleSelectConversation({ type: 'visualizer', id: 'visualizer', name: 'Mesh Visualizer' }),
@@ -1099,6 +1104,13 @@ export function Sidebar({
       icon: <KeyRound className="h-4 w-4" />,
       label: 'MC-KMS',
       onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
+    }),
+    'trace': renderSidebarActionRow({
+      key: 'tool-trace',
+      active: isActive('trace', 'trace'),
+      icon: <Cable className="h-4 w-4" />,
+      label: 'Trace',
+      onClick: () => handleSelectConversation({ type: 'trace', id: 'trace', name: 'Trace' }),
     }),
   };
 

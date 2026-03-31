@@ -286,6 +286,7 @@ function isMessageConversation(conversation: Conversation | null): conversation 
       'mesh-health',
       'kms',
       'contact-analytics',
+      'trace',
     ].includes(conversation.type)
   );
 }
