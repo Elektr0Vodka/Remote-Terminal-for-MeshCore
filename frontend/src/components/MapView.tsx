@@ -1182,9 +1182,23 @@ export function MapView({
   // ── Marker refs ─────────────────────────────────────────────────────────────
   const markerRefs = useRef<Record<string, L.Marker | null>>({});
   const setMarkerRef = useCallback((key: string, ref: L.Marker | null) => {
+    if (ref === null) {
+      delete markerRefs.current[key];
+      return;
+    }
     markerRefs.current[key] = ref;
   }, []);
 
+  useEffect(() => {
+    const currentKeys = new Set(mappableContacts.map((c) => c.public_key));
+    for (const key of Object.keys(markerRefs.current)) {
+      if (!currentKeys.has(key)) {
+        delete markerRefs.current[key];
+      }
+    }
+  }, [mappableContacts]);
+
+  // Open popup for focused contact after map is ready
   useEffect(() => {
     if (focusedContact) {
       const timer = setTimeout(

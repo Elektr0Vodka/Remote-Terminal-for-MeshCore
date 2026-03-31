@@ -286,6 +286,7 @@ export function App() {
     unreadLastReadAts,
     recordMessageEvent,
     renameConversationState,
+    removeConversationState,
     markAllRead,
     refreshUnreads,
   } = useUnreadCounts(channels, contacts, activeConversation);
@@ -361,6 +362,7 @@ export function App() {
     observeMessage,
     recordMessageEvent,
     renameConversationState,
+    removeConversationState,
     checkMention,
     pendingDeleteFallbackRef,
     setActiveConversation,

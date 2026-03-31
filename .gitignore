@@ -30,3 +30,4 @@ Remote-Terminal-for-MeshCore.zip
 # local Docker compose files
 docker-compose.yml
 docker-compose.yaml
+.docker-certs/
