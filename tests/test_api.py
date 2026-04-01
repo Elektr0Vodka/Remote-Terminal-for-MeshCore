@@ -131,6 +131,62 @@ class TestHealthEndpoint:
 class TestDebugEndpoint:
     """Test the debug support snapshot endpoint."""
 
+    def test_support_snapshot_sanitizes_radio_probe_location_fields(self):
+        """Debug radio probe should redact advertised lat/lon from self_info."""
+        from app.routers.debug import _sanitize_radio_probe_self_info
+
+        sanitized = _sanitize_radio_probe_self_info(
+            {
+                "name": "FlightlessTestNode",
+                "adv_lat": 47.786445,
+                "adv_lon": -122.344011,
+                "radio_freq": 910.525,
+            }
+        )
+
+        assert sanitized == {
+            "name": "FlightlessTestNode",
+            "radio_freq": 910.525,
+        }
+
+    def test_support_snapshot_only_keeps_erroring_fanouts_in_health_summary(self):
+        """Debug health summary should only include fanouts with non-empty last_error."""
+        from app.routers.debug import _build_debug_health_summary
+        from app.routers.health import FanoutStatusResponse
+
+        summary = _build_debug_health_summary(
+            {
+                "database_size_mb": 1.23,
+                "oldest_undecrypted_timestamp": 123,
+                "fanout_statuses": {
+                    "ok-id": {
+                        "name": "OK Fanout",
+                        "type": "bot",
+                        "status": "connected",
+                        "last_error": None,
+                    },
+                    "err-id": {
+                        "name": "Broken Fanout",
+                        "type": "mqtt_private",
+                        "status": "error",
+                        "last_error": "broker down",
+                    },
+                },
+                "bots_disabled_source": None,
+                "basic_auth_enabled": False,
+            },
+            radio_state="connected",
+        )
+
+        assert summary.fanouts_with_errors == {
+            "err-id": FanoutStatusResponse(
+                name="Broken Fanout",
+                type="mqtt_private",
+                status="error",
+                last_error="broker down",
+            )
+        }
+
     @pytest.mark.asyncio
     async def test_support_snapshot_returns_runtime_when_disconnected(self, test_db, client):
         """Debug snapshot should still return logs and runtime state when radio is disconnected."""
@@ -157,8 +213,21 @@ class TestDebugEndpoint:
 
         assert response.status_code == 200
         payload = response.json()
+        assert "app_info" not in payload["health"]
+        assert "bots_disabled" not in payload["health"]
+        assert "connection_info" not in payload["health"]
+        assert "fanout_statuses" not in payload["health"]
+        assert "radio_connected" not in payload["health"]
+        assert "radio_device_info" not in payload["health"]
+        assert "radio_initializing" not in payload["health"]
+        assert "status" not in payload["health"]
+        assert payload["health"]["fanouts_with_errors"] == {}
+        assert payload["health"]["radio_state"] == "disconnected"
         assert payload["radio_probe"]["performed"] is False
         assert payload["radio_probe"]["errors"] == ["Radio not connected"]
+        assert "multi_acks_enabled" not in payload["radio_probe"]
+        assert "max_channels" not in payload["runtime"]
+        assert "path_hash_mode" not in payload["runtime"]
         assert payload["runtime"]["channels_with_incoming_messages"] == 0
         assert payload["database"]["total_dms"] == 0
         assert payload["database"]["total_channel_messages"] == 0
@@ -212,6 +281,47 @@ class TestDebugEndpoint:
             response = await client.get("/api/debug")
 
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_support_snapshot_includes_persisted_app_settings(self, test_db, client):
+        """Debug snapshot should expose the stored app settings row."""
+        pub_key = "ab" * 32
+        await _insert_contact(pub_key, "Alice")
+
+        response = await client.patch(
+            "/api/settings",
+            json={
+                "max_radio_contacts": 321,
+                "auto_decrypt_dm_on_advert": True,
+                "sidebar_sort_order": "alpha",
+                "advert_interval": 7200,
+                "flood_scope": "US-CA",
+                "blocked_keys": [pub_key],
+                "blocked_names": ["Mallory"],
+            },
+        )
+        assert response.status_code == 200
+
+        response = await client.post(
+            "/api/settings/favorites/toggle",
+            json={"type": "contact", "id": pub_key},
+        )
+        assert response.status_code == 200
+
+        response = await client.get("/api/debug")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["settings"]["max_radio_contacts"] == 321
+        assert payload["settings"]["auto_decrypt_dm_on_advert"] is True
+        assert payload["settings"]["advert_interval"] == 7200
+        assert payload["settings"]["flood_scope"] == "#US-CA"
+        assert payload["settings"]["blocked_keys_count"] == 1
+        assert payload["settings"]["blocked_names_count"] == 1
+        assert "favorites" not in payload["settings"]
+        assert "blocked_keys" not in payload["settings"]
+        assert "blocked_names" not in payload["settings"]
+        assert "sidebar_sort_order" not in payload["settings"]
 
 
 class TestRadioDisconnectedHandler:
