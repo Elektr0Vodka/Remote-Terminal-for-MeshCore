@@ -45,6 +45,23 @@ router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 TRACE_HASH_BYTES = 4
 TRACE_FLAGS_4BYTE = 2
+TRACE_DEFAULT_TIMEOUT_SECONDS = 15.0
+TRACE_TIMEOUT_MIN_SECONDS = 5.0
+TRACE_TIMEOUT_MAX_SECONDS = 30.0
+TRACE_TIMEOUT_MARGIN = 1.2
+
+
+def _trace_timeout_seconds(send_result: object) -> float:
+    """Derive the trace wait timeout from the radio's suggested_timeout field."""
+    payload = getattr(send_result, "payload", None) or {}
+    suggested_timeout = payload.get("suggested_timeout")
+    try:
+        if suggested_timeout is None:
+            raise TypeError
+        timeout_seconds = float(suggested_timeout) / 1000.0 * TRACE_TIMEOUT_MARGIN
+    except (TypeError, ValueError):
+        timeout_seconds = TRACE_DEFAULT_TIMEOUT_SECONDS
+    return max(TRACE_TIMEOUT_MIN_SECONDS, min(TRACE_TIMEOUT_MAX_SECONDS, timeout_seconds))
 
 
 def _ambiguous_contact_detail(err: AmbiguousPublicKeyPrefixError) -> str:
@@ -446,12 +463,24 @@ async def request_trace(public_key: str) -> TraceResponse:
         if result.type == EventType.ERROR:
             raise HTTPException(status_code=500, detail=f"Failed to send trace: {result.payload}")
 
-        # Wait for the matching TRACE_DATA event
-        event = await mc.wait_for_event(
-            EventType.TRACE_DATA,
-            attribute_filters={"tag": tag},
-            timeout=15,
+        # Derive wait timeout from the radio's suggested_timeout; fall back to 15 s
+        timeout_seconds = _trace_timeout_seconds(result)
+        response_task = asyncio.create_task(
+            mc.wait_for_event(
+                EventType.TRACE_DATA,
+                attribute_filters={"tag": tag},
+                timeout=timeout_seconds,
+            )
         )
+        try:
+            event = await asyncio.wait_for(response_task, timeout=timeout_seconds)
+        except asyncio.TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="No trace response heard") from exc
+        finally:
+            if not response_task.done():
+                response_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await response_task
 
     if event is None:
         raise HTTPException(status_code=504, detail="No trace response heard")

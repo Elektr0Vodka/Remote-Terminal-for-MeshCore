@@ -256,6 +256,28 @@ async def start_historical_dm_decryption(
         )
 
 
+async def _attribute_hop_modes(path: bytes, path_hash_size: int) -> None:
+    """Update observed_hash_mode for every unambiguously resolved relay hop in a path.
+
+    Each hop is ``path_hash_size`` bytes.  We convert each slice to a hex prefix
+    and look for a unique contact match.  Ambiguous or unknown hops are silently
+    skipped.  ``update_observed_hash_mode`` is monotonically non-decreasing, so
+    calling this for duplicate packets is safe but wasteful — callers should gate
+    on ``is_new_packet`` where available.
+    """
+    if not path or path_hash_size <= 0:
+        return
+    hash_mode = path_hash_size - 1  # bytes-per-hop → 0/1/2
+    for offset in range(0, len(path), path_hash_size):
+        hop_bytes = path[offset : offset + path_hash_size]
+        if len(hop_bytes) < path_hash_size:
+            break
+        prefix_hex = hop_bytes.hex().lower()
+        contact = await ContactRepository.get_by_key_prefix(prefix_hex)
+        if contact is not None:
+            await ContactRepository.update_observed_hash_mode(contact.public_key, hash_mode)
+
+
 async def process_raw_packet(
     raw_bytes: bytes,
     timestamp: int | None = None,
@@ -298,6 +320,11 @@ async def process_raw_packet(
             len(raw_bytes),
             packet_id,
         )
+
+    # Attribute observed hash mode to each relay hop in the path.
+    # Only run for new (non-duplicate) packets to avoid redundant DB writes.
+    if is_new_packet and packet_info and packet_info.path and packet_info.path_length > 0:
+        await _attribute_hop_modes(packet_info.path, packet_info.path_hash_size)
 
     # Log packet arrival at debug level
     path_hex = packet_info.path.hex() if packet_info and packet_info.path else ""

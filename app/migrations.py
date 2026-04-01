@@ -430,6 +430,11 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await _migrate_059_create_noise_floor_samples(conn)
         await set_version(conn, 59)
         applied += 1
+    if version < 60:
+        logger.info("Applying migration 60: backfill observed_hash_mode from stored packet paths")
+        await _migrate_060_backfill_hop_hash_modes(conn)
+        await set_version(conn, 60)
+        applied += 1
 
     if applied > 0:
         logger.info(
@@ -3213,3 +3218,102 @@ async def _migrate_059_create_noise_floor_samples(conn: aiosqlite.Connection) ->
         "CREATE INDEX IF NOT EXISTS idx_noise_floor_samples_timestamp ON noise_floor_samples(timestamp)"
     )
     await conn.commit()
+
+
+async def _migrate_060_backfill_hop_hash_modes(conn: aiosqlite.Connection) -> None:
+    """Retroactively attribute observed_hash_mode to relay hops in stored packets.
+
+    For every raw packet in the database, parse the path bytes and attempt to
+    resolve each hop prefix to a unique contact.  If found, advance that
+    contact's observed_hash_mode to match the path's byte-width.
+
+    Strategy (fast, memory-bounded):
+    1. Load all contact public keys into a prefix index in memory.
+    2. Stream raw_packets rows one at a time (no full table load).
+    3. Accumulate the maximum hash mode seen per contact.
+    4. Apply all updates in a single batch commit.
+    """
+    from app.decoder import parse_packet as _parse_packet
+
+    # ── Step 1: build in-memory prefix index ─────────────────────────────────
+    # For each contact, index it under its 2-, 4-, and 6-char key prefixes so
+    # we can resolve 1-byte, 2-byte, and 3-byte hop hashes in O(1).
+    cursor = await conn.execute("SELECT public_key, observed_hash_mode FROM contacts")
+    contact_rows = await cursor.fetchall()
+
+    # prefix_hex → [public_key, ...]
+    prefix_index: dict[str, list[str]] = {}
+    # current stored mode per contact (None = not set)
+    stored_modes: dict[str, int | None] = {}
+
+    for row in contact_rows:
+        pk: str = row[0]
+        stored_modes[pk] = row[1]
+        for prefix_len in (2, 4, 6):
+            pfx = pk[:prefix_len]
+            if pfx not in prefix_index:
+                prefix_index[pfx] = []
+            prefix_index[pfx].append(pk)
+
+    # ── Step 2: stream packets and accumulate updates ─────────────────────────
+    # updates: public_key → highest hash_mode observed across all packets
+    updates: dict[str, int] = {}
+
+    cursor = await conn.execute("SELECT data FROM raw_packets")
+    async for row in cursor:
+        raw = row[0]
+        if not raw:
+            continue
+        try:
+            pkt = _parse_packet(bytes(raw))
+        except Exception:
+            continue
+        if pkt is None or not pkt.path or pkt.path_length <= 0:
+            continue
+
+        hop_size = pkt.path_hash_size
+        hash_mode = hop_size - 1  # bytes → 0/1/2
+        path = pkt.path
+        prefix_hex_len = hop_size * 2
+
+        for offset in range(0, len(path), hop_size):
+            hop_bytes = path[offset : offset + hop_size]
+            if len(hop_bytes) < hop_size:
+                break
+            prefix_hex = hop_bytes.hex().lower()
+            if len(prefix_hex) != prefix_hex_len:
+                continue
+            matches = prefix_index.get(prefix_hex, [])
+            if len(matches) != 1:
+                continue  # unknown or ambiguous hop
+            pk = matches[0]
+            # Only track if this advances the mode
+            current_best = updates.get(pk, stored_modes.get(pk))
+            if current_best is None or hash_mode > current_best:
+                updates[pk] = hash_mode
+
+    # ── Step 3: apply batch updates ───────────────────────────────────────────
+    for pk, hash_mode in updates.items():
+        await conn.execute(
+            """
+            UPDATE contacts
+            SET observed_hash_mode = CASE
+                WHEN observed_hash_mode IS NULL OR ? > observed_hash_mode THEN ?
+                ELSE observed_hash_mode
+            END
+            WHERE public_key = ?
+            """,
+            (hash_mode, hash_mode, pk),
+        )
+    await conn.commit()
+    logger.info(
+        "Migration 60: updated observed_hash_mode for %d contact(s) from %d stored packet(s)",
+        len(updates),
+        await _count_packets(conn),
+    )
+
+
+async def _count_packets(conn: aiosqlite.Connection) -> int:
+    cursor = await conn.execute("SELECT COUNT(*) FROM raw_packets")
+    row = await cursor.fetchone()
+    return row[0] if row else 0

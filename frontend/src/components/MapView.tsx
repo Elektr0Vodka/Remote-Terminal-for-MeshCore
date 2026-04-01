@@ -1,24 +1,36 @@
 import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
-import { Info, Search, X } from 'lucide-react';
+import { Cable, Info, Search, X } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
-import type { Contact } from '../types';
+import type {
+  Contact,
+  PathDiscoveryResponse,
+  RadioConfig,
+  RadioTraceHopRequest,
+  RadioTraceResponse,
+  TraceResponse,
+} from '../types';
 import { formatTime } from '../utils/messageParser';
 import { isValidLocation, parsePathHops, findContactsByPrefix } from '../utils/pathUtils';
 import { getContactShortId } from '../utils/pubkey';
 import { api } from '../api';
-import type { TraceResponse } from '../types';
 import { CONTACT_TYPE_REPEATER, CONTACT_TYPE_ROOM } from '../types';
+import { useTraceBuilder } from '../hooks/useTraceBuilder';
+import { useTraceHistory } from '../hooks/useTraceHistory';
+import { formatSNR } from '../utils/traceUtils';
 
 interface MapViewProps {
   contacts: Contact[];
   focusedKey?: string | null;
   onSelectConversation?: (conversation: import('../types').Conversation) => void;
   connectedPublicKey?: string | null;
+  onPathDiscovery?: (publicKey: string) => Promise<PathDiscoveryResponse>;
+  onRunTracePath?: (hopHashBytes: 1 | 2 | 4, hops: RadioTraceHopRequest[]) => Promise<RadioTraceResponse>;
+  config?: RadioConfig | null;
 }
 
 // ─── Contact type constants ──────────────────────────────────────────────────
@@ -172,6 +184,7 @@ const MapPopupContent = memo(function MapPopupContent({
   onOpenPopup,
   onShowPathOnMap,
   connectedPublicKey,
+  onPathDiscovery,
 }: {
   contact: import('../types').Contact;
   contactsRef: React.MutableRefObject<import('../types').Contact[]>;
@@ -184,6 +197,7 @@ const MapPopupContent = memo(function MapPopupContent({
   /** Callback to draw a path overlay on the main map */
   onShowPathOnMap?: (contactKey: string, segments: [number, number][][]) => void;
   connectedPublicKey?: string | null;
+  onPathDiscovery?: (publicKey: string) => Promise<PathDiscoveryResponse>;
 }) {
   const map = useMap();
   const [notes, setNotes] = useState<string>(contact.notes ?? '');
@@ -199,6 +213,10 @@ const MapPopupContent = memo(function MapPopupContent({
   const [traceResult, setTraceResult] = useState<TraceResponse | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
 
+  // ── Path discovery state ─────────────────────────────────────────────────
+  const [pathDiscovering, setPathDiscovering] = useState(false);
+  const [pathDiscoveryError, setPathDiscoveryError] = useState<string | null>(null);
+
   const handleLiveTrace = useCallback(async () => {
     setTraceLoading(true);
     setTraceResult(null);
@@ -213,80 +231,113 @@ const MapPopupContent = memo(function MapPopupContent({
     }
   }, [contact.public_key]);
 
-  // ── Path-on-map: resolve direct_path hops to GPS segments ───────────────
-  const handleShowPathOnMap = useCallback(() => {
-    if (!onShowPathOnMap) return;
-    const contacts = contactsRef.current;
-    const path = contact.direct_path;
-    const pathLen = contact.direct_path_len;
+  // ── Path-on-map: resolve hops to GPS segments and draw ──────────────────
+  /** Build and display the polyline for a known path string + hop count. */
+  const drawPathFromData = useCallback(
+    (pathStr: string, pathLen: number) => {
+      if (!onShowPathOnMap) return;
+      const contacts = contactsRef.current;
+      type Pt = [number, number];
 
-    if (!path || pathLen <= 0) {
-      // No known path — show just the direct line from radio to this node if both have GPS
       const radioContact = connectedPublicKey
         ? contacts.find((c) => c.public_key.toLowerCase() === connectedPublicKey.toLowerCase())
         : null;
-      if (
-        radioContact &&
-        isValidLocation(radioContact.lat, radioContact.lon) &&
-        isValidLocation(contact.lat, contact.lon)
-      ) {
-        onShowPathOnMap(contact.public_key, [
-          [
-            [radioContact.lat!, radioContact.lon!],
-            [contact.lat!, contact.lon!],
-          ],
-        ]);
+
+      const allPts: (Pt | null)[] = [];
+      allPts.push(
+        radioContact && isValidLocation(radioContact.lat, radioContact.lon)
+          ? [radioContact.lat!, radioContact.lon!]
+          : null
+      );
+
+      const hopPrefixes = parsePathHops(pathStr, pathLen);
+      for (const prefix of hopPrefixes) {
+        const matches = findContactsByPrefix(prefix, contacts, true);
+        if (matches.length === 1 && isValidLocation(matches[0].lat, matches[0].lon)) {
+          allPts.push([matches[0].lat!, matches[0].lon!]);
+        } else {
+          allPts.push(null);
+        }
       }
+
+      allPts.push(
+        isValidLocation(contact.lat, contact.lon) ? [contact.lat!, contact.lon!] : null
+      );
+
+      const segments: Pt[][] = [];
+      let current: Pt[] = [];
+      for (const pt of allPts) {
+        if (pt !== null) {
+          current.push(pt);
+        } else {
+          if (current.length >= 2) segments.push(current);
+          current = [];
+        }
+      }
+      if (current.length >= 2) segments.push(current);
+
+      onShowPathOnMap(contact.public_key, segments);
+      if (segments.length > 0) {
+        const flat = segments.flat();
+        if (flat.length === 1) map.flyTo(flat[0], Math.max(map.getZoom(), 12));
+        else map.fitBounds(flat as L.LatLngBoundsExpression, { padding: [60, 60], maxZoom: 14 });
+      }
+    },
+    [contact, contactsRef, connectedPublicKey, map, onShowPathOnMap]
+  );
+
+  const handleShowPathOnMap = useCallback(async () => {
+    if (!onShowPathOnMap) return;
+    setPathDiscoveryError(null);
+
+    const path = contact.direct_path;
+    const pathLen = contact.direct_path_len;
+
+    // If we already have path data, draw it immediately
+    if (path && pathLen != null && pathLen > 0) {
+      drawPathFromData(path, pathLen);
       return;
     }
 
-    // Resolve hops via prefix matching
-    const hopPrefixes = parsePathHops(path, pathLen);
-    type Pt = [number, number];
-    // Build ordered point chain: radio → hops → contact
-    const allPts: (Pt | null)[] = [];
+    // No cached path — try path discovery if the callback is available
+    if (onPathDiscovery) {
+      setPathDiscovering(true);
+      try {
+        const result = await onPathDiscovery(contact.public_key);
+        const fwd = result.forward_path;
+        if (fwd.path && fwd.path_len > 0) {
+          drawPathFromData(fwd.path, fwd.path_len);
+          return;
+        }
+      } catch {
+        setPathDiscoveryError('Path discovery failed');
+      } finally {
+        setPathDiscovering(false);
+      }
+    }
 
+    // Fallback: draw a direct line if both nodes have GPS
+    const contacts = contactsRef.current;
     const radioContact = connectedPublicKey
       ? contacts.find((c) => c.public_key.toLowerCase() === connectedPublicKey.toLowerCase())
       : null;
-    allPts.push(
-      radioContact && isValidLocation(radioContact.lat, radioContact.lon)
-        ? [radioContact.lat!, radioContact.lon!]
-        : null
-    );
-
-    for (const prefix of hopPrefixes) {
-      const matches = findContactsByPrefix(prefix, contacts, true);
-      if (matches.length === 1 && isValidLocation(matches[0].lat, matches[0].lon)) {
-        allPts.push([matches[0].lat!, matches[0].lon!]);
-      } else {
-        allPts.push(null);
-      }
+    if (
+      radioContact &&
+      isValidLocation(radioContact.lat, radioContact.lon) &&
+      isValidLocation(contact.lat, contact.lon)
+    ) {
+      onShowPathOnMap(contact.public_key, [
+        [[radioContact.lat!, radioContact.lon!], [contact.lat!, contact.lon!]],
+      ]);
     }
-
-    allPts.push(isValidLocation(contact.lat, contact.lon) ? [contact.lat!, contact.lon!] : null);
-
-    // Split into contiguous segments
-    const segments: Pt[][] = [];
-    let current: Pt[] = [];
-    for (const pt of allPts) {
-      if (pt !== null) {
-        current.push(pt);
-      } else {
-        if (current.length >= 2) segments.push(current);
-        current = [];
-      }
-    }
-    if (current.length >= 2) segments.push(current);
-
-    onShowPathOnMap(contact.public_key, segments);
-    // Fly to show the path
-    if (segments.length > 0) {
-      const flat = segments.flat();
-      if (flat.length === 1) map.flyTo(flat[0], Math.max(map.getZoom(), 12));
-      else map.fitBounds(flat as L.LatLngBoundsExpression, { padding: [60, 60], maxZoom: 14 });
-    }
-  }, [contact, contactsRef, connectedPublicKey, map, onShowPathOnMap]);
+  }, [
+    contact,
+    contactsRef,
+    connectedPublicKey,
+    onShowPathOnMap,
+    onPathDiscovery,
+    drawPathFromData,
+  ]);
 
   // Short bracketed ID for this contact (used alongside full key display)
   const shortId = useMemo(
@@ -657,15 +708,25 @@ const MapPopupContent = memo(function MapPopupContent({
             {traceLoading ? 'Tracing…' : '📡 Live Signal'}
           </button>
 
-          {/* Show path on main map — only when path is known or contact has GPS */}
+          {/* Show path on main map — only when contact has GPS */}
           {onShowPathOnMap && isValidLocation(contact.lat, contact.lon) && (
             <button
               onClick={handleShowPathOnMap}
-              title="Draw the route to this node on the map"
-              className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition text-center"
+              disabled={pathDiscovering}
+              title={
+                pathDiscovering
+                  ? 'Discovering path…'
+                  : contact.direct_path && (contact.direct_path_len ?? 0) > 0
+                    ? 'Draw the discovered route through repeaters'
+                    : 'Discover and draw the route to this node'
+              }
+              className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition text-center disabled:opacity-50"
             >
-              🗺 Show Path
+              {pathDiscovering ? '⏳ Discovering…' : '🗺 Show Path'}
             </button>
+          )}
+          {pathDiscoveryError && (
+            <span className="text-xs text-destructive">{pathDiscoveryError}</span>
           )}
         </div>
       </div>
@@ -957,6 +1018,43 @@ function FlyToHandler({
   return null;
 }
 
+// ─── Trace segment builder ────────────────────────────────────────────────────
+
+function buildTraceSegments(
+  result: RadioTraceResponse,
+  contacts: Contact[],
+  connectedPublicKey: string | null | undefined
+): [number, number][][] {
+  type Pt = [number, number];
+  const pts: (Pt | null)[] = [];
+  // local radio origin
+  const local = connectedPublicKey
+    ? contacts.find((c) => c.public_key.toLowerCase() === connectedPublicKey.toLowerCase())
+    : null;
+  pts.push(local && isValidLocation(local.lat, local.lon) ? [local.lat!, local.lon!] : null);
+  // intermediate hops (skip the terminal 'local' node)
+  for (const node of result.nodes) {
+    if (node.role === 'local') continue;
+    const c = node.public_key
+      ? contacts.find((c2) => c2.public_key.toLowerCase() === node.public_key!.toLowerCase())
+      : null;
+    pts.push(c && isValidLocation(c.lat, c.lon) ? [c.lat!, c.lon!] : null);
+  }
+  // terminal = local again, skip (already have it conceptually)
+  const segs: Pt[][] = [];
+  let cur: Pt[] = [];
+  for (const pt of pts) {
+    if (pt !== null) {
+      cur.push(pt);
+    } else {
+      if (cur.length >= 2) segs.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length >= 2) segs.push(cur);
+  return segs;
+}
+
 // ─── MapView ─────────────────────────────────────────────────────────────────
 
 export function MapView({
@@ -964,8 +1062,22 @@ export function MapView({
   focusedKey,
   onSelectConversation,
   connectedPublicKey,
+  onPathDiscovery,
+  onRunTracePath,
+  config: _config,
 }: MapViewProps) {
   const now = useMemo(() => Math.floor(Date.now() / 1000), []);
+
+  // ── Trace mode state ────────────────────────────────────────────────────────
+  const [traceModeActive, setTraceModeActive] = useState(false);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [traceError, setTraceError] = useState<string | null>(null);
+  const [traceResult, setTraceResult] = useState<RadioTraceResponse | null>(null);
+  const traceRunTokenRef = useRef(0);
+
+  const { draftHops, effectiveHopHashBytes, addRepeater, removeHop, moveHopAt, clearHops } =
+    useTraceBuilder();
+  const traceHistory = useTraceHistory();
 
   // ── Time window presets ─────────────────────────────────────────────────────
   const TIME_PRESETS = [
@@ -1176,6 +1288,7 @@ export function MapView({
   }, []);
 
   // ── Contacts ref — kept current without triggering re-renders ───────────────
+
   const contactsRef = useRef<import('../types').Contact[]>(contacts);
   contactsRef.current = contacts;
 
@@ -1213,6 +1326,35 @@ export function MapView({
     // Delay to let flyTo animation start before opening the popup
     setTimeout(() => markerRefs.current[publicKey]?.openPopup(), 400);
   }, []);
+
+  // ── Map trace execution ──────────────────────────────────────────────────────
+  const handleRunMapTrace = useCallback(async () => {
+    if (!onRunTracePath || draftHops.length === 0) return;
+    const token = ++traceRunTokenRef.current;
+    setTraceLoading(true);
+    setTraceError(null);
+    setTraceResult(null);
+    try {
+      const result = await onRunTracePath(
+        effectiveHopHashBytes,
+        draftHops.map((h) =>
+          h.kind === 'repeater' ? { public_key: h.publicKey } : { hop_hex: h.hopHex }
+        )
+      );
+      if (traceRunTokenRef.current !== token) return;
+      setTraceResult(result);
+      // save to history
+      traceHistory.addEntry({ draftHops: [...draftHops], result, hopHashBytes: effectiveHopHashBytes });
+      // draw on map
+      const segments = buildTraceSegments(result, contactsRef.current, connectedPublicKey);
+      if (segments.length > 0) setActivePathTrace({ contactKey: `trace-${token}`, segments });
+    } catch (err) {
+      if (traceRunTokenRef.current !== token) return;
+      setTraceError(err instanceof Error ? err.message : 'Trace failed');
+    } finally {
+      if (traceRunTokenRef.current === token) setTraceLoading(false);
+    }
+  }, [onRunTracePath, draftHops, effectiveHopHashBytes, traceHistory, contactsRef, connectedPublicKey]);
 
   // ── Update marker icons imperatively (avoids cluster clearLayers on advert-warning changes) ─
   useEffect(() => {
@@ -1256,6 +1398,19 @@ export function MapView({
         const lastHeardLabel =
           contact.last_seen != null ? formatTime(contact.last_seen) : 'Never heard by this server';
 
+        // In trace mode, clicking a repeater adds it as a hop (no popup)
+        if (traceModeActive && contact.type === CONTACT_TYPE_REPEATER) {
+          return (
+            <Marker
+              key={contact.public_key}
+              ref={(ref) => setMarkerRef(contact.public_key, ref)}
+              position={[contact.lat!, contact.lon!]}
+              icon={icon}
+              eventHandlers={{ click: () => addRepeater(contact.public_key) }}
+            />
+          );
+        }
+
         return (
           <Marker
             key={contact.public_key}
@@ -1275,13 +1430,15 @@ export function MapView({
                 onOpenPopup={openPopup}
                 onShowPathOnMap={handleShowPathOnMap}
                 connectedPublicKey={connectedPublicKey}
+                onPathDiscovery={onPathDiscovery}
               />
             </Popup>
           </Marker>
         );
         // Only recompute when marker identities/positions/types change (not data-only updates)
       }),
-    [mappableKey, focusedKey, onSelectConversation, openPopup, setMarkerRef]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mappableKey, focusedKey, onSelectConversation, openPopup, setMarkerRef, onPathDiscovery, traceModeActive, addRepeater]
   );
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -1447,6 +1604,27 @@ export function MapView({
         </div>
 
         <div className="flex-1" />
+
+        {/* Trace mode toggle */}
+        <button
+          onClick={() => {
+            setTraceModeActive((p) => !p);
+            if (traceModeActive) {
+              clearHops();
+              setTraceError(null);
+              setTraceResult(null);
+            }
+          }}
+          title={traceModeActive ? 'Exit trace mode' : 'Enter trace mode: click repeaters to build a path'}
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
+            traceModeActive
+              ? 'bg-primary border-primary text-primary-foreground'
+              : 'bg-muted border-border text-muted-foreground'
+          }`}
+        >
+          <Cable className="h-3 w-3" />
+          <span>Trace</span>
+        </button>
 
         {/* Cluster toggle — hidden in heatmap mode */}
         {!heatmap && (
@@ -1614,6 +1792,142 @@ export function MapView({
           </div>
         )}
       </div>
+
+      {/* Trace Builder panel — shown only when trace mode is active */}
+      {traceModeActive && (
+        <div className="px-4 py-2 bg-muted/20 border-b border-border text-xs">
+          <div className="font-medium text-foreground mb-1.5">
+            🔌 Trace Builder — Click 🗼 repeaters on the map to add hops
+          </div>
+          <div className="space-y-1 mb-2">
+            <div className="text-muted-foreground">
+              Local radio →
+            </div>
+            {draftHops.length === 0 ? (
+              <div className="text-muted-foreground italic">No hops yet. Click a repeater on the map.</div>
+            ) : (
+              draftHops.map((hop, index) => {
+                const contact =
+                  hop.kind === 'repeater'
+                    ? contacts.find((c) => c.public_key === hop.publicKey) ?? null
+                    : null;
+                const label =
+                  hop.kind === 'repeater'
+                    ? contact?.name ?? hop.publicKey.slice(0, 12)
+                    : `Custom: ${hop.hopHex.toUpperCase()}`;
+                return (
+                  <div key={hop.id} className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground shrink-0">Hop {index + 1}:</span>
+                    <span className="font-mono truncate text-foreground">{label}</span>
+                    <button
+                      onClick={() => moveHopAt(index, -1)}
+                      disabled={index === 0}
+                      className="px-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveHopAt(index, 1)}
+                      disabled={index === draftHops.length - 1}
+                      className="px-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      onClick={() => removeHop(hop.id)}
+                      className="px-1 text-muted-foreground hover:text-destructive"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })
+            )}
+            <div className="text-muted-foreground">
+              → Local radio
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-muted-foreground">
+              {draftHops.length === 0
+                ? 'No hops'
+                : `${draftHops.length} hop${draftHops.length === 1 ? '' : 's'} · ${effectiveHopHashBytes}-byte trace`}
+            </span>
+            <button
+              onClick={() => { clearHops(); setTraceError(null); setTraceResult(null); }}
+              className="px-2 py-0.5 rounded border border-border bg-muted text-muted-foreground hover:text-foreground text-[10px] transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              onClick={handleRunMapTrace}
+              disabled={traceLoading || draftHops.length === 0 || !onRunTracePath}
+              className="px-2 py-0.5 rounded border border-primary bg-primary text-primary-foreground text-[10px] transition-colors disabled:opacity-50"
+            >
+              {traceLoading ? 'Tracing…' : 'Send Trace'}
+            </button>
+          </div>
+          {traceError && (
+            <div className="mt-1.5 text-destructive">{traceError}</div>
+          )}
+          {traceResult && (
+            <div className="mt-1.5 space-y-0.5">
+              <div className="font-medium text-foreground">Result ({traceResult.timeout_seconds.toFixed(1)}s):</div>
+              {traceResult.nodes.map((node, i) => (
+                <div key={i} className="text-muted-foreground">
+                  {node.role === 'local' ? 'Local radio' : node.name ?? node.public_key?.slice(0, 12) ?? 'Unknown'}
+                  {node.snr != null && <span className="ml-1 font-mono">SNR {formatSNR(node.snr)}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Trace History panel — shown when there are saved traces */}
+      {traceHistory.entries.length > 0 && (
+        <div className="px-4 py-2 bg-muted/10 border-b border-border text-xs">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-foreground">📋 Saved Traces</span>
+            <button
+              onClick={() => traceHistory.clearAll()}
+              className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+            >
+              Clear all
+            </button>
+          </div>
+          <div className="space-y-0.5 max-h-32 overflow-y-auto">
+            {traceHistory.entries.map((entry) => (
+              <div key={entry.id} className="flex items-center gap-2">
+                <span className="text-muted-foreground shrink-0">
+                  {new Date(entry.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="text-muted-foreground shrink-0">{entry.label}</span>
+                <button
+                  onClick={() => {
+                    const segments = buildTraceSegments(entry.result, contacts, connectedPublicKey);
+                    if (segments.length > 0) setActivePathTrace({ contactKey: `history-${entry.id}`, segments });
+                  }}
+                  className="px-1 text-primary hover:text-primary/70 transition-colors"
+                  title="Draw on map"
+                >
+                  ▶ Draw
+                </button>
+                <button
+                  onClick={() => traceHistory.removeEntry(entry.id)}
+                  className="px-1 text-muted-foreground hover:text-destructive transition-colors"
+                  title="Delete"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Map */}
       <div

@@ -12,6 +12,13 @@ import { CONTACT_TYPE_REPEATER } from '../types';
 import { calculateDistance, isValidLocation } from '../utils/pathUtils';
 import { getContactDisplayName } from '../utils/pubkey';
 import { handleKeyboardActivate } from '../utils/a11y';
+import {
+  type CustomHopBytes,
+  normalizeCustomHopHex,
+  formatSNR,
+  getHeardTimestamp,
+} from '../utils/traceUtils';
+import { useTraceBuilder } from '../hooks/useTraceBuilder';
 import { ContactAvatar } from './ContactAvatar';
 import { Button } from './ui/button';
 import {
@@ -26,11 +33,6 @@ import { Input } from './ui/input';
 import { cn } from '@/lib/utils';
 
 type TraceSortMode = 'alpha' | 'recent' | 'distance';
-type CustomHopBytes = 1 | 2 | 4;
-
-type TraceDraftHop =
-  | { id: string; kind: 'repeater'; publicKey: string }
-  | { id: string; kind: 'custom'; hopHex: string; hopBytes: CustomHopBytes };
 
 interface TracePaneProps {
   contacts: Contact[];
@@ -39,10 +41,6 @@ interface TracePaneProps {
     hopHashBytes: CustomHopBytes,
     hops: RadioTraceHopRequest[]
   ) => Promise<RadioTraceResponse>;
-}
-
-function getHeardTimestamp(contact: Contact): number {
-  return Math.max(contact.last_seen ?? 0, contact.last_advert ?? 0);
 }
 
 function getDistanceKm(contact: Contact, config: RadioConfig | null): number | null {
@@ -59,35 +57,6 @@ function getDistanceKm(contact: Contact, config: RadioConfig | null): number | n
 function getShortKey(publicKey: string | null | undefined): string {
   if (!publicKey) return 'unknown';
   return publicKey.slice(0, 12);
-}
-
-function formatSNR(snr: number | null | undefined): string {
-  if (typeof snr !== 'number' || Number.isNaN(snr)) {
-    return '—';
-  }
-  return `${snr >= 0 ? '+' : ''}${snr.toFixed(1)} dB`;
-}
-
-function moveHop(hops: TraceDraftHop[], index: number, direction: -1 | 1): TraceDraftHop[] {
-  const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= hops.length) {
-    return hops;
-  }
-  const next = [...hops];
-  const [item] = next.splice(index, 1);
-  next.splice(nextIndex, 0, item);
-  return next;
-}
-
-function normalizeCustomHopHex(value: string): string {
-  return value.replace(/[^a-fA-F0-9]/g, '').toLowerCase();
-}
-
-function nextDraftHopId(prefix: string, currentLength: number): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${currentLength}`;
 }
 
 function TraceNodeRow({
@@ -146,7 +115,6 @@ function TraceNodeRow({
 export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<TraceSortMode>('alpha');
-  const [draftHops, setDraftHops] = useState<TraceDraftHop[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RadioTraceResponse | null>(null);
@@ -155,6 +123,16 @@ export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) 
   const [customHopHexDraft, setCustomHopHexDraft] = useState('');
   const [customHopError, setCustomHopError] = useState<string | null>(null);
   const activeRunTokenRef = useRef(0);
+
+  const {
+    draftHops,
+    effectiveHopHashBytes,
+    customHopBytesLocked,
+    addRepeater,
+    addCustomHop: addCustomHopFromBuilder,
+    removeHop,
+    moveHopAt,
+  } = useTraceBuilder();
 
   const repeaters = useMemo(() => {
     const deduped = new Map<string, Contact>();
@@ -210,11 +188,6 @@ export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) 
   const localRadioName = config?.name || 'Local radio';
   const localRadioKey = config?.public_key ?? null;
   const canSortByDistance = !!config && isValidLocation(config.lat, config.lon);
-  const customHopBytesLocked = useMemo(
-    () => draftHops.find((hop) => hop.kind === 'custom')?.hopBytes ?? null,
-    [draftHops]
-  );
-  const effectiveHopHashBytes: CustomHopBytes = customHopBytesLocked ?? 4;
 
   useEffect(() => {
     if (!customDialogOpen) return;
@@ -231,14 +204,7 @@ export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) 
   };
 
   const handleAddRepeater = (publicKey: string) => {
-    setDraftHops((current) => [
-      ...current,
-      {
-        id: nextDraftHopId('repeater', current.length),
-        kind: 'repeater',
-        publicKey,
-      },
-    ]);
+    addRepeater(publicKey);
     clearPendingResult();
   };
 
@@ -249,26 +215,18 @@ export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) 
       setCustomHopError(`Custom hop must be exactly ${hopBytes * 2} hex characters.`);
       return;
     }
-    setDraftHops((current) => [
-      ...current,
-      {
-        id: nextDraftHopId('custom', current.length),
-        kind: 'custom',
-        hopHex,
-        hopBytes,
-      },
-    ]);
+    addCustomHopFromBuilder(hopHex, hopBytes);
     clearPendingResult();
     setCustomDialogOpen(false);
   };
 
   const handleRemoveHop = (id: string) => {
-    setDraftHops((current) => current.filter((hop) => hop.id !== id));
+    removeHop(id);
     clearPendingResult();
   };
 
   const handleMoveHop = (index: number, direction: -1 | 1) => {
-    setDraftHops((current) => moveHop(current, index, direction));
+    moveHopAt(index, direction);
     clearPendingResult();
   };
 
