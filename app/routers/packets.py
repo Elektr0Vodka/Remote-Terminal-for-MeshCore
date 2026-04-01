@@ -837,7 +837,7 @@ async def get_mesh_health(
                 c.name,
                 c.lat,
                 c.lon,
-                c.last_seen,
+                MAX(cap.last_seen) AS last_seen,
                 CASE WHEN MIN(cap.first_seen) < :start_ts THEN :start_ts ELSE MIN(cap.first_seen) END AS first_seen,
                 MIN(cap.path_len) AS min_path_len,
                 COALESCE(SUM(
