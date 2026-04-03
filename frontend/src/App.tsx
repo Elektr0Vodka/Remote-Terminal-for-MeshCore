@@ -600,7 +600,6 @@ export function App() {
     blockedNames: appSettings?.blocked_names,
     onToggleBlockedKey: handleBlockKey,
     onToggleBlockedName: handleBlockName,
-    contacts,
     onBulkDeleteContacts: (deletedKeys: string[]) => {
       const keySet = new Set(deletedKeys.map((k) => k.toLowerCase()));
       setContacts((prev) => prev.filter((c) => !keySet.has(c.public_key.toLowerCase())));

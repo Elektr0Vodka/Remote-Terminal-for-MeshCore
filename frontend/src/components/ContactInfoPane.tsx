@@ -90,7 +90,6 @@ export function ContactInfoPane({
   onNavigateToChannel,
   onSearchMessagesByKey,
   onSearchMessagesByName,
-  onOpenAnalytics,
   blockedKeys = [],
   blockedNames = [],
   onToggleBlockedKey,
@@ -102,8 +101,6 @@ export function ContactInfoPane({
 
   const [analytics, setAnalytics] = useState<ContactAnalytics | null>(null);
   const [loading, setLoading] = useState(false);
-  const [removingLocation, setRemovingLocation] = useState(false);
-
   // Get live contact data from contacts array (real-time via WS)
   const liveContact =
     contactKey && !isNameOnly ? (contacts.find((c) => c.public_key === contactKey) ?? null) : null;

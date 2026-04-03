@@ -30,8 +30,6 @@ interface SettingsModalBaseProps {
   config: RadioConfig | null;
   health: HealthStatus | null;
   appSettings: AppSettings | null;
-  /** Known contacts — passed to discovery results for name resolution */
-  contacts?: Contact[];
   onClose: () => void;
   onSave: (update: RadioConfigUpdate) => Promise<void>;
   onSaveAppSettings: (update: AppSettingsUpdate) => Promise<void>;
@@ -88,7 +86,6 @@ export function SettingsModal(props: SettingsModalProps) {
     blockedNames,
     onToggleBlockedKey,
     onToggleBlockedName,
-    contacts,
     onBulkDeleteContacts,
     trackedTelemetryRepeaters,
     onToggleTrackedTelemetry,

@@ -14,7 +14,6 @@ import {
   ChevronsDown,
   ChevronsUp,
   GripVertical,
-  KeyRound,
   LockOpen,
   Logs,
   Map,
