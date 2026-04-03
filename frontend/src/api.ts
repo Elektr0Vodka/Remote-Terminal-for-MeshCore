@@ -4,6 +4,7 @@ import type {
   KmsKey,
   KmsKeyCreate,
   KmsKeyUpdate,
+  BulkCreateHashtagChannelsResult,
   Channel,
   ChannelDetail,
   CommandResponse,
@@ -162,6 +163,12 @@ export const api = {
     fetchJson<{ status: string }>(`/contacts/${publicKey}`, {
       method: 'DELETE',
     }),
+  bulkDeleteContacts: (publicKeys: string[]) =>
+    fetchJson<{ deleted: number }>('/contacts/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ public_keys: publicKeys }),
+    }),
   createContact: (publicKey: string, name?: string, tryHistorical?: boolean) =>
     fetchJson<Contact>('/contacts', {
       method: 'POST',
@@ -196,6 +203,11 @@ export const api = {
     fetchJson<Channel>('/channels', {
       method: 'POST',
       body: JSON.stringify({ name, key }),
+    }),
+  bulkCreateHashtagChannels: (channelNames: string[], tryHistorical?: boolean) =>
+    fetchJson<BulkCreateHashtagChannelsResult>('/channels/bulk-hashtag', {
+      method: 'POST',
+      body: JSON.stringify({ channel_names: channelNames, try_historical: tryHistorical }),
     }),
   deleteChannel: (key: string) =>
     fetchJson<{ status: string }>(`/channels/${key}`, { method: 'DELETE' }),

@@ -50,6 +50,8 @@ interface SettingsModalBaseProps {
   blockedNames?: string[];
   onToggleBlockedKey?: (key: string) => void;
   onToggleBlockedName?: (name: string) => void;
+  contacts?: Contact[];
+  onBulkDeleteContacts?: (deletedKeys: string[]) => void;
 }
 
 export type SettingsModalProps = SettingsModalBaseProps &
@@ -84,6 +86,8 @@ export function SettingsModal(props: SettingsModalProps) {
     blockedNames,
     onToggleBlockedKey,
     onToggleBlockedName,
+    contacts,
+    onBulkDeleteContacts,
   } = props;
   const externalSidebarNav = props.externalSidebarNav === true;
   const desktopSection = props.externalSidebarNav ? props.desktopSection : undefined;
@@ -246,6 +250,8 @@ export function SettingsModal(props: SettingsModalProps) {
                 blockedNames={blockedNames}
                 onToggleBlockedKey={onToggleBlockedKey}
                 onToggleBlockedName={onToggleBlockedName}
+                contacts={contacts}
+                onBulkDeleteContacts={onBulkDeleteContacts}
                 className={sectionContentClass}
               />
             ) : (

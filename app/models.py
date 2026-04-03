@@ -823,7 +823,7 @@ class AppSettings(BaseModel):
         default_factory=list, description="List of favorited conversations"
     )
     auto_decrypt_dm_on_advert: bool = Field(
-        default=False,
+        default=True,
         description="Whether to attempt historical DM decryption on new contact advertisement",
     )
     sidebar_sort_order: Literal["recent", "alpha"] = Field(
@@ -877,6 +877,13 @@ class AppSettings(BaseModel):
     medium_advert_threshold: int = Field(
         default=2,
         description="Advert count threshold for MEDIUM alerts in mesh health (contacts exceeding this are flagged)",
+    )
+    discovery_blocked_types: list[int] = Field(
+        default_factory=list,
+        description=(
+            "Contact type codes (1=Client, 2=Repeater, 3=Room, 4=Sensor) whose "
+            "advertisements should not create new contacts; existing contacts are still updated"
+        ),
     )
 
 

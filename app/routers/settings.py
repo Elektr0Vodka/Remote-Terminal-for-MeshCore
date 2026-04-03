@@ -62,6 +62,13 @@ class AppSettingsUpdate(BaseModel):
         le=365,
         description="Delete undecrypted raw packets older than this many days (auto-delete)",
     )
+    discovery_blocked_types: list[int] | None = Field(
+        default=None,
+        description=(
+            "Contact type codes (1=Client, 2=Repeater, 3=Room, 4=Sensor) whose "
+            "advertisements should not create new contacts"
+        ),
+    )
 
 
 class BlockKeyRequest(BaseModel):
@@ -141,6 +148,12 @@ async def update_settings(update: AppSettingsUpdate) -> AppSettings:
         kwargs["auto_delete_raw_enabled"] = update.auto_delete_raw_enabled
     if update.auto_delete_raw_days is not None:
         kwargs["auto_delete_raw_days"] = update.auto_delete_raw_days
+
+    # Discovery blocked types
+    if update.discovery_blocked_types is not None:
+        # Only allow valid contact type codes (1-4)
+        valid = [t for t in update.discovery_blocked_types if t in (1, 2, 3, 4)]
+        kwargs["discovery_blocked_types"] = sorted(set(valid))
 
     # Flood scope
     flood_scope_changed = False

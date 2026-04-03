@@ -1,11 +1,13 @@
 import asyncio
 import logging
 import random
+import time
 from contextlib import suppress
 
 import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from meshcore import EventType
+from pydantic import BaseModel, Field
 from pydantic import BaseModel as _BaseModel
 
 from app.database import db
@@ -34,7 +36,7 @@ from app.repository import (
 )
 from app.services.contact_reconciliation import (
     promote_prefix_contacts_for_contact,
-    reconcile_contact_messages,
+    record_contact_name_and_reconcile,
 )
 from app.services.radio_runtime import radio_runtime as radio_manager
 
@@ -333,12 +335,18 @@ async def create_contact(
     # Check if contact already exists
     existing = await ContactRepository.get_by_key(request.public_key)
     if existing:
-        # Update name if provided
+        # Update name if provided and record name history
         if request.name:
             await ContactRepository.upsert(existing.to_upsert(name=request.name))
             refreshed = await ContactRepository.get_by_key(request.public_key)
             if refreshed is not None:
                 existing = refreshed
+            await record_contact_name_and_reconcile(
+                public_key=request.public_key,
+                contact_name=request.name,
+                timestamp=int(time.time()),
+                log=logger,
+            )
 
         promoted_keys = await promote_prefix_contacts_for_contact(
             public_key=request.public_key,
@@ -373,9 +381,10 @@ async def create_contact(
         log=logger,
     )
 
-    await reconcile_contact_messages(
+    await record_contact_name_and_reconcile(
         public_key=lower_key,
         contact_name=request.name,
+        timestamp=int(time.time()),
         log=logger,
     )
 
@@ -401,6 +410,44 @@ async def mark_contact_read(public_key: str) -> dict:
         raise HTTPException(status_code=500, detail="Failed to update read state")
 
     return {"status": "ok", "public_key": contact.public_key}
+
+
+class BulkDeleteRequest(BaseModel):
+    public_keys: list[str] = Field(description="Public keys to delete")
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_contacts(request: BulkDeleteRequest) -> dict:
+    """Delete multiple contacts from the database (and radio if present)."""
+    from app.websocket import broadcast_event
+
+    # Resolve all contacts first
+    contacts_to_delete: list[Contact] = []
+    for key in request.public_keys:
+        contact = await ContactRepository.get_by_key(key.lower())
+        if contact:
+            contacts_to_delete.append(contact)
+
+    # Remove from radio in a single locked operation (blocks until radio is free)
+    if radio_manager.is_connected and contacts_to_delete:
+        try:
+            async with radio_manager.radio_operation("bulk_delete_contacts_from_radio") as mc:
+                for contact in contacts_to_delete:
+                    radio_contact = mc.get_contact_by_key_prefix(contact.public_key[:12])
+                    if radio_contact:
+                        await mc.commands.remove_contact(radio_contact)
+        except Exception as e:
+            logger.warning("Radio removal during bulk delete failed: %s", e)
+
+    # Delete from database and broadcast events
+    deleted = 0
+    for contact in contacts_to_delete:
+        await ContactRepository.delete(contact.public_key)
+        broadcast_event("contact_deleted", {"public_key": contact.public_key})
+        deleted += 1
+
+    logger.info("Bulk deleted %d/%d contacts", deleted, len(request.public_keys))
+    return {"deleted": deleted}
 
 
 @router.delete("/{public_key}")

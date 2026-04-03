@@ -72,6 +72,7 @@ const baseSettings: AppSettings = {
   show_warning_ticker: true,
   auto_delete_raw_enabled: false,
   auto_delete_raw_days: 14,
+  discovery_blocked_types: [],
 };
 
 function renderModal(overrides?: {
@@ -618,10 +619,10 @@ describe('SettingsModal', () => {
     openDatabaseSection();
 
     expect(
-      screen.getByText(/remove packet-analysis availability for those historical messages/i)
+      screen.getByText(/removes packet-analysis availability for those messages/i)
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Purge Archival Raw Packets' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Purge Archival Packets' }));
 
     await waitFor(() => {
       expect(runMaintenanceSpy).toHaveBeenCalledWith({ purgeLinkedRawPackets: true });

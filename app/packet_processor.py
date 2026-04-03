@@ -518,6 +518,20 @@ async def _process_advertisement(
         advert.device_role if advert.device_role > 0 else (existing.type if existing else 0)
     )
 
+    # Check discovery_blocked_types: skip new contacts whose type is blocked.
+    # Existing contacts are always updated (location, name, last_seen, etc.).
+    if existing is None and contact_type > 0:
+        from app.repository import AppSettingsRepository
+
+        settings = await AppSettingsRepository.get()
+        if contact_type in settings.discovery_blocked_types:
+            logger.debug(
+                "Skipping new contact %s: type %d is in discovery_blocked_types",
+                advert.public_key[:12],
+                contact_type,
+            )
+            return
+
     # Always record the relay path so diversity tracking is complete, but only
     # count heard_count for the first (non-duplicate) arrival of each payload.
     await ContactAdvertPathRepository.record_observation(
@@ -549,10 +563,21 @@ async def _process_advertisement(
         first_seen=timestamp,  # COALESCE in upsert preserves existing value
     )
 
+    # Upsert the contact BEFORE recording advert paths so the parent row
+    # exists when foreign key enforcement is enabled.
     await ContactRepository.upsert(contact_upsert)
     if packet_info and packet_info.path_hash_size:
         advert_hash_mode = packet_info.path_hash_size - 1  # 1→0, 2→1, 3→2
         await ContactRepository.update_advert_hash_mode(advert.public_key.lower(), advert_hash_mode)
+
+    # Keep recent unique advert paths for all contacts.
+    await ContactAdvertPathRepository.record_observation(
+        public_key=advert.public_key.lower(),
+        path_hex=new_path_hex,
+        timestamp=timestamp,
+        max_paths=10,
+        hop_count=new_path_len,
+    )
     promoted_keys = await promote_prefix_contacts_for_contact(
         public_key=advert.public_key,
         log=logger,

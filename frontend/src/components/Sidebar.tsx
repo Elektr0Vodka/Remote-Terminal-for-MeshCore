@@ -314,7 +314,7 @@ interface SidebarProps {
   channels: Channel[];
   activeConversation: Conversation | null;
   onSelectConversation: (conversation: Conversation) => void;
-  onNewMessage: () => void;
+  onNewMessage: (event?: React.MouseEvent<HTMLButtonElement>) => void;
   lastMessageTimes: ConversationTimes;
   unreadCounts: Record<string, number>;
   mentions: Record<string, boolean>;
@@ -325,6 +325,8 @@ interface SidebarProps {
   favorites: Favorite[];
   legacySortOrder?: SortOrder;
   isConversationNotificationsEnabled?: (type: 'channel' | 'contact', id: string) => boolean;
+  blockedKeys?: string[];
+  blockedNames?: string[];
 }
 
 type InitialSectionSortState = {
@@ -358,7 +360,16 @@ export function Sidebar({
   favorites,
   legacySortOrder,
   isConversationNotificationsEnabled,
+  blockedKeys = [],
+  blockedNames = [],
 }: SidebarProps) {
+  const isContactBlocked = useCallback(
+    (c: Contact) =>
+      blockedKeys.includes(c.public_key.toLowerCase()) ||
+      (c.name != null && blockedNames.includes(c.name)),
+    [blockedKeys, blockedNames]
+  );
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [sectionOrder, setSectionOrder] = useState<SidebarSection[]>(loadSectionOrder);
@@ -628,38 +639,32 @@ export function Sidebar({
     [sortedChannels, query]
   );
 
-  const filteredNonRepeaterContacts = useMemo(
-    () =>
-      query
-        ? sortedNonRepeaterContacts.filter(
-            (c) =>
-              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
-          )
-        : sortedNonRepeaterContacts,
-    [sortedNonRepeaterContacts, query]
-  );
+  const filteredNonRepeaterContacts = useMemo(() => {
+    const visible = sortedNonRepeaterContacts.filter((c) => !isContactBlocked(c));
+    return query
+      ? visible.filter(
+          (c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
+        )
+      : visible;
+  }, [sortedNonRepeaterContacts, query, isContactBlocked]);
 
-  const filteredRooms = useMemo(
-    () =>
-      query
-        ? sortedRooms.filter(
-            (c) =>
-              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
-          )
-        : sortedRooms,
-    [sortedRooms, query]
-  );
+  const filteredRooms = useMemo(() => {
+    const visible = sortedRooms.filter((c) => !isContactBlocked(c));
+    return query
+      ? visible.filter(
+          (c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
+        )
+      : visible;
+  }, [sortedRooms, query, isContactBlocked]);
 
-  const filteredRepeaters = useMemo(
-    () =>
-      query
-        ? sortedRepeaters.filter(
-            (c) =>
-              c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
-          )
-        : sortedRepeaters,
-    [sortedRepeaters, query]
-  );
+  const filteredRepeaters = useMemo(() => {
+    const visible = sortedRepeaters.filter((c) => !isContactBlocked(c));
+    return query
+      ? visible.filter(
+          (c) => c.name?.toLowerCase().includes(query) || c.public_key.toLowerCase().includes(query)
+        )
+      : visible;
+  }, [sortedRepeaters, query, isContactBlocked]);
 
   // Persist collapse state
   useEffect(() => {
@@ -943,8 +948,9 @@ export function Sidebar({
   }) => (
     <div
       key={key}
+      data-active={active ? 'true' : undefined}
       className={cn(
-        'px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'sidebar-action-row px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active && 'bg-accent border-l-primary'
       )}
       role="button"
@@ -953,10 +959,10 @@ export function Sidebar({
       onKeyDown={handleKeyboardActivate}
       onClick={onClick}
     >
-      <span className="sidebar-tool-icon text-muted-foreground" aria-hidden="true">
+      <span className="sidebar-tool-icon" aria-hidden="true">
         {icon}
       </span>
-      <span className="sidebar-tool-label flex-1 truncate text-muted-foreground">{label}</span>
+      <span className="sidebar-tool-label flex-1 truncate">{label}</span>
     </div>
   );
 

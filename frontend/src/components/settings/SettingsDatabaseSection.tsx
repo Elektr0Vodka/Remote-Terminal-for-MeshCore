@@ -6,7 +6,8 @@ import { Separator } from '../ui/separator';
 import { toast } from '../ui/sonner';
 import { api } from '../../api';
 import { formatTime } from '../../utils/messageParser';
-import type { AppSettings, AppSettingsUpdate, HealthStatus } from '../../types';
+import { BulkDeleteContactsModal } from './BulkDeleteContactsModal';
+import type { AppSettings, AppSettingsUpdate, Contact, HealthStatus } from '../../types';
 
 export function SettingsDatabaseSection({
   appSettings,
@@ -17,6 +18,8 @@ export function SettingsDatabaseSection({
   blockedNames = [],
   onToggleBlockedKey,
   onToggleBlockedName,
+  contacts = [],
+  onBulkDeleteContacts,
   className,
 }: {
   appSettings: AppSettings;
@@ -27,6 +30,8 @@ export function SettingsDatabaseSection({
   blockedNames?: string[];
   onToggleBlockedKey?: (key: string) => void;
   onToggleBlockedName?: (name: string) => void;
+  contacts?: Contact[];
+  onBulkDeleteContacts?: (deletedKeys: string[]) => void;
   className?: string;
 }) {
   const [retentionDays, setRetentionDays] = useState('14');
@@ -35,6 +40,8 @@ export function SettingsDatabaseSection({
   const [autoDecryptOnAdvert, setAutoDecryptOnAdvert] = useState(false);
   const [autoDeleteRawEnabled, setAutoDeleteRawEnabled] = useState(false);
   const [autoDeleteRawDays, setAutoDeleteRawDays] = useState('14');
+  const [discoveryBlockedTypes, setDiscoveryBlockedTypes] = useState<number[]>([]);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +50,7 @@ export function SettingsDatabaseSection({
     setAutoDecryptOnAdvert(appSettings.auto_decrypt_dm_on_advert);
     setAutoDeleteRawEnabled(appSettings.auto_delete_raw_enabled ?? false);
     setAutoDeleteRawDays(String(appSettings.auto_delete_raw_days ?? 14));
+    setDiscoveryBlockedTypes(appSettings.discovery_blocked_types ?? []);
   }, [appSettings]);
 
   const handleCleanup = async () => {
@@ -96,11 +104,19 @@ export function SettingsDatabaseSection({
     setError(null);
 
     try {
-      await onSaveAppSettings({
+      const update: AppSettingsUpdate = {
         auto_decrypt_dm_on_advert: autoDecryptOnAdvert,
         auto_delete_raw_enabled: autoDeleteRawEnabled,
         auto_delete_raw_days: Math.max(1, parseInt(autoDeleteRawDays, 10) || 14),
-      });
+      };
+      const currentBlocked = appSettings.discovery_blocked_types ?? [];
+      if (
+        discoveryBlockedTypes.length !== currentBlocked.length ||
+        discoveryBlockedTypes.some((t) => !currentBlocked.includes(t))
+      ) {
+        update.discovery_blocked_types = discoveryBlockedTypes;
+      }
+      await onSaveAppSettings(update);
       toast.success('Database settings saved');
     } catch (err) {
       console.error('Failed to save database settings:', err);
@@ -113,93 +129,93 @@ export function SettingsDatabaseSection({
 
   return (
     <div className={className}>
+      {/* ── Database Overview ── */}
       <div className="space-y-3">
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-muted-foreground">Database size</span>
-          <span className="font-medium">{health?.database_size_mb ?? '?'} MB</span>
-        </div>
-
-        {health?.oldest_undecrypted_timestamp ? (
+        <Label className="text-base">Database Overview</Label>
+        <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-sm text-muted-foreground">Oldest undecrypted packet</span>
-            <span className="font-medium">
-              {formatTime(health.oldest_undecrypted_timestamp)}
-              <span className="text-muted-foreground ml-1">
-                ({Math.floor((Date.now() / 1000 - health.oldest_undecrypted_timestamp) / 86400)}{' '}
-                days old)
+            <span className="text-sm">Database size</span>
+            <span className="text-sm font-semibold">{health?.database_size_mb ?? '?'} MB</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm">Oldest undecrypted packet</span>
+            {health?.oldest_undecrypted_timestamp ? (
+              <span className="text-sm font-semibold">
+                {formatTime(health.oldest_undecrypted_timestamp)}
+                <span className="font-normal text-muted-foreground ml-1">
+                  ({Math.floor((Date.now() / 1000 - health.oldest_undecrypted_timestamp) / 86400)}{' '}
+                  days)
+                </span>
               </span>
-            </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">None</span>
+            )}
           </div>
-        ) : (
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-muted-foreground">Oldest undecrypted packet</span>
-            <span className="text-muted-foreground">None</span>
-          </div>
-        )}
+        </div>
       </div>
 
       <Separator />
 
-      <div className="space-y-3">
-        <Label>Delete Undecrypted Packets</Label>
-        <p className="text-xs text-muted-foreground">
-          Permanently deletes stored raw packets containing DMs and channel messages that have not
-          yet been decrypted. These packets are retained in case you later obtain the correct key —
-          once deleted, these messages can never be recovered or decrypted.
-        </p>
-        <div className="flex gap-2 items-end">
-          <div className="space-y-1">
-            <Label htmlFor="retention-days" className="text-xs">
-              Older than (days)
-            </Label>
-            <Input
-              id="retention-days"
-              type="number"
-              min="1"
-              max="365"
-              value={retentionDays}
-              onChange={(e) => setRetentionDays(e.target.value)}
-              className="w-24"
-            />
+      {/* ── Storage Cleanup ── */}
+      <div className="space-y-4">
+        <Label className="text-base">Storage Cleanup</Label>
+
+        <div className="rounded-md border border-border p-3 space-y-2">
+          <Label className="text-sm">Delete Undecrypted Packets</Label>
+          <p className="text-xs text-muted-foreground">
+            Permanently deletes stored raw packets that have not yet been decrypted. These are
+            retained in case you later obtain the correct key — once deleted, these messages can
+            never be recovered.
+          </p>
+          <div className="flex gap-2 items-end">
+            <div className="space-y-1">
+              <Label htmlFor="retention-days" className="text-xs text-muted-foreground">
+                Older than (days)
+              </Label>
+              <Input
+                id="retention-days"
+                type="number"
+                min="1"
+                max="365"
+                value={retentionDays}
+                onChange={(e) => setRetentionDays(e.target.value)}
+                className="w-24"
+              />
+            </div>
+            <Button
+              variant="outline"
+              onClick={handleCleanup}
+              disabled={cleaning}
+              className="border-destructive/50 text-destructive hover:bg-destructive/10"
+            >
+              {cleaning ? 'Deleting...' : 'Delete'}
+            </Button>
           </div>
+        </div>
+
+        <div className="rounded-md border border-border p-3 space-y-2">
+          <Label className="text-sm">Purge Archival Raw Packets</Label>
+          <p className="text-xs text-muted-foreground">
+            Deletes the raw packet bytes behind messages that are already decrypted and visible in
+            chat. This frees space but removes packet-analysis availability for those messages. It
+            does not affect displayed messages or future decryption.
+          </p>
           <Button
             variant="outline"
-            onClick={handleCleanup}
-            disabled={cleaning}
-            className="border-destructive/50 text-destructive hover:bg-destructive/10"
+            onClick={handlePurgeDecryptedRawPackets}
+            disabled={purgingDecryptedRaw}
+            className="w-full border-warning/50 text-warning hover:bg-warning/10"
           >
-            {cleaning ? 'Deleting...' : 'Permanently Delete'}
+            {purgingDecryptedRaw ? 'Purging...' : 'Purge Archival Packets'}
           </Button>
         </div>
       </div>
 
       <Separator />
 
+      {/* ── DM Decryption ── */}
       <div className="space-y-3">
-        <Label>Purge Archival Raw Packets</Label>
-        <p className="text-xs text-muted-foreground">
-          Deletes archival copies of raw packet bytes for messages that are already decrypted and
-          visible in your chat history.{' '}
-          <em className="text-muted-foreground/80">
-            This will not affect any displayed messages or your ability to do historical decryption,
-            but it will remove packet-analysis availability for those historical messages.
-          </em>{' '}
-          The raw bytes are only useful for manual packet analysis.
-        </p>
-        <Button
-          variant="outline"
-          onClick={handlePurgeDecryptedRawPackets}
-          disabled={purgingDecryptedRaw}
-          className="w-full border-warning/50 text-warning hover:bg-warning/10"
-        >
-          {purgingDecryptedRaw ? 'Purging Archival Raw Packets...' : 'Purge Archival Raw Packets'}
-        </Button>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3">
-        <Label>DM Decryption</Label>
+        <Label className="text-base">DM Decryption</Label>
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -215,8 +231,73 @@ export function SettingsDatabaseSection({
         </p>
       </div>
 
+      {error && (
+        <div className="text-sm text-destructive" role="alert">
+          {error}
+        </div>
+      )}
+
+      <Button onClick={handleSave} disabled={busy} className="w-full">
+        {busy ? 'Saving...' : 'Save Settings'}
+      </Button>
+
       <Separator />
 
+      {/* ── Contact Management ── */}
+      <div className="space-y-2">
+        <Label className="text-base">Contact Management</Label>
+      </div>
+
+      {/* Block discovery of new node types */}
+      <div className="space-y-3">
+        <Label>Block Discovery of New Node Types</Label>
+        <p className="text-xs text-muted-foreground">
+          Checked types will be ignored when heard via advertisement. Existing contacts of these
+          types are still updated. This does not affect contacts added manually or via DM.
+        </p>
+        <div className="space-y-1.5">
+          {(
+            [
+              [1, 'Block clients'],
+              [2, 'Block repeaters'],
+              [3, 'Block room servers'],
+              [4, 'Block sensors'],
+            ] as const
+          ).map(([typeCode, label]) => {
+            const checked = discoveryBlockedTypes.includes(typeCode);
+            return (
+              <label key={typeCode} className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() =>
+                    setDiscoveryBlockedTypes((prev) =>
+                      checked ? prev.filter((t) => t !== typeCode) : [...prev, typeCode]
+                    )
+                  }
+                  className="rounded border-input"
+                />
+                {label}
+              </label>
+            );
+          })}
+        </div>
+        {discoveryBlockedTypes.length > 0 && (
+          <p className="text-xs text-warning">
+            New{' '}
+            {discoveryBlockedTypes
+              .map((t) =>
+                t === 1 ? 'clients' : t === 2 ? 'repeaters' : t === 3 ? 'room servers' : 'sensors'
+              )
+              .join(', ')}{' '}
+            heard via advertisement will not be added to your contact list.
+          </p>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* Blocked contacts list */}
       <div className="space-y-3">
         <Label>Auto-Delete Raw Packets</Label>
         <label className="flex items-center gap-3 cursor-pointer">
@@ -258,12 +339,17 @@ export function SettingsDatabaseSection({
       <div className="space-y-3">
         <Label>Blocked Contacts</Label>
         <p className="text-xs text-muted-foreground">
-          Blocking only hides messages from the UI. MQTT forwarding and bot responses are not
-          affected. Messages are still stored and will reappear if unblocked.
+          Blocked contacts are hidden from the sidebar. Blocking only hides messages from the UI —
+          MQTT forwarding and bot responses are not affected. Messages are still stored and will
+          reappear if unblocked.
         </p>
 
         {blockedKeys.length === 0 && blockedNames.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No blocked contacts</p>
+          <p className="text-sm text-muted-foreground italic">
+            No blocked contacts. Block contacts from their info pane, viewed by clicking their
+            avatar in any channel, or their name within the top status bar with the conversation
+            open.
+          </p>
         ) : (
           <div className="space-y-2">
             {blockedKeys.length > 0 && (
@@ -314,15 +400,25 @@ export function SettingsDatabaseSection({
         )}
       </div>
 
-      {error && (
-        <div className="text-sm text-destructive" role="alert">
-          {error}
-        </div>
-      )}
+      <Separator />
 
-      <Button onClick={handleSave} disabled={busy} className="w-full">
-        {busy ? 'Saving...' : 'Save Settings'}
-      </Button>
+      {/* Bulk delete */}
+      <div className="space-y-3">
+        <Label>Bulk Delete Contacts</Label>
+        <p className="text-xs text-muted-foreground">
+          Remove multiple contacts or repeaters at once. Useful for cleaning up spam or unwanted
+          nodes. Message history will be preserved.
+        </p>
+        <Button variant="outline" className="w-full" onClick={() => setBulkDeleteOpen(true)}>
+          Open Bulk Delete
+        </Button>
+        <BulkDeleteContactsModal
+          open={bulkDeleteOpen}
+          onClose={() => setBulkDeleteOpen(false)}
+          contacts={contacts}
+          onDeleted={(keys) => onBulkDeleteContacts?.(keys)}
+        />
+      </div>
     </div>
   );
 }

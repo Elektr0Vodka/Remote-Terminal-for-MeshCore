@@ -30,7 +30,8 @@ class AppSettingsRepository:
                    sidebar_sort_order, last_message_times, preferences_migrated,
                    advert_interval, last_advert_time, flood_scope,
                    blocked_keys, blocked_names, show_warning_ticker,
-                   auto_delete_raw_enabled, auto_delete_raw_days
+                   auto_delete_raw_enabled, auto_delete_raw_days,
+                   discovery_blocked_types
             FROM app_settings WHERE id = 1
             """
         )
@@ -82,6 +83,14 @@ class AppSettingsRepository:
             except (json.JSONDecodeError, TypeError):
                 blocked_names = []
 
+        # Parse discovery_blocked_types JSON
+        discovery_blocked_types: list[int] = []
+        if row["discovery_blocked_types"]:
+            try:
+                discovery_blocked_types = json.loads(row["discovery_blocked_types"])
+            except (json.JSONDecodeError, TypeError):
+                discovery_blocked_types = []
+
         # Validate sidebar_sort_order (fallback to "recent" if invalid)
         sort_order = row["sidebar_sort_order"]
         if sort_order not in ("recent", "alpha"):
@@ -108,6 +117,7 @@ class AppSettingsRepository:
             auto_delete_raw_days=int(
                 row["auto_delete_raw_days"] if row["auto_delete_raw_days"] is not None else 14
             ),
+            discovery_blocked_types=discovery_blocked_types,
         )
 
     @staticmethod
@@ -126,6 +136,7 @@ class AppSettingsRepository:
         show_warning_ticker: bool | None = None,
         auto_delete_raw_enabled: bool | None = None,
         auto_delete_raw_days: int | None = None,
+        discovery_blocked_types: list[int] | None = None,
     ) -> AppSettings:
         """Update app settings. Only provided fields are updated."""
         updates = []
@@ -187,6 +198,10 @@ class AppSettingsRepository:
         if auto_delete_raw_days is not None:
             updates.append("auto_delete_raw_days = ?")
             params.append(auto_delete_raw_days)
+
+        if discovery_blocked_types is not None:
+            updates.append("discovery_blocked_types = ?")
+            params.append(json.dumps(discovery_blocked_types))
 
         if updates:
             query = f"UPDATE app_settings SET {', '.join(updates)} WHERE id = 1"

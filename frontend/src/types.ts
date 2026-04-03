@@ -253,6 +253,15 @@ export interface ChannelDetail {
   top_senders_24h: ChannelTopSender[];
 }
 
+export interface BulkCreateHashtagChannelsResult {
+  created_channels: Channel[];
+  existing_count: number;
+  invalid_names: string[];
+  decrypt_started: boolean;
+  decrypt_total_packets: number;
+  message: string;
+}
+
 /** A single path that a message took to reach us */
 export interface MessagePath {
   /** Hex-encoded routing path */
@@ -361,6 +370,7 @@ export interface AppSettings {
   auto_delete_raw_days: number;
   high_advert_threshold?: number;
   medium_advert_threshold?: number;
+  discovery_blocked_types: number[];
 }
 
 export interface AppSettingsUpdate {
@@ -376,6 +386,7 @@ export interface AppSettingsUpdate {
   auto_delete_raw_days?: number;
   high_advert_threshold?: number;
   medium_advert_threshold?: number;
+  discovery_blocked_types?: number[];
 }
 
 export interface MigratePreferencesRequest {
