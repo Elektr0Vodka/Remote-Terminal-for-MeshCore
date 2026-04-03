@@ -915,6 +915,49 @@ class ContactActivityCounts(BaseModel):
     last_week: int
 
 
+# ─── KMS ─────────────────────────────────────────────────────────────────────
+
+
+class KmsKey(BaseModel):
+    id: int
+    public_key: str
+    private_key: str
+    device_name: str | None = None
+    device_role: str | None = None
+    model: str | None = None
+    placement_date: str | None = None
+    last_maintenance: str | None = None
+    last_registered_failure: str | None = None
+    assigned_to: str | None = None
+    notes: str | None = None
+    created_at: int
+    updated_at: int
+
+
+class KmsKeyCreate(BaseModel):
+    public_key: str = Field(description="64-char hex Ed25519 public key")
+    private_key: str = Field(description="128-char hex expanded Ed25519 private key")
+    device_name: str | None = None
+    device_role: str | None = None
+    model: str | None = None
+    placement_date: str | None = None
+    last_maintenance: str | None = None
+    last_registered_failure: str | None = None
+    assigned_to: str | None = None
+    notes: str | None = None
+
+
+class KmsKeyUpdate(BaseModel):
+    device_name: str | None = None
+    device_role: str | None = None
+    model: str | None = None
+    placement_date: str | None = None
+    last_maintenance: str | None = None
+    last_registered_failure: str | None = None
+    assigned_to: str | None = None
+    notes: str | None = None
+
+
 class NoiseFloorSample(BaseModel):
     timestamp: int = Field(description="Unix timestamp of the sampled reading")
     noise_floor_dbm: int = Field(description="Noise floor in dBm")
