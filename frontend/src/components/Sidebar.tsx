@@ -14,6 +14,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   GripVertical,
+  KeyRound,
   LockOpen,
   Logs,
   Map,
@@ -1090,6 +1091,13 @@ export function Sidebar({
             </>
           ),
           onClick: onToggleCracker,
+        }),
+        renderSidebarActionRow({
+          key: 'tool-mc-kms',
+          active: isActive('kms', 'kms'),
+          icon: <KeyRound className="h-4 w-4" />,
+          label: 'MC-KMS',
+          onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
         }),
       ]
     : [];
