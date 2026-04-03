@@ -1,3 +1,61 @@
+# Migration Fix: Upstream FK Rebuild Stripped Signal Data (04-4-2026)
+
+The upstream FK cascade migration (62) introduced in the 3.7.0 merge rebuilt
+`raw_packets` and `contact_advert_paths` without preserving our fork's added
+columns (`rssi`, `snr`, `payload_type`, `best_rssi`, `best_snr`, `hash_mode`).
+This caused the SNR/RSSI scatter, Packets by Type, SNR/RSSI history, and hash
+mode badge features to stop working.
+
+## What's fixed
+
+### Database migrations (`app/migrations.py`)
+- Migration 62 now dynamically preserves `rssi`, `snr`, and `payload_type` when
+  rebuilding `raw_packets` (fixes fresh installs and users who haven't restarted yet).
+- Migration 78 (new): re-adds `rssi`, `snr`, `payload_type` to `raw_packets` for
+  databases where migration 62 already ran.
+- Migrations 63–77 (new): correct a migration numbering collision where our fork's
+  new migrations were numbered the same as upstream's and became unreachable for
+  any DB already past version 50.
+
+## Action required if you restarted after the 2026-04-02 merge
+
+The schema is repaired automatically on restart. However, historical signal data
+in `raw_packets` (rssi/snr/payload_type values) was lost when migration 62
+rebuilt the table. A backup was saved automatically at startup:
+
+```
+data/meshcore.db.pre-fk-migration.bak
+```
+
+To restore the historical data, **stop the server**, run:
+
+```bash
+cd /opt/meshcore-terminal/Remote-Terminal-for-MeshCore
+uv run python -c "
+import sqlite3
+main = sqlite3.connect('data/meshcore.db')
+bak  = sqlite3.connect('data/meshcore.db.pre-fk-migration.bak')
+
+rows = bak.execute('SELECT id, rssi, snr, payload_type FROM raw_packets WHERE rssi IS NOT NULL OR snr IS NOT NULL OR payload_type IS NOT NULL').fetchall()
+print(f'raw_packets: {len(rows)} rows to restore')
+main.executemany('UPDATE raw_packets SET rssi=?, snr=?, payload_type=? WHERE id=?', [(r[1], r[2], r[3], r[0]) for r in rows])
+
+rows2 = bak.execute('SELECT id, best_rssi, best_snr, hash_mode FROM contact_advert_paths WHERE best_rssi IS NOT NULL OR best_snr IS NOT NULL OR hash_mode IS NOT NULL').fetchall()
+print(f'contact_advert_paths: {len(rows2)} rows to restore')
+main.executemany('UPDATE contact_advert_paths SET best_rssi=?, best_snr=?, hash_mode=? WHERE id=?', [(r[1], r[2], r[3], r[0]) for r in rows2])
+
+main.commit()
+print('Done.')
+main.close()
+bak.close()
+"
+```
+
+Then restart the server. If you never restarted after the 2026-04-02 merge,
+no action is needed — the fix applies cleanly.
+
+---
+
 # Packet Feed History Persistence (23-3-2026)
 
 Packet feed no longer resets to empty on page refresh or radio reconnect.
