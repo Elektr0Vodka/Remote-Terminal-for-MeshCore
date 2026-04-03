@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     serial_port: str = ""  # Empty string triggers auto-detection
     serial_baudrate: int = 115200
-    tcp_host: str = "192.168.1.60"
+    tcp_host: str = ""
     tcp_port: int = 5000
     ble_address: str = ""
     ble_pin: str = ""
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="__CLOWNTOWN_DO_CLOCK_WRAPAROUND",
     )
+    skip_post_connect_sync: bool = False
     basic_auth_username: str = ""
     basic_auth_password: str = ""
 

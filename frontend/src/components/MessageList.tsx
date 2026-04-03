@@ -47,6 +47,7 @@ interface MessageListProps {
   loadingNewer?: boolean;
   onLoadNewer?: () => void;
   onJumpToBottom?: () => void;
+  preSorted?: boolean;
 }
 
 // URL regex for linkifying plain text
@@ -219,8 +220,8 @@ function HopCountBadge({ paths, onClick, variant }: HopCountBadgeProps) {
 
   const className =
     variant === 'header'
-      ? 'font-normal text-muted-foreground ml-1 text-[11px] cursor-pointer hover:text-primary hover:underline'
-      : 'text-[10px] text-muted-foreground ml-1 cursor-pointer hover:text-primary hover:underline';
+      ? 'font-normal text-muted-foreground ml-1 text-[0.6875rem] cursor-pointer hover:text-primary hover:underline'
+      : 'text-[0.625rem] text-muted-foreground ml-1 cursor-pointer hover:text-primary hover:underline';
 
   return (
     <span
@@ -283,6 +284,7 @@ export function MessageList({
   loadingNewer = false,
   onLoadNewer,
   onJumpToBottom,
+  preSorted = false,
 }: MessageListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const prevMessagesLengthRef = useRef<number>(0);
@@ -486,8 +488,11 @@ export function MessageList({
   // Note: Deduplication is handled by useConversationMessages.observeMessage()
   // and the database UNIQUE constraint on (type, conversation_key, text, sender_timestamp)
   const sortedMessages = useMemo(
-    () => [...messages].sort((a, b) => a.received_at - b.received_at || a.id - b.id),
-    [messages]
+    () =>
+      preSorted
+        ? messages
+        : [...messages].sort((a, b) => a.received_at - b.received_at || a.id - b.id),
+    [messages, preSorted]
   );
   const unreadMarkerIndex = useMemo(() => {
     if (unreadMarkerLastReadAt === undefined) {
@@ -960,7 +965,7 @@ export function MessageList({
                   )}
                 >
                   {showAvatar && (
-                    <div className="text-[13px] font-semibold text-foreground mb-0.5">
+                    <div className="text-[0.8125rem] font-semibold text-foreground mb-0.5">
                       {canClickSender ? (
                         <span
                           className="cursor-pointer hover:text-primary transition-colors"
@@ -975,7 +980,7 @@ export function MessageList({
                       ) : (
                         displaySender
                       )}
-                      <span className="font-normal text-muted-foreground ml-2 text-[11px]">
+                      <span className="font-normal text-muted-foreground ml-2 text-[0.6875rem]">
                         {formatTime(msg.sender_timestamp || msg.received_at)}
                       </span>
                       {!msg.outgoing && msg.paths && msg.paths.length > 0 && (
@@ -1003,7 +1008,7 @@ export function MessageList({
                     ))}
                     {!showAvatar && (
                       <>
-                        <span className="text-[10px] text-muted-foreground ml-2">
+                        <span className="text-[0.625rem] text-muted-foreground ml-2">
                           {formatTime(msg.sender_timestamp || msg.received_at)}
                         </span>
                         {!msg.outgoing && msg.paths && msg.paths.length > 0 && (

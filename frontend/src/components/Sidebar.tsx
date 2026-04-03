@@ -323,23 +323,19 @@ interface SidebarProps {
   onToggleCracker: () => void;
   onMarkAllRead: () => void;
   favorites: Favorite[];
-  legacySortOrder?: SortOrder;
   isConversationNotificationsEnabled?: (type: 'channel' | 'contact', id: string) => boolean;
   blockedKeys?: string[];
   blockedNames?: string[];
 }
 
-type InitialSectionSortState = {
-  orders: SidebarSectionSortOrders;
-  source: 'section' | 'legacy' | 'none';
-};
-
-function loadInitialSectionSortOrders(): InitialSectionSortState {
+function loadInitialSectionSortOrders(): SidebarSectionSortOrders {
   const storedOrders = loadLocalStorageSidebarSectionSortOrders();
-  if (storedOrders) return { orders: storedOrders, source: 'section' };
+  if (storedOrders) return storedOrders;
+
   const legacyOrder = loadLegacyLocalStorageSortOrder();
-  if (legacyOrder) return { orders: buildSidebarSectionSortOrders(legacyOrder), source: 'legacy' };
-  return { orders: buildSidebarSectionSortOrders(), source: 'none' };
+  const orders = buildSidebarSectionSortOrders(legacyOrder ?? undefined);
+  saveLocalStorageSidebarSectionSortOrders(orders);
+  return orders;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -358,7 +354,6 @@ export function Sidebar({
   onToggleCracker,
   onMarkAllRead,
   favorites,
-  legacySortOrder,
   isConversationNotificationsEnabled,
   blockedKeys = [],
   blockedNames = [],
@@ -375,8 +370,8 @@ export function Sidebar({
   const [sectionOrder, setSectionOrder] = useState<SidebarSection[]>(loadSectionOrder);
   const [toolOrder, setToolOrder] = useState<ToolKey[]>(loadToolOrder);
 
-  const initialSectionSortState = useMemo(loadInitialSectionSortOrders, []);
-  const [sectionSortOrders, setSectionSortOrders] = useState(initialSectionSortState.orders);
+  const initialSectionSortOrders = useMemo(loadInitialSectionSortOrders, []);
+  const [sectionSortOrders, setSectionSortOrders] = useState(initialSectionSortOrders);
   const initialCollapsedState = useMemo(loadCollapsedState, []);
   const [toolsCollapsed, setToolsCollapsed] = useState(initialCollapsedState.tools);
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(initialCollapsedState.favorites);
@@ -404,8 +399,6 @@ export function Sidebar({
   );
   const listRef = useRef<HTMLDivElement>(null);
   const collapseSnapshotRef = useRef<CollapseState | null>(null);
-  const sectionSortSourceRef = useRef(initialSectionSortState.source);
-
   const [meshHealthStatus, setMeshHealthStatus] = useState<'ok' | 'medium' | 'high' | null>(null);
 
   useEffect(() => {
@@ -425,25 +418,11 @@ export function Sidebar({
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    if (sectionSortSourceRef.current === 'legacy') {
-      saveLocalStorageSidebarSectionSortOrders(sectionSortOrders);
-      sectionSortSourceRef.current = 'section';
-      return;
-    }
-    if (sectionSortSourceRef.current !== 'none' || legacySortOrder === undefined) return;
-    const seededOrders = buildSidebarSectionSortOrders(legacySortOrder);
-    setSectionSortOrders(seededOrders);
-    saveLocalStorageSidebarSectionSortOrders(seededOrders);
-    sectionSortSourceRef.current = 'section';
-  }, [legacySortOrder, sectionSortOrders]);
-
   const handleSortToggle = (section: SidebarSortableSection) => {
     setSectionSortOrders((prev) => {
       const nextOrder = prev[section] === 'alpha' ? 'recent' : 'alpha';
       const updated = { ...prev, [section]: nextOrder };
       saveLocalStorageSidebarSectionSortOrders(updated);
-      sectionSortSourceRef.current = 'section';
       return updated;
     });
   };
@@ -908,7 +887,7 @@ export function Sidebar({
             contactType={row.contact.type}
           />
         )}
-        <span className="name flex-1 truncate text-[13px]">{row.name}</span>
+        <span className="name flex-1 truncate text-[0.8125rem]">{row.name}</span>
         <span className="ml-auto flex items-center gap-1">
           {row.notificationsEnabled && (
             <span aria-label="Notifications enabled" title="Notifications enabled">
@@ -918,7 +897,7 @@ export function Sidebar({
           {row.unreadCount > 0 && (
             <span
               className={cn(
-                'text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center',
+                'text-[0.625rem] font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center',
                 highlightUnread
                   ? 'bg-badge-mention text-badge-mention-foreground'
                   : 'bg-badge-unread/90 text-badge-unread-foreground'
@@ -950,7 +929,7 @@ export function Sidebar({
       key={key}
       data-active={active ? 'true' : undefined}
       className={cn(
-        'sidebar-action-row px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'sidebar-action-row px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[0.8125rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active && 'bg-accent border-l-primary'
       )}
       role="button"
@@ -1024,103 +1003,97 @@ export function Sidebar({
   ]);
   const favoritesHasMention = sectionHasMention(favoriteRows);
   const channelsHasMention = sectionHasMention(channelRows);
-
-  // Tool definitions keyed by ToolKey
-  const toolDefinitions: Record<ToolKey, React.ReactNode> = {
-    'packet-feed': renderSidebarActionRow({
-      key: 'tool-raw',
-      active: isActive('raw', 'raw'),
-      icon: <Logs className="h-4 w-4" />,
-      label: 'Packet Feed',
-      onClick: () => handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
-    }),
-    'node-map': renderSidebarActionRow({
-      key: 'tool-map',
-      active: isActive('map', 'map'),
-      icon: <Map className="h-4 w-4" />,
-      label: 'Node Map',
-      onClick: () => handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
-    }),
-    'mesh-visualizer': renderSidebarActionRow({
-      key: 'tool-visualizer',
-      active: isActive('visualizer', 'visualizer'),
-      icon: <ChartNetwork className="h-4 w-4" />,
-      label: 'Mesh Visualizer',
-      onClick: () =>
-        handleSelectConversation({ type: 'visualizer', id: 'visualizer', name: 'Mesh Visualizer' }),
-    }),
-    'message-search': renderSidebarActionRow({
-      key: 'tool-search',
-      active: isActive('search', 'search'),
-      icon: <SearchIcon className="h-4 w-4" />,
-      label: 'Message Search',
-      onClick: () =>
-        handleSelectConversation({ type: 'search', id: 'search', name: 'Message Search' }),
-    }),
-    'my-node': renderSidebarActionRow({
-      key: 'tool-node',
-      active: isActive('node', 'node'),
-      icon: <BarChart2 className="h-4 w-4" />,
-      label: 'My Node',
-      onClick: () => handleSelectConversation({ type: 'node', id: 'node', name: 'My Node' }),
-    }),
-    'mesh-health': renderSidebarActionRow({
-      key: 'tool-mesh-health',
-      active: isActive('mesh-health', 'mesh-health'),
-      icon: <Activity className="h-4 w-4" />,
-      label: (
-        <span className="flex items-center justify-between w-full">
-          <span>Mesh Health</span>
-          {meshHealthStatus === 'ok' && (
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-          )}
-          {meshHealthStatus === 'medium' && (
-            <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
-          )}
-          {meshHealthStatus === 'high' && (
-            <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-          )}
-        </span>
-      ),
-      onClick: () =>
-        handleSelectConversation({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' }),
-    }),
-    'room-finder': renderSidebarActionRow({
-      key: 'tool-cracker',
-      active: showCracker,
-      icon: <LockOpen className="h-4 w-4" />,
-      label: (
-        <>
-          {showCracker ? 'Hide' : 'Show'} Channel Finder
-          <span
-            className={cn(
-              'ml-1 text-[11px]',
-              crackerRunning ? 'text-primary' : 'text-muted-foreground'
-            )}
-          >
-            ({crackerRunning ? 'running' : 'idle'})
-          </span>
-        </>
-      ),
-      onClick: onToggleCracker,
-    }),
-    'mc-kms': renderSidebarActionRow({
-      key: 'tool-mc-kms',
-      active: isActive('kms', 'kms'),
-      icon: <KeyRound className="h-4 w-4" />,
-      label: 'MC-KMS',
-      onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
-    }),
-    'trace': renderSidebarActionRow({
-      key: 'tool-trace',
-      active: isActive('trace', 'trace'),
-      icon: <Cable className="h-4 w-4" />,
-      label: 'Trace',
-      onClick: () => handleSelectConversation({ type: 'trace', id: 'trace', name: 'Trace' }),
-    }),
-  };
-
-  const toolRows = !query ? toolOrder.map((key) => toolDefinitions[key]) : [];
+  const toolRows = !query
+    ? [
+        renderSidebarActionRow({
+          key: 'tool-raw',
+          active: isActive('raw', 'raw'),
+          icon: <Logs className="h-4 w-4" />,
+          label: 'Packet Feed',
+          onClick: () =>
+            handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-map',
+          active: isActive('map', 'map'),
+          icon: <Map className="h-4 w-4" />,
+          label: 'Node Map',
+          onClick: () =>
+            handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-visualizer',
+          active: isActive('visualizer', 'visualizer'),
+          icon: <ChartNetwork className="h-4 w-4" />,
+          label: 'Mesh Visualizer',
+          onClick: () =>
+            handleSelectConversation({ type: 'visualizer', id: 'visualizer', name: 'Mesh Visualizer' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-trace',
+          active: isActive('trace', 'trace'),
+          icon: <Cable className="h-4 w-4" />,
+          label: 'Trace',
+          onClick: () =>
+            handleSelectConversation({ type: 'trace', id: 'trace', name: 'Trace' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-search',
+          active: isActive('search', 'search'),
+          icon: <SearchIcon className="h-4 w-4" />,
+          label: 'Message Search',
+          onClick: () =>
+            handleSelectConversation({ type: 'search', id: 'search', name: 'Message Search' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-node',
+          active: isActive('node', 'node'),
+          icon: <BarChart2 className="h-4 w-4" />,
+          label: 'My Node',
+          onClick: () => handleSelectConversation({ type: 'node', id: 'node', name: 'My Node' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-mesh-health',
+          active: isActive('mesh-health', 'mesh-health'),
+          icon: <Activity className="h-4 w-4" />,
+          label: (
+            <span className="flex items-center justify-between w-full">
+              <span>Mesh Health</span>
+              {meshHealthStatus === 'ok' && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+              )}
+              {meshHealthStatus === 'medium' && (
+                <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
+              )}
+              {meshHealthStatus === 'high' && (
+                <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+              )}
+            </span>
+          ),
+          onClick: () =>
+            handleSelectConversation({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-cracker',
+          active: showCracker,
+          icon: <LockOpen className="h-4 w-4" />,
+          label: (
+            <>
+              {showCracker ? 'Hide' : 'Show'} Channel Finder
+              <span
+                className={cn(
+                  'ml-1 text-[0.6875rem]',
+                  crackerRunning ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                ({crackerRunning ? 'running' : 'idle'})
+              </span>
+            </>
+          ),
+          onClick: onToggleCracker,
+        }),
+      ]
+    : [];
 
   const renderSectionHeader = (
     title: string,
@@ -1139,7 +1112,7 @@ export function Sidebar({
       <div className="flex justify-between items-center px-3 py-2 pt-3.5">
         <button
           className={cn(
-            'flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded',
+            'flex items-center gap-1.5 text-[0.625rem] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded',
             isSearching && 'cursor-default'
           )}
           aria-expanded={!effectiveCollapsed}
@@ -1158,49 +1131,51 @@ export function Sidebar({
             {itemCount !== undefined && itemCount > 0 ? ` (${itemCount})` : ''}
           </span>
         </button>
-        <div className="ml-auto flex items-center gap-1.5">
-          {sortSection && sectionSortOrder && (
-            <button
-              className="bg-transparent text-muted-foreground/60 px-1 py-0.5 text-[10px] rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => handleSortToggle(sortSection)}
-              aria-label={
-                sectionSortOrder === 'alpha'
-                  ? `Sort ${title} by recent`
-                  : `Sort ${title} alphabetically`
-              }
-              title={
-                sectionSortOrder === 'alpha'
-                  ? `Sort ${title} by recent`
-                  : `Sort ${title} alphabetically`
-              }
-            >
-              {sectionSortOrder === 'alpha' ? 'A-Z' : '⏱'}
-            </button>
-          )}
-          {onMarkRead && unreadCount > 0 && (
-            <button
-              className="text-muted-foreground/60 hover:text-foreground transition-colors rounded p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={onMarkRead}
-              title="Mark all as read"
-              aria-label="Mark all as read"
-            >
-              <CheckCheck className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {unreadCount > 0 && (
-            <span
-              className={cn(
-                'text-[10px] font-medium px-1.5 py-0.5 rounded-full',
-                highlightUnread
-                  ? 'bg-badge-mention text-badge-mention-foreground'
-                  : 'bg-secondary text-muted-foreground'
-              )}
-              aria-label={`${unreadCount} unread`}
-            >
-              {unreadCount}
-            </span>
-          )}
-        </div>
+        {(sortSection || unreadCount > 0) && (
+          <div className="ml-auto flex items-center gap-1.5">
+            {sortSection && sectionSortOrder && (
+              <button
+                className="bg-transparent text-muted-foreground/60 px-1 py-0.5 text-[0.625rem] rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => handleSortToggle(sortSection)}
+                aria-label={
+                  sectionSortOrder === 'alpha'
+                    ? `Sort ${title} by recent`
+                    : `Sort ${title} alphabetically`
+                }
+                title={
+                  sectionSortOrder === 'alpha'
+                    ? `Sort ${title} by recent`
+                    : `Sort ${title} alphabetically`
+                }
+              >
+                {sectionSortOrder === 'alpha' ? 'A-Z' : '⏱'}
+              </button>
+            )}
+            {onMarkRead && unreadCount > 0 && (
+              <button
+                className="text-muted-foreground/60 hover:text-foreground transition-colors rounded p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={onMarkRead}
+                title="Mark all as read"
+                aria-label="Mark all as read"
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {unreadCount > 0 && (
+              <span
+                className={cn(
+                  'text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full',
+                  highlightUnread
+                    ? 'bg-badge-mention text-badge-mention-foreground'
+                    : 'bg-secondary text-muted-foreground'
+                )}
+                aria-label={`${unreadCount} unread`}
+              >
+                {unreadCount}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -1479,7 +1454,7 @@ export function Sidebar({
           onClick={onNewMessage}
           title="Add channel or contact"
           aria-label="Add channel or contact"
-          className="h-8 flex-1 justify-start gap-2 border-primary/20 bg-primary/5 px-3 text-[13px] text-primary hover:bg-primary/10 hover:text-primary"
+          className="h-8 flex-1 justify-start gap-2 border-primary/20 bg-primary/5 px-3 text-[0.8125rem] text-primary hover:bg-primary/10 hover:text-primary"
         >
           <SquarePen className="h-4 w-4" />
           <span>Add Channel/Contact</span>

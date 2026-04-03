@@ -52,6 +52,7 @@ interface ConversationPaneProps {
   notificationsPermission: NotificationPermission | 'unsupported';
   favorites: Favorite[];
   messages: Message[];
+  preSorted?: boolean;
   messagesLoading: boolean;
   loadingOlder: boolean;
   hasOlderMessages: boolean;
@@ -70,6 +71,10 @@ interface ConversationPaneProps {
   onDeleteContact: (publicKey: string) => Promise<void>;
   onDeleteChannel: (key: string) => Promise<void>;
   onSetChannelFloodScopeOverride: (channelKey: string, floodScopeOverride: string) => Promise<void>;
+  onSetChannelPathHashModeOverride?: (
+    channelKey: string,
+    pathHashModeOverride: number | null
+  ) => Promise<void>;
   onOpenContactInfo: (publicKey: string, fromChannel?: boolean) => void;
   onOpenChannelInfo: (channelKey: string) => void;
   onSenderClick: (sender: string) => void;
@@ -83,6 +88,8 @@ interface ConversationPaneProps {
   onSendMessage: (text: string) => Promise<void>;
   onToggleNotifications: () => void;
   onSelectConversation?: (conversation: Conversation) => void;
+  trackedTelemetryRepeaters: string[];
+  onToggleTrackedTelemetry: (publicKey: string) => Promise<void>;
 }
 
 function LoadingPane({ label }: { label: string }) {
@@ -123,6 +130,7 @@ export function ConversationPane({
   notificationsPermission,
   favorites,
   messages,
+  preSorted,
   messagesLoading,
   loadingOlder,
   hasOlderMessages,
@@ -138,6 +146,7 @@ export function ConversationPane({
   onDeleteContact,
   onDeleteChannel,
   onSetChannelFloodScopeOverride,
+  onSetChannelPathHashModeOverride,
   onOpenContactInfo,
   onOpenChannelInfo,
   onSenderClick,
@@ -151,6 +160,8 @@ export function ConversationPane({
   onSendMessage,
   onToggleNotifications,
   onSelectConversation,
+  trackedTelemetryRepeaters,
+  onToggleTrackedTelemetry,
 }: ConversationPaneProps) {
   const [roomAuthenticated, setRoomAuthenticated] = useState(false);
   const activeContactIsRepeater = useMemo(() => {
@@ -308,6 +319,8 @@ export function ConversationPane({
           onToggleFavorite={onToggleFavorite}
           onDeleteContact={onDeleteContact}
           onOpenContactInfo={onOpenContactInfo}
+          trackedTelemetryRepeaters={trackedTelemetryRepeaters}
+          onToggleTrackedTelemetry={onToggleTrackedTelemetry}
         />
       </Suspense>
     );
@@ -331,6 +344,7 @@ export function ConversationPane({
         onToggleNotifications={onToggleNotifications}
         onToggleFavorite={onToggleFavorite}
         onSetChannelFloodScopeOverride={onSetChannelFloodScopeOverride}
+        onSetChannelPathHashModeOverride={onSetChannelPathHashModeOverride}
         onDeleteChannel={onDeleteChannel}
         onDeleteContact={onDeleteContact}
         onOpenContactInfo={onOpenContactInfo}
@@ -349,6 +363,7 @@ export function ConversationPane({
         <MessageList
           key={activeConversation.id}
           messages={messages}
+          preSorted={preSorted}
           contacts={contacts}
           channels={channels}
           loading={messagesLoading}

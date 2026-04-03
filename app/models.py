@@ -301,30 +301,6 @@ class NearestRepeater(BaseModel):
     heard_count: int
 
 
-class ContactDetail(BaseModel):
-    """Comprehensive contact profile data."""
-
-    contact: Contact
-    name_history: list[ContactNameHistory] = Field(default_factory=list)
-    dm_message_count: int = 0
-    channel_message_count: int = 0
-    most_active_rooms: list[ContactActiveRoom] = Field(default_factory=list)
-    advert_paths: list[ContactAdvertPath] = Field(default_factory=list)
-    advert_frequency: float | None = Field(
-        default=None,
-        description="Advert observations per hour (includes multi-path arrivals of same advert)",
-    )
-    nearest_repeaters: list[NearestRepeater] = Field(default_factory=list)
-
-
-class NameOnlyContactDetail(BaseModel):
-    """Channel activity summary for a sender name that is not tied to a known key."""
-
-    name: str
-    channel_message_count: int = 0
-    most_active_rooms: list[ContactActiveRoom] = Field(default_factory=list)
-
-
 class ContactAnalyticsHourlyBucket(BaseModel):
     """A single hourly activity bucket for contact analytics."""
 
@@ -372,6 +348,10 @@ class Channel(BaseModel):
         default=None,
         description="Per-channel outbound flood scope override (null = use global app setting)",
     )
+    path_hash_mode_override: int | None = Field(
+        default=None,
+        description="Per-channel path hash mode override (0=1-byte, 1=2-byte, 2=3-byte, null = use radio default)",
+    )
     last_read_at: int | None = None  # Server-side read state tracking
 
 
@@ -393,6 +373,18 @@ class ChannelTopSender(BaseModel):
     message_count: int
 
 
+class PathHashWidthStats(BaseModel):
+    """Hop byte width distribution for parsed raw packets."""
+
+    total_packets: int = 0
+    single_byte: int = 0
+    double_byte: int = 0
+    triple_byte: int = 0
+    single_byte_pct: float = 0.0
+    double_byte_pct: float = 0.0
+    triple_byte_pct: float = 0.0
+
+
 class ChannelDetail(BaseModel):
     """Comprehensive channel profile data."""
 
@@ -401,6 +393,7 @@ class ChannelDetail(BaseModel):
     first_message_at: int | None = None
     unique_sender_count: int = 0
     top_senders_24h: list[ChannelTopSender] = Field(default_factory=list)
+    path_hash_width_24h: PathHashWidthStats = Field(default_factory=PathHashWidthStats)
 
 
 class MessagePath(BaseModel):
@@ -548,6 +541,9 @@ class RepeaterStatusResponse(BaseModel):
     flood_dups: int = Field(description="Duplicate flood packets")
     direct_dups: int = Field(description="Duplicate direct packets")
     full_events: int = Field(description="Full event queue count")
+    telemetry_history: list["TelemetryHistoryEntry"] = Field(
+        default_factory=list, description="Recent telemetry history snapshots"
+    )
 
 
 class RepeaterNodeInfoResponse(BaseModel):
@@ -826,10 +822,6 @@ class AppSettings(BaseModel):
         default=True,
         description="Whether to attempt historical DM decryption on new contact advertisement",
     )
-    sidebar_sort_order: Literal["recent", "alpha"] = Field(
-        default="recent",
-        description="Sidebar sort order: 'recent' or 'alpha'",
-    )
     last_message_times: dict[str, int] = Field(
         default_factory=dict,
         description="Map of conversation state keys to last message timestamps",
@@ -885,6 +877,17 @@ class AppSettings(BaseModel):
             "advertisements should not create new contacts; existing contacts are still updated"
         ),
     )
+    tracked_telemetry_repeaters: list[str] = Field(
+        default_factory=list,
+        description="Public keys of repeaters opted into periodic telemetry collection (max 8)",
+    )
+    auto_resend_channel: bool = Field(
+        default=False,
+        description=(
+            "When enabled, outgoing channel messages that receive no echo within 2 seconds "
+            "are automatically byte-perfect resent once (within the 30-second dedup window)"
+        ),
+    )
 
 
 class FanoutConfig(BaseModel):
@@ -910,62 +913,6 @@ class ContactActivityCounts(BaseModel):
     last_hour: int
     last_24_hours: int
     last_week: int
-
-
-class PathHashWidthStats(BaseModel):
-    total_packets: int
-    single_byte: int
-    double_byte: int
-    triple_byte: int
-    single_byte_pct: float = 0.0
-    double_byte_pct: float = 0.0
-    triple_byte_pct: float = 0.0
-
-
-# ─── KMS ─────────────────────────────────────────────────────────────────────
-
-
-class KmsKey(BaseModel):
-    id: int
-    public_key: str
-    private_key: str
-    device_name: str | None = None
-    device_role: str | None = None
-    model: str | None = None
-    placement_date: str | None = None
-    last_maintenance: str | None = None
-    last_registered_failure: str | None = None
-    assigned_to: str | None = None
-    notes: str | None = None
-    created_at: int
-    updated_at: int
-
-
-class KmsKeyCreate(BaseModel):
-    public_key: str = Field(description="64-char hex Ed25519 public key")
-    private_key: str = Field(description="128-char hex expanded Ed25519 private key")
-    device_name: str | None = None
-    device_role: str | None = None
-    model: str | None = None
-    placement_date: str | None = None
-    last_maintenance: str | None = None
-    last_registered_failure: str | None = None
-    assigned_to: str | None = None
-    notes: str | None = None
-
-
-class KmsKeyUpdate(BaseModel):
-    device_name: str | None = None
-    device_role: str | None = None
-    model: str | None = None
-    placement_date: str | None = None
-    last_maintenance: str | None = None
-    last_registered_failure: str | None = None
-    assigned_to: str | None = None
-    notes: str | None = None
-    single_byte_pct: float
-    double_byte_pct: float
-    triple_byte_pct: float
 
 
 class NoiseFloorSample(BaseModel):
@@ -1005,3 +952,8 @@ class StatisticsResponse(BaseModel):
     known_channels_active: ContactActivityCounts
     path_hash_width_24h: PathHashWidthStats | None = None
     noise_floor_24h: NoiseFloorHistoryStats
+
+
+class TelemetryHistoryEntry(BaseModel):
+    timestamp: int
+    data: dict

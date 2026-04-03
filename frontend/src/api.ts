@@ -38,6 +38,8 @@ import type {
   RepeaterOwnerInfoResponse,
   RepeaterRadioSettingsResponse,
   RepeaterStatusResponse,
+  TelemetryHistoryEntry,
+  TrackedTelemetryResponse,
   StatisticsResponse,
   NoiseFloorSample,
   TraceResponse,
@@ -222,6 +224,12 @@ export const api = {
       body: JSON.stringify({ flood_scope_override: floodScopeOverride }),
     }),
 
+  setChannelPathHashModeOverride: (key: string, pathHashModeOverride: number | null) =>
+    fetchJson<Channel>(`/channels/${key}/path-hash-mode-override`, {
+      method: 'POST',
+      body: JSON.stringify({ path_hash_mode_override: pathHashModeOverride }),
+    }),
+
   // Messages
   getMessages: (
     params?: {
@@ -337,6 +345,13 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
 
+  // Tracked telemetry
+  toggleTrackedTelemetry: (publicKey: string) =>
+    fetchJson<TrackedTelemetryResponse>('/settings/tracked-telemetry/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ public_key: publicKey }),
+    }),
+
   // Favorites
   toggleFavorite: (type: Favorite['type'], id: string) =>
     fetchJson<AppSettings>('/settings/favorites/toggle', {
@@ -433,6 +448,8 @@ export const api = {
     fetchJson<RepeaterLppTelemetryResponse>(`/contacts/${publicKey}/repeater/lpp-telemetry`, {
       method: 'POST',
     }),
+  repeaterTelemetryHistory: (publicKey: string) =>
+    fetchJson<TelemetryHistoryEntry[]>(`/contacts/${publicKey}/repeater/telemetry-history`),
   roomLogin: (publicKey: string, password: string) =>
     fetchJson<RepeaterLoginResponse>(`/contacts/${publicKey}/room/login`, {
       method: 'POST',

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Bell, Globe2, Info, Route, Star, Trash2 } from 'lucide-react';
+import { Bell, ChevronsLeftRight, Globe2, Info, Route, Star, Trash2 } from 'lucide-react';
 import { toast } from './ui/sonner';
 import { DirectTraceIcon } from './DirectTraceIcon';
 import { ContactPathDiscoveryModal } from './ContactPathDiscoveryModal';
 import { ChannelFloodScopeOverrideModal } from './ChannelFloodScopeOverrideModal';
+import { ChannelPathHashModeOverrideModal } from './ChannelPathHashModeOverrideModal';
 import { isFavorite } from '../utils/favorites';
 import { handleKeyboardActivate } from '../utils/a11y';
 import { isPublicChannelKey } from '../utils/publicChannel';
@@ -36,6 +37,7 @@ interface ChatHeaderProps {
   onToggleNotifications: () => void;
   onToggleFavorite: (type: 'channel' | 'contact', id: string) => void;
   onSetChannelFloodScopeOverride?: (key: string, floodScopeOverride: string) => void;
+  onSetChannelPathHashModeOverride?: (key: string, pathHashModeOverride: number | null) => void;
   onDeleteChannel: (key: string) => void;
   onDeleteContact: (publicKey: string) => void;
   onOpenContactInfo?: (publicKey: string) => void;
@@ -56,6 +58,7 @@ export function ChatHeader({
   onToggleNotifications,
   onToggleFavorite,
   onSetChannelFloodScopeOverride,
+  onSetChannelPathHashModeOverride,
   onDeleteChannel,
   onDeleteContact,
   onOpenContactInfo,
@@ -64,11 +67,13 @@ export function ChatHeader({
   const [showKey, setShowKey] = useState(false);
   const [pathDiscoveryOpen, setPathDiscoveryOpen] = useState(false);
   const [channelOverrideOpen, setChannelOverrideOpen] = useState(false);
+  const [pathHashModeOverrideOpen, setPathHashModeOverrideOpen] = useState(false);
 
   useEffect(() => {
     setShowKey(false);
     setPathDiscoveryOpen(false);
     setChannelOverrideOpen(false);
+    setPathHashModeOverrideOpen(false);
   }, [conversation.id]);
 
   const activeChannel =
@@ -81,6 +86,12 @@ export function ChatHeader({
     ? stripRegionScopePrefix(activeFloodScopeOverride)
     : null;
   const activeFloodScopeDisplay = activeFloodScopeOverride ? activeFloodScopeOverride : null;
+  const activePathHashModeOverride =
+    conversation.type === 'channel' ? (activeChannel?.path_hash_mode_override ?? null) : null;
+  const showPathHashModeOverride =
+    conversation.type === 'channel' &&
+    onSetChannelPathHashModeOverride &&
+    config?.path_hash_mode_supported;
   const isPrivateChannel = conversation.type === 'channel' && !activeChannel?.is_hashtag;
   const activeContact =
     conversation.type === 'contact'
@@ -106,6 +117,11 @@ export function ChatHeader({
   const handleEditFloodScopeOverride = () => {
     if (conversation.type !== 'channel' || !onSetChannelFloodScopeOverride) return;
     setChannelOverrideOpen(true);
+  };
+
+  const handleEditPathHashModeOverride = () => {
+    if (conversation.type !== 'channel' || !onSetChannelPathHashModeOverride) return;
+    setPathHashModeOverrideOpen(true);
   };
 
   const handleOpenConversationInfo = () => {
@@ -182,7 +198,7 @@ export function ChatHeader({
               </h2>
               {isPrivateChannel && !showKey ? (
                 <button
-                  className="min-w-0 flex-shrink text-[11px] font-mono text-muted-foreground transition-colors hover:text-primary"
+                  className="min-w-0 flex-shrink text-[0.6875rem] font-mono text-muted-foreground transition-colors hover:text-primary"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowKey(true);
@@ -193,7 +209,7 @@ export function ChatHeader({
                 </button>
               ) : (
                 <span
-                  className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                  className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-muted-foreground transition-colors hover:text-primary"
                   role="button"
                   tabIndex={0}
                   onKeyDown={handleKeyboardActivate}
@@ -228,7 +244,7 @@ export function ChatHeader({
                   className="h-3.5 w-3.5 flex-shrink-0 text-[hsl(var(--region-override))]"
                   aria-hidden="true"
                 />
-                <span className="min-w-0 truncate text-[11px] font-medium text-[hsl(var(--region-override))]">
+                <span className="min-w-0 truncate text-[0.6875rem] font-medium text-[hsl(var(--region-override))]">
                   {activeFloodScopeDisplay}
                 </span>
               </button>
@@ -237,7 +253,7 @@ export function ChatHeader({
         </span>
       </span>
       {conversation.type === 'contact' && activeContact && (
-        <div className="col-span-2 row-start-2 min-w-0 text-[11px] text-muted-foreground min-[1100px]:col-span-1 min-[1100px]:col-start-2 min-[1100px]:row-start-1">
+        <div className="col-span-2 row-start-2 min-w-0 text-[0.6875rem] text-muted-foreground min-[1100px]:col-span-1 min-[1100px]:col-start-2 min-[1100px]:row-start-1">
           <ContactStatusInfo
             contact={activeContact}
             ourLat={config?.lat ?? null}
@@ -299,7 +315,7 @@ export function ChatHeader({
               aria-hidden="true"
             />
             {notificationsEnabled && (
-              <span className="hidden md:inline text-[11px] font-medium text-status-connected">
+              <span className="hidden md:inline text-[0.6875rem] font-medium text-status-connected">
                 Notifications On
               </span>
             )}
@@ -317,10 +333,23 @@ export function ChatHeader({
               aria-hidden="true"
             />
             {activeFloodScopeDisplay && (
-              <span className="hidden text-[11px] font-medium text-[hsl(var(--region-override))] sm:inline">
+              <span className="hidden text-[0.6875rem] font-medium text-[hsl(var(--region-override))] sm:inline">
                 {activeFloodScopeDisplay}
               </span>
             )}
+          </button>
+        )}
+        {showPathHashModeOverride && (
+          <button
+            className="flex shrink-0 items-center gap-1 rounded px-1 py-1 text-lg leading-none transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={handleEditPathHashModeOverride}
+            title="Set path hop width override"
+            aria-label="Set path hop width override"
+          >
+            <ChevronsLeftRight
+              className={`h-4 w-4 ${activePathHashModeOverride != null ? 'text-status-connected' : 'text-muted-foreground'}`}
+              aria-hidden="true"
+            />
           </button>
         )}
         {(conversation.type === 'channel' || conversation.type === 'contact') && (
@@ -377,6 +406,16 @@ export function ChatHeader({
           roomName={conversation.name}
           currentOverride={activeFloodScopeDisplay}
           onSetOverride={(value) => onSetChannelFloodScopeOverride(conversation.id, value)}
+        />
+      )}
+      {showPathHashModeOverride && (
+        <ChannelPathHashModeOverrideModal
+          open={pathHashModeOverrideOpen}
+          onClose={() => setPathHashModeOverrideOpen(false)}
+          channelName={conversation.name}
+          currentOverride={activePathHashModeOverride}
+          radioDefault={config?.path_hash_mode ?? 0}
+          onSetOverride={(value) => onSetChannelPathHashModeOverride(conversation.id, value)}
         />
       )}
     </header>

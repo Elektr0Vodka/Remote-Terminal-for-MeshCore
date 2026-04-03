@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { api } from '../api';
 import { toast } from './ui/sonner';
 import { Button } from './ui/button';
 import { Bell, Info, Route, Star, Trash2 } from 'lucide-react';
@@ -12,7 +13,13 @@ import { isFavorite } from '../utils/favorites';
 import { handleKeyboardActivate } from '../utils/a11y';
 import { isValidLocation } from '../utils/pathUtils';
 import { ContactStatusInfo } from './ContactStatusInfo';
-import type { Contact, Conversation, Favorite, PathDiscoveryResponse } from '../types';
+import type {
+  Contact,
+  Conversation,
+  Favorite,
+  PathDiscoveryResponse,
+  TelemetryHistoryEntry,
+} from '../types';
 import { cn } from '../lib/utils';
 import { TelemetryPane } from './repeater/RepeaterTelemetryPane';
 import { NeighborsPane } from './repeater/RepeaterNeighborsPane';
@@ -23,6 +30,7 @@ import { LppTelemetryPane } from './repeater/RepeaterLppTelemetryPane';
 import { OwnerInfoPane } from './repeater/RepeaterOwnerInfoPane';
 import { ActionsPane } from './repeater/RepeaterActionsPane';
 import { ConsolePane } from './repeater/RepeaterConsolePane';
+import { TelemetryHistoryPane } from './repeater/RepeaterTelemetryHistoryPane';
 import { ContactPathDiscoveryModal } from './ContactPathDiscoveryModal';
 
 // Re-export for backwards compatibility (used by repeaterFormatters.test.ts)
@@ -46,6 +54,8 @@ interface RepeaterDashboardProps {
   onToggleFavorite: (type: 'channel' | 'contact', id: string) => void;
   onDeleteContact: (publicKey: string) => void;
   onOpenContactInfo?: (publicKey: string) => void;
+  trackedTelemetryRepeaters: string[];
+  onToggleTrackedTelemetry: (publicKey: string) => Promise<void>;
 }
 
 export function RepeaterDashboard({
@@ -64,6 +74,8 @@ export function RepeaterDashboard({
   onToggleFavorite,
   onDeleteContact,
   onOpenContactInfo,
+  trackedTelemetryRepeaters,
+  onToggleTrackedTelemetry,
 }: RepeaterDashboardProps) {
   const [pathDiscoveryOpen, setPathDiscoveryOpen] = useState(false);
   const contact = contacts.find((c) => c.public_key === conversation.id) ?? null;
@@ -90,7 +102,40 @@ export function RepeaterDashboard({
   const { password, setPassword, rememberPassword, setRememberPassword, persistAfterLogin } =
     useRememberedServerPassword('repeater', conversation.id);
 
+  // Telemetry history: preload from stored data, refresh from live status
+  const [telemetryHistory, setTelemetryHistory] = useState<TelemetryHistoryEntry[]>([]);
+  const telemetryHistorySourceRef = useRef<'none' | 'preload' | 'live'>('none');
+  const telemetryHistoryRequestRef = useRef(0);
+
+  useEffect(() => {
+    telemetryHistoryRequestRef.current += 1;
+    telemetryHistorySourceRef.current = 'none';
+    setTelemetryHistory([]);
+
+    if (!loggedIn) return;
+
+    const requestId = telemetryHistoryRequestRef.current;
+    api
+      .repeaterTelemetryHistory(conversation.id)
+      .then((history) => {
+        if (telemetryHistoryRequestRef.current !== requestId) return;
+        if (telemetryHistorySourceRef.current === 'live') return;
+        telemetryHistorySourceRef.current = 'preload';
+        setTelemetryHistory(history);
+      })
+      .catch(() => {});
+  }, [loggedIn, conversation.id]);
+
+  // When a live status fetch returns embedded telemetry_history, replace local state
+  useEffect(() => {
+    const liveHistory = paneData.status?.telemetry_history;
+    if (!liveHistory) return;
+    telemetryHistorySourceRef.current = 'live';
+    setTelemetryHistory(liveHistory);
+  }, [paneData.status?.telemetry_history]);
+
   const isFav = isFavorite(favorites, 'contact', conversation.id);
+
   const handleRepeaterLogin = async (nextPassword: string) => {
     await login(nextPassword);
     persistAfterLogin(nextPassword);
@@ -136,7 +181,7 @@ export function RepeaterDashboard({
                 )}
               </h2>
               <span
-                className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-muted-foreground transition-colors hover:text-primary"
                 role="button"
                 tabIndex={0}
                 onKeyDown={handleKeyboardActivate}
@@ -152,7 +197,7 @@ export function RepeaterDashboard({
           </span>
         </span>
         {contact && (
-          <div className="col-span-2 row-start-2 min-w-0 text-[11px] text-muted-foreground min-[1100px]:col-span-1 min-[1100px]:col-start-2 min-[1100px]:row-start-1">
+          <div className="col-span-2 row-start-2 min-w-0 text-[0.6875rem] text-muted-foreground min-[1100px]:col-span-1 min-[1100px]:col-start-2 min-[1100px]:row-start-1">
             <ContactStatusInfo contact={contact} ourLat={radioLat} ourLon={radioLon} />
           </div>
         )}
@@ -163,7 +208,7 @@ export function RepeaterDashboard({
               size="sm"
               onClick={loadAll}
               disabled={anyLoading}
-              className="h-7 px-2 text-[11px] leading-none border-success text-success hover:bg-success/10 hover:text-success sm:h-8 sm:px-3 sm:text-xs"
+              className="h-7 px-2 text-[0.6875rem] leading-none border-success text-success hover:bg-success/10 hover:text-success sm:h-8 sm:px-3 sm:text-xs"
             >
               {anyLoading ? 'Loading...' : 'Load All'}
             </Button>
@@ -209,7 +254,7 @@ export function RepeaterDashboard({
                 aria-hidden="true"
               />
               {notificationsEnabled && (
-                <span className="hidden md:inline text-[11px] font-medium text-status-connected">
+                <span className="hidden md:inline text-[0.6875rem] font-medium text-status-connected">
                   Notifications On
                 </span>
               )}
@@ -352,6 +397,15 @@ export function RepeaterDashboard({
               history={consoleHistory}
               loading={consoleLoading}
               onSend={sendConsoleCommand}
+            />
+
+            {/* Telemetry history chart — full width, below console */}
+            <TelemetryHistoryPane
+              entries={telemetryHistory}
+              publicKey={conversation.id}
+              contacts={contacts}
+              trackedTelemetryRepeaters={trackedTelemetryRepeaters}
+              onToggleTrackedTelemetry={onToggleTrackedTelemetry}
             />
           </div>
         )}

@@ -448,6 +448,37 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 62)
         applied += 1
 
+    # Migration 50: Repeater telemetry history table + tracking opt-in column
+    if version < 50:
+        logger.info("Applying migration 50: repeater telemetry history")
+        await _migrate_050_repeater_telemetry_history(conn)
+        await set_version(conn, 50)
+        applied += 1
+
+    if version < 51:
+        logger.info("Applying migration 51: drop sidebar_sort_order from app_settings")
+        await _migrate_051_drop_sidebar_sort_order(conn)
+        await set_version(conn, 51)
+        applied += 1
+
+    if version < 52:
+        logger.info("Applying migration 52: add path_hash_mode_override to channels")
+        await _migrate_052_add_channel_path_hash_mode_override(conn)
+        await set_version(conn, 52)
+        applied += 1
+
+    if version < 53:
+        logger.info("Applying migration 53: add tracked_telemetry_repeaters to app_settings")
+        await _migrate_053_tracked_telemetry_repeaters(conn)
+        await set_version(conn, 53)
+        applied += 1
+
+    if version < 54:
+        logger.info("Applying migration 54: add auto_resend_channel to app_settings")
+        await _migrate_054_auto_resend_channel(conn)
+        await set_version(conn, 54)
+        applied += 1
+
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -918,13 +949,9 @@ async def _migrate_009_create_app_settings_table(conn: aiosqlite.Connection) -> 
         """
     )
 
-    # Initialize with default row
-    await conn.execute(
-        """
-        INSERT OR IGNORE INTO app_settings (id, max_radio_contacts, favorites, auto_decrypt_dm_on_advert, sidebar_sort_order, last_message_times, preferences_migrated)
-        VALUES (1, 200, '[]', 1, 'recent', '{}', 0)
-        """
-    )
+    # Initialize with default row (use only the id column so this works
+    # regardless of which columns exist — defaults fill the rest).
+    await conn.execute("INSERT OR IGNORE INTO app_settings (id) VALUES (1)")
 
     await conn.commit()
     logger.debug("Created app_settings table with default values")
@@ -3504,3 +3531,90 @@ async def _migrate_062_foreign_key_cascade(conn: aiosqlite.Connection) -> None:
         )
         await conn.commit()
         logger.debug("Rebuilt contact_name_history with ON DELETE CASCADE")
+
+
+async def _migrate_050_repeater_telemetry_history(conn: aiosqlite.Connection) -> None:
+    """Create repeater_telemetry_history table for JSON-blob telemetry snapshots."""
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS repeater_telemetry_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            data TEXT NOT NULL,
+            FOREIGN KEY (public_key) REFERENCES contacts(public_key) ON DELETE CASCADE
+        )
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_repeater_telemetry_pk_ts
+            ON repeater_telemetry_history (public_key, timestamp)
+        """
+    )
+    await conn.commit()
+
+
+async def _migrate_051_drop_sidebar_sort_order(conn: aiosqlite.Connection) -> None:
+    """Remove vestigial sidebar_sort_order column from app_settings."""
+    col_cursor = await conn.execute("PRAGMA table_info(app_settings)")
+    columns = {row[1] for row in await col_cursor.fetchall()}
+    if "sidebar_sort_order" in columns:
+        try:
+            await conn.execute("ALTER TABLE app_settings DROP COLUMN sidebar_sort_order")
+            await conn.commit()
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "syntax error" in error_msg or "drop column" in error_msg:
+                logger.debug(
+                    "SQLite doesn't support DROP COLUMN, sidebar_sort_order column will remain"
+                )
+                await conn.commit()
+            else:
+                raise
+
+
+async def _migrate_052_add_channel_path_hash_mode_override(conn: aiosqlite.Connection) -> None:
+    """Add nullable per-channel path hash mode override column."""
+    tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    if "channels" not in {row[0] for row in await tables_cursor.fetchall()}:
+        await conn.commit()
+        return
+    try:
+        await conn.execute("ALTER TABLE channels ADD COLUMN path_hash_mode_override INTEGER")
+        await conn.commit()
+    except Exception as e:
+        if "duplicate column" in str(e).lower():
+            await conn.commit()
+        else:
+            raise
+
+
+async def _migrate_053_tracked_telemetry_repeaters(conn: aiosqlite.Connection) -> None:
+    """Add tracked_telemetry_repeaters JSON list column to app_settings."""
+    tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    if "app_settings" not in {row[0] for row in await tables_cursor.fetchall()}:
+        await conn.commit()
+        return
+    col_cursor = await conn.execute("PRAGMA table_info(app_settings)")
+    columns = {row[1] for row in await col_cursor.fetchall()}
+    if "tracked_telemetry_repeaters" not in columns:
+        await conn.execute(
+            "ALTER TABLE app_settings ADD COLUMN tracked_telemetry_repeaters TEXT DEFAULT '[]'"
+        )
+        await conn.commit()
+
+
+async def _migrate_054_auto_resend_channel(conn: aiosqlite.Connection) -> None:
+    """Add auto_resend_channel boolean column to app_settings."""
+    tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    if "app_settings" not in {row[0] for row in await tables_cursor.fetchall()}:
+        await conn.commit()
+        return
+    col_cursor = await conn.execute("PRAGMA table_info(app_settings)")
+    columns = {row[1] for row in await col_cursor.fetchall()}
+    if "auto_resend_channel" not in columns:
+        await conn.execute(
+            "ALTER TABLE app_settings ADD COLUMN auto_resend_channel INTEGER DEFAULT 0"
+        )
+        await conn.commit()

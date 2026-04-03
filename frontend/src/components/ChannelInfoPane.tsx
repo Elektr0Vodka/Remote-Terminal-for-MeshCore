@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Star } from 'lucide-react';
 import { api } from '../api';
 import { formatTime } from '../utils/messageParser';
@@ -6,7 +7,7 @@ import { isFavorite } from '../utils/favorites';
 import { handleKeyboardActivate } from '../utils/a11y';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
 import { toast } from './ui/sonner';
-import type { Channel, ChannelDetail, Favorite } from '../types';
+import type { Channel, ChannelDetail, Favorite, PathHashWidthStats } from '../types';
 
 interface ChannelInfoPaneProps {
   channelKey: string | null;
@@ -106,11 +107,11 @@ export function ChannelInfoPane({
                 </span>
               )}
               <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                <span className="text-[0.625rem] uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
                   {channel.is_hashtag ? 'Hashtag' : 'Private Key'}
                 </span>
                 {channel.on_radio && (
-                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                  <span className="text-[0.625rem] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
                     On Radio
                   </span>
                 )}
@@ -179,6 +180,14 @@ export function ChannelInfoPane({
               </div>
             )}
 
+            {/* Hop Byte Widths (24h) */}
+            {detail && detail.path_hash_width_24h.total_packets > 0 && (
+              <div className="px-5 py-3 border-b border-border">
+                <SectionLabel>Hop Byte Widths (24h)</SectionLabel>
+                <HopWidthChart stats={detail.path_hash_width_24h} />
+              </div>
+            )}
+
             {/* Top Senders 24h */}
             {detail && detail.top_senders_24h.length > 0 && (
               <div className="px-5 py-3">
@@ -212,7 +221,7 @@ export function ChannelInfoPane({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">
+    <h3 className="text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">
       {children}
     </h3>
   );
@@ -223,6 +232,85 @@ function InfoItem({ label, value }: { label: string; value: string }) {
     <div>
       <span className="text-muted-foreground text-xs">{label}</span>
       <p className="font-medium text-sm leading-tight">{value}</p>
+    </div>
+  );
+}
+
+const HOP_WIDTH_SEGMENTS = [
+  { key: 'single_byte', label: '1-byte', color: '#22c55e' },
+  { key: 'double_byte', label: '2-byte', color: '#0ea5e9' },
+  { key: 'triple_byte', label: '3-byte', color: '#8b5cf6' },
+] as const;
+
+const TOOLTIP_STYLE = {
+  contentStyle: {
+    backgroundColor: 'hsl(var(--popover))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: '6px',
+    fontSize: '11px',
+    color: 'hsl(var(--popover-foreground))',
+  },
+} as const;
+
+function HopWidthChart({ stats }: { stats: PathHashWidthStats }) {
+  const data = useMemo(
+    () =>
+      HOP_WIDTH_SEGMENTS.map(({ key, label, color }) => ({
+        name: label,
+        value: stats[key] as number,
+        color,
+      })).filter((d) => d.value > 0),
+    [stats]
+  );
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-shrink-0" style={{ width: 90, height: 90 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              cx="50%"
+              cy="50%"
+              innerRadius={22}
+              outerRadius={40}
+              strokeWidth={1.5}
+              stroke="hsl(var(--background))"
+            >
+              {data.map((d) => (
+                <Cell key={d.name} fill={d.color} />
+              ))}
+            </Pie>
+            <RechartsTooltip
+              {...TOOLTIP_STYLE}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              formatter={(value: any, name: any) => {
+                const v = typeof value === 'number' ? value : Number(value);
+                return [`${v.toLocaleString()} pkt${v !== 1 ? 's' : ''}`, name];
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="flex-1 space-y-1">
+        {data.map((d) => (
+          <div key={d.name} className="flex items-center gap-1.5">
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ backgroundColor: d.color }}
+            />
+            <span className="text-[0.6875rem] text-muted-foreground flex-1">{d.name}</span>
+            <span className="text-[0.6875rem] font-medium tabular-nums">
+              {d.value.toLocaleString()}
+            </span>
+          </div>
+        ))}
+        <p className="text-[0.625rem] text-muted-foreground pt-0.5">
+          {stats.total_packets.toLocaleString()} total
+        </p>
+      </div>
     </div>
   );
 }

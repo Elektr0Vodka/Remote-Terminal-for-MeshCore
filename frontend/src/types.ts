@@ -176,23 +176,6 @@ export interface NearestRepeater {
   heard_count: number;
 }
 
-export interface ContactDetail {
-  contact: Contact;
-  name_history: ContactNameHistory[];
-  dm_message_count: number;
-  channel_message_count: number;
-  most_active_rooms: ContactActiveRoom[];
-  advert_paths: ContactAdvertPath[];
-  advert_frequency: number | null;
-  nearest_repeaters: NearestRepeater[];
-}
-
-export interface NameOnlyContactDetail {
-  name: string;
-  channel_message_count: number;
-  most_active_rooms: ContactActiveRoom[];
-}
-
 export interface ContactAnalyticsHourlyBucket {
   bucket_start: number;
   last_24h_count: number;
@@ -228,6 +211,7 @@ export interface Channel {
   is_hashtag: boolean;
   on_radio: boolean;
   flood_scope_override?: string | null;
+  path_hash_mode_override?: number | null;
   last_read_at: number | null;
 }
 
@@ -245,14 +229,6 @@ export interface ChannelTopSender {
   message_count: number;
 }
 
-export interface ChannelDetail {
-  channel: Channel;
-  message_counts: ChannelMessageCounts;
-  first_message_at: number | null;
-  unique_sender_count: number;
-  top_senders_24h: ChannelTopSender[];
-}
-
 export interface BulkCreateHashtagChannelsResult {
   created_channels: Channel[];
   existing_count: number;
@@ -260,6 +236,25 @@ export interface BulkCreateHashtagChannelsResult {
   decrypt_started: boolean;
   decrypt_total_packets: number;
   message: string;
+}
+
+export interface PathHashWidthStats {
+  total_packets: number;
+  single_byte: number;
+  double_byte: number;
+  triple_byte: number;
+  single_byte_pct: number;
+  double_byte_pct: number;
+  triple_byte_pct: number;
+}
+
+export interface ChannelDetail {
+  channel: Channel;
+  message_counts: ChannelMessageCounts;
+  first_message_at: number | null;
+  unique_sender_count: number;
+  top_senders_24h: ChannelTopSender[];
+  path_hash_width_24h: PathHashWidthStats;
 }
 
 /** A single path that a message took to reach us */
@@ -357,7 +352,6 @@ export interface AppSettings {
   max_radio_contacts: number;
   favorites: Favorite[];
   auto_decrypt_dm_on_advert: boolean;
-  sidebar_sort_order: 'recent' | 'alpha';
   last_message_times: Record<string, number>;
   preferences_migrated: boolean;
   advert_interval: number;
@@ -371,13 +365,15 @@ export interface AppSettings {
   high_advert_threshold?: number;
   medium_advert_threshold?: number;
   discovery_blocked_types: number[];
+  tracked_telemetry_repeaters: string[];
+  auto_resend_channel: boolean;
 }
 
 export interface AppSettingsUpdate {
   max_radio_contacts?: number;
   auto_decrypt_dm_on_advert?: boolean;
-  sidebar_sort_order?: 'recent' | 'alpha';
   advert_interval?: number;
+  auto_resend_channel?: boolean;
   flood_scope?: string;
   blocked_keys?: string[];
   blocked_names?: string[];
@@ -387,6 +383,11 @@ export interface AppSettingsUpdate {
   high_advert_threshold?: number;
   medium_advert_threshold?: number;
   discovery_blocked_types?: number[];
+}
+
+export interface TrackedTelemetryResponse {
+  tracked_telemetry_repeaters: string[];
+  names: Record<string, string>;
 }
 
 export interface MigratePreferencesRequest {
@@ -450,6 +451,7 @@ export interface RepeaterStatusResponse {
   flood_dups: number;
   direct_dups: number;
   full_events: number;
+  telemetry_history: TelemetryHistoryEntry[];
 }
 
 export interface RepeaterNeighborsResponse {
@@ -511,6 +513,11 @@ export interface PaneState {
   attempt: number;
   error: string | null;
   fetched_at?: number | null;
+}
+
+export interface TelemetryHistoryEntry {
+  timestamp: number;
+  data: Record<string, number>;
 }
 
 export interface TraceResponse {

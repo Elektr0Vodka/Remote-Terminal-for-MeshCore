@@ -61,7 +61,6 @@ const baseSettings: AppSettings = {
   max_radio_contacts: 200,
   favorites: [],
   auto_decrypt_dm_on_advert: false,
-  sidebar_sort_order: 'recent',
   last_message_times: {},
   preferences_migrated: false,
   advert_interval: 0,
@@ -73,6 +72,8 @@ const baseSettings: AppSettings = {
   auto_delete_raw_enabled: false,
   auto_delete_raw_days: 14,
   discovery_blocked_types: [],
+  tracked_telemetry_repeaters: [],
+  auto_resend_channel: false,
 };
 
 function renderModal(overrides?: {

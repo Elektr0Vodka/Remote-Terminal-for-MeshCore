@@ -168,6 +168,7 @@ export function App() {
     handleToggleFavorite,
     handleToggleBlockedKey,
     handleToggleBlockedName,
+    handleToggleTrackedTelemetry,
   } = useAppSettings();
 
   // Keep user's name in ref for mention detection in WebSocket callback
@@ -409,6 +410,7 @@ export function App() {
     handleSendMessage,
     handleResendChannelMessage,
     handleSetChannelFloodScopeOverride,
+    handleSetChannelPathHashModeOverride,
     handleSenderClick,
     handleTrace,
     handlePathDiscovery,
@@ -502,7 +504,6 @@ export function App() {
       void markAllRead();
     },
     favorites,
-    legacySortOrder: appSettings?.sidebar_sort_order,
     isConversationNotificationsEnabled,
     blockedKeys: appSettings?.blocked_keys ?? [],
     blockedNames: appSettings?.blocked_names ?? [],
@@ -520,6 +521,7 @@ export function App() {
     health,
     favorites,
     messages: sortedMessages,
+    preSorted: activeContactIsRoom,
     messagesLoading,
     loadingOlder,
     hasOlderMessages,
@@ -539,6 +541,7 @@ export function App() {
     onDeleteContact: handleDeleteContact,
     onDeleteChannel: handleDeleteChannel,
     onSetChannelFloodScopeOverride: handleSetChannelFloodScopeOverride,
+    onSetChannelPathHashModeOverride: handleSetChannelPathHashModeOverride,
     onOpenContactInfo: handleOpenContactInfo,
     onOpenChannelInfo: handleOpenChannelInfo,
     onSenderClick: handleSenderClick,
@@ -566,6 +569,8 @@ export function App() {
       }
     },
     onSelectConversation: handleSelectConversationWithTargetReset,
+    trackedTelemetryRepeaters: appSettings?.tracked_telemetry_repeaters ?? [],
+    onToggleTrackedTelemetry: handleToggleTrackedTelemetry,
   };
   const searchProps = {
     contacts,
@@ -600,6 +605,8 @@ export function App() {
       const keySet = new Set(deletedKeys.map((k) => k.toLowerCase()));
       setContacts((prev) => prev.filter((c) => !keySet.has(c.public_key.toLowerCase())));
     },
+    trackedTelemetryRepeaters: appSettings?.tracked_telemetry_repeaters ?? [],
+    onToggleTrackedTelemetry: handleToggleTrackedTelemetry,
   };
   const crackerProps = {
     packets: rawPackets,
