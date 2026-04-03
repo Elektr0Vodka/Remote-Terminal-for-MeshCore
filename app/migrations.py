@@ -448,35 +448,108 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 62)
         applied += 1
 
-    # Migration 50: Repeater telemetry history table + tracking opt-in column
-    if version < 50:
-        logger.info("Applying migration 50: repeater telemetry history")
+    # Migration 63: Repeater telemetry history table + tracking opt-in column
+    # (was incorrectly numbered 50 during upstream merge, shadowed by upstream's migration 50)
+    if version < 63:
+        logger.info("Applying migration 63: repeater telemetry history")
         await _migrate_050_repeater_telemetry_history(conn)
-        await set_version(conn, 50)
+        await set_version(conn, 63)
         applied += 1
 
-    if version < 51:
-        logger.info("Applying migration 51: drop sidebar_sort_order from app_settings")
+    if version < 64:
+        logger.info("Applying migration 64: drop sidebar_sort_order from app_settings")
         await _migrate_051_drop_sidebar_sort_order(conn)
-        await set_version(conn, 51)
+        await set_version(conn, 64)
         applied += 1
 
-    if version < 52:
-        logger.info("Applying migration 52: add path_hash_mode_override to channels")
+    if version < 65:
+        logger.info("Applying migration 65: add path_hash_mode_override to channels")
         await _migrate_052_add_channel_path_hash_mode_override(conn)
-        await set_version(conn, 52)
+        await set_version(conn, 65)
         applied += 1
 
-    if version < 53:
-        logger.info("Applying migration 53: add tracked_telemetry_repeaters to app_settings")
+    if version < 66:
+        logger.info("Applying migration 66: add tracked_telemetry_repeaters to app_settings")
         await _migrate_053_tracked_telemetry_repeaters(conn)
-        await set_version(conn, 53)
+        await set_version(conn, 66)
         applied += 1
 
-    if version < 54:
-        logger.info("Applying migration 54: add auto_resend_channel to app_settings")
+    if version < 67:
+        logger.info("Applying migration 67: add auto_resend_channel to app_settings")
         await _migrate_054_auto_resend_channel(conn)
-        await set_version(conn, 54)
+        await set_version(conn, 67)
+        applied += 1
+
+    # Migrations 68-77: catch-up for first-block migrations 50-59 that were skipped on
+    # databases that reached version 60 before those migrations existed in the codebase.
+    if version < 68:
+        logger.info("Applying migration 68: add best_rssi/best_snr to contact_advert_paths")
+        await _migrate_050_add_advert_path_signal(conn)
+        await set_version(conn, 68)
+        applied += 1
+
+    if version < 69:
+        logger.info("Applying migration 69: add owner_id to contacts")
+        await _migrate_051_add_contact_owner_id(conn)
+        await set_version(conn, 69)
+        applied += 1
+
+    if version < 70:
+        logger.info("Applying migration 70: add last_rssi/last_snr to contacts")
+        await _migrate_052_add_contact_last_signal(conn)
+        await set_version(conn, 70)
+        applied += 1
+
+    if version < 71:
+        logger.info("Applying migration 71: add auto_delete_raw settings to app_settings")
+        await _migrate_053_add_auto_delete_raw_settings(conn)
+        await set_version(conn, 71)
+        applied += 1
+
+    if version < 72:
+        logger.info("Applying migration 72: add hash_mode to contact_advert_paths")
+        await _migrate_054_add_advert_path_hash_mode(conn)
+        await set_version(conn, 72)
+        applied += 1
+
+    if version < 73:
+        logger.info(
+            "Applying migration 73: add contacts.advert_hash_mode and backfill from advert paths"
+        )
+        await _migrate_055_add_contact_advert_hash_mode(conn)
+        await set_version(conn, 73)
+        applied += 1
+
+    if version < 74:
+        logger.info("Applying migration 74: create kms_keys table")
+        await _migrate_056_create_kms_keys(conn)
+        await set_version(conn, 74)
+        applied += 1
+
+    if version < 75:
+        logger.info(
+            "Applying migration 75: add contacts.observed_hash_mode for packet-evidence tracking"
+        )
+        await _migrate_057_add_contact_observed_hash_mode(conn)
+        await set_version(conn, 75)
+        applied += 1
+
+    if version < 76:
+        logger.info("Applying migration 76: add statistics indexes")
+        await _migrate_058_add_statistics_indexes(conn)
+        await set_version(conn, 76)
+        applied += 1
+
+    if version < 77:
+        logger.info("Applying migration 77: create noise_floor_samples table")
+        await _migrate_059_create_noise_floor_samples(conn)
+        await set_version(conn, 77)
+        applied += 1
+
+    if version < 78:
+        logger.info("Applying migration 78: restore rssi/snr/payload_type to raw_packets")
+        await _migrate_078_restore_raw_packet_signal_columns(conn)
+        await set_version(conn, 78)
         applied += 1
 
     if applied > 0:
@@ -3451,6 +3524,16 @@ async def _migrate_062_foreign_key_cascade(conn: aiosqlite.Connection) -> None:
         if "payload_hash" in old_cols:
             new_col_defs.append("payload_hash BLOB")
             copy_cols.append("payload_hash")
+        # Preserve signal/type columns added by migration 47
+        if "rssi" in old_cols:
+            new_col_defs.append("rssi INTEGER")
+            copy_cols.append("rssi")
+        if "snr" in old_cols:
+            new_col_defs.append("snr REAL")
+            copy_cols.append("snr")
+        if "payload_type" in old_cols:
+            new_col_defs.append("payload_type TEXT")
+            copy_cols.append("payload_type")
         new_col_defs.append("FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL")
 
         cols_sql = ", ".join(new_col_defs)
@@ -3618,3 +3701,22 @@ async def _migrate_054_auto_resend_channel(conn: aiosqlite.Connection) -> None:
             "ALTER TABLE app_settings ADD COLUMN auto_resend_channel INTEGER DEFAULT 0"
         )
         await conn.commit()
+
+
+async def _migrate_078_restore_raw_packet_signal_columns(conn: aiosqlite.Connection) -> None:
+    """Restore rssi, snr, payload_type columns to raw_packets if stripped by migration 62.
+
+    Migration 62 rebuilt raw_packets for FK support but omitted these columns
+    (added by migration 47) from the dynamic column list. This re-adds them.
+    """
+    tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    if "raw_packets" not in {row[0] for row in await tables_cursor.fetchall()}:
+        await conn.commit()
+        return
+    col_cursor = await conn.execute("PRAGMA table_info(raw_packets)")
+    existing = {row[1] for row in await col_cursor.fetchall()}
+    for column, typedef in [("rssi", "INTEGER"), ("snr", "REAL"), ("payload_type", "TEXT")]:
+        if column not in existing:
+            await conn.execute(f"ALTER TABLE raw_packets ADD COLUMN {column} {typedef}")
+            logger.debug("Restored raw_packets.%s", column)
+    await conn.commit()
