@@ -944,8 +944,7 @@ async def sync_radio_time(mc: MeshCore) -> bool:
                 logger.warning("Reboot command failed", exc_info=True)
         elif _clock_reboot_attempted:
             logger.debug(
-                "Clock skew persists after reboot (hardware RTC); "
-                "ignoring until next session."
+                "Clock skew persists after reboot (hardware RTC); ignoring until next session."
             )
 
         return False
