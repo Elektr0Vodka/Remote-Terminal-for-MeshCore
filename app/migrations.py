@@ -3069,6 +3069,10 @@ async def _migrate_047_add_raw_packet_signal_columns(conn: aiosqlite.Connection)
     Existing rows will have NULL for these columns (no backfill possible since
     RSSI/SNR are not stored in the raw packet data itself).
     """
+    tables_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    if "raw_packets" not in {row[0] for row in await tables_cursor.fetchall()}:
+        await conn.commit()
+        return
     for column, typedef in [
         ("rssi", "INTEGER"),
         ("snr", "REAL"),
