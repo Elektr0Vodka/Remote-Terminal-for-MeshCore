@@ -308,7 +308,7 @@ export function AppShell({
           <Suspense
             fallback={
               <div className="flex items-center justify-center h-full text-muted-foreground">
-                Loading cracker...
+                Loading channel finder...
               </div>
             }
           >
