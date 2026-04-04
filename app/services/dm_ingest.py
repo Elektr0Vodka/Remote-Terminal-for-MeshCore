@@ -1,9 +1,8 @@
 import asyncio
 import logging
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from app.models import CONTACT_TYPE_REPEATER, CONTACT_TYPE_ROOM, Contact, ContactUpsert, Message
 from app.repository import (
@@ -14,6 +13,7 @@ from app.repository import (
 )
 from app.services.contact_reconciliation import claim_prefix_messages_for_contact
 from app.services.messages import (
+    BroadcastFn,
     broadcast_message,
     build_message_model,
     build_message_paths,
@@ -27,8 +27,6 @@ if TYPE_CHECKING:
     from app.decoder import DecryptedDirectMessage
 
 logger = logging.getLogger(__name__)
-
-BroadcastFn = Callable[..., Any]
 _decrypted_dm_store_lock = asyncio.Lock()
 
 
@@ -144,6 +142,8 @@ async def _store_direct_message(
     received_at: int,
     path: str | None,
     path_len: int | None,
+    rssi: int | None = None,
+    snr: float | None = None,
     outgoing: bool,
     txt_type: int,
     signature: str | None,
@@ -170,6 +170,8 @@ async def _store_direct_message(
                         path=path,
                         received_at=received_at,
                         path_len=path_len,
+                        rssi=rssi,
+                        snr=snr,
                         broadcast_fn=broadcast_fn,
                     )
                     return None
@@ -189,6 +191,8 @@ async def _store_direct_message(
                     path=path,
                     received_at=received_at,
                     path_len=path_len,
+                    rssi=rssi,
+                    snr=snr,
                     broadcast_fn=broadcast_fn,
                 )
                 return None
@@ -201,6 +205,8 @@ async def _store_direct_message(
             received_at=received_at,
             path=path,
             path_len=path_len,
+            rssi=rssi,
+            snr=snr,
             txt_type=txt_type,
             signature=signature,
             outgoing=outgoing,
@@ -218,6 +224,8 @@ async def _store_direct_message(
                 path=path,
                 received_at=received_at,
                 path_len=path_len,
+                rssi=rssi,
+                snr=snr,
                 broadcast_fn=broadcast_fn,
             )
             return None
@@ -232,7 +240,7 @@ async def _store_direct_message(
             text=text,
             sender_timestamp=sender_timestamp,
             received_at=received_at,
-            paths=build_message_paths(path, received_at, path_len),
+            paths=build_message_paths(path, received_at, path_len, rssi=rssi, snr=snr),
             txt_type=txt_type,
             signature=signature,
             sender_key=sender_key,
@@ -261,6 +269,8 @@ async def ingest_decrypted_direct_message(
     received_at: int | None = None,
     path: str | None = None,
     path_len: int | None = None,
+    rssi: int | None = None,
+    snr: float | None = None,
     outgoing: bool = False,
     realtime: bool = True,
     broadcast_fn: BroadcastFn,
@@ -311,6 +321,8 @@ async def ingest_decrypted_direct_message(
         received_at=received,
         path=path,
         path_len=path_len,
+        rssi=rssi,
+        snr=snr,
         outgoing=outgoing,
         txt_type=decrypted.txt_type,
         signature=signature,

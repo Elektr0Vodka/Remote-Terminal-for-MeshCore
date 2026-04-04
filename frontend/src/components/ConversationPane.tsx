@@ -204,10 +204,7 @@ export function ConversationPane({
             <MapView
               contacts={contacts}
               focusedKey={activeConversation.mapFocusKey}
-              onSelectConversation={onSelectConversation}
-              connectedPublicKey={config?.public_key}
-              onPathDiscovery={onPathDiscovery}
-              onRunTracePath={onRunTracePath}
+              rawPackets={rawPackets}
               config={config}
             />
           </Suspense>

@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from pydantic import BaseModel as _BaseModel
 
 from app.database import db
-from app.dependencies import require_connected
 from app.models import (
     Contact,
     ContactActiveRoom,
@@ -484,7 +483,7 @@ async def request_trace(public_key: str) -> TraceResponse:
     (no intermediate repeaters). This uses TRACE's dedicated width flags rather
     than the radio's normal path_hash_mode setting.
     """
-    require_connected()
+    radio_manager.require_connected()
 
     contact = await _resolve_contact_or_404(public_key)
 
@@ -555,7 +554,7 @@ async def request_trace(public_key: str) -> TraceResponse:
 @router.post("/{public_key}/path-discovery", response_model=PathDiscoveryResponse)
 async def request_path_discovery(public_key: str) -> PathDiscoveryResponse:
     """Discover the current forward and return paths to a known contact."""
-    require_connected()
+    radio_manager.require_connected()
 
     contact = await _resolve_contact_or_404(public_key)
     pubkey_prefix = contact.public_key[:12]

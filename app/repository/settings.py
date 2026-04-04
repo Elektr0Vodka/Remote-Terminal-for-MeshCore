@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from app.database import db
 from app.models import AppSettings, Favorite
-from app.path_utils import parse_packet_envelope
+from app.path_utils import bucket_path_hash_widths
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class AppSettingsRepository:
         cursor = await db.conn.execute(
             """
             SELECT max_radio_contacts, favorites, auto_decrypt_dm_on_advert,
-                   last_message_times, preferences_migrated,
+                   last_message_times,
                    advert_interval, last_advert_time, flood_scope,
                    blocked_keys, blocked_names, show_warning_ticker,
                    auto_delete_raw_enabled, auto_delete_raw_days,
@@ -112,7 +112,6 @@ class AppSettingsRepository:
             favorites=favorites,
             auto_decrypt_dm_on_advert=bool(row["auto_decrypt_dm_on_advert"]),
             last_message_times=last_message_times,
-            preferences_migrated=bool(row["preferences_migrated"]),
             advert_interval=row["advert_interval"] or 0,
             last_advert_time=row["last_advert_time"] or 0,
             flood_scope=row["flood_scope"] or "",
@@ -138,7 +137,6 @@ class AppSettingsRepository:
         favorites: list[Favorite] | None = None,
         auto_decrypt_dm_on_advert: bool | None = None,
         last_message_times: dict[str, int] | None = None,
-        preferences_migrated: bool | None = None,
         advert_interval: int | None = None,
         last_advert_time: int | None = None,
         flood_scope: str | None = None,
@@ -171,10 +169,6 @@ class AppSettingsRepository:
         if last_message_times is not None:
             updates.append("last_message_times = ?")
             params.append(json.dumps(last_message_times))
-
-        if preferences_migrated is not None:
-            updates.append("preferences_migrated = ?")
-            params.append(1 if preferences_migrated else 0)
 
         if advert_interval is not None:
             updates.append("advert_interval = ?")
@@ -269,38 +263,6 @@ class AppSettingsRepository:
             new_names = settings.blocked_names + [name]
         return await AppSettingsRepository.update(blocked_names=new_names)
 
-    @staticmethod
-    async def migrate_preferences_from_frontend(
-        favorites: list[dict],
-        sort_order: str,
-        last_message_times: dict[str, int],
-    ) -> tuple[AppSettings, bool]:
-        """Migrate all preferences from frontend localStorage.
-
-        This is a one-time migration. If already migrated, returns current settings
-        without overwriting. Returns (settings, did_migrate) tuple.
-        """
-        settings = await AppSettingsRepository.get()
-
-        if settings.preferences_migrated:
-            # Already migrated, don't overwrite
-            return settings, False
-
-        # Convert frontend favorites format to Favorite objects
-        new_favorites = []
-        for f in favorites:
-            if f.get("type") in ("channel", "contact") and f.get("id"):
-                new_favorites.append(Favorite(type=f["type"], id=f["id"]))
-
-        # Update with migrated preferences and mark as migrated
-        settings = await AppSettingsRepository.update(
-            favorites=new_favorites,
-            last_message_times=last_message_times,
-            preferences_migrated=True,
-        )
-
-        return settings, True
-
 
 class StatisticsRepository:
     @staticmethod
@@ -388,48 +350,7 @@ class StatisticsRepository:
             "SELECT data FROM raw_packets WHERE timestamp >= ?",
             (now - SECONDS_24H,),
         )
-
-        single_byte = 0
-        double_byte = 0
-        triple_byte = 0
-
-        while True:
-            rows = await cursor.fetchmany(RAW_PACKET_STATS_BATCH_SIZE)
-            if not rows:
-                break
-
-            for row in rows:
-                envelope = parse_packet_envelope(bytes(row["data"]))
-                if envelope is None:
-                    continue
-                if envelope.hash_size == 1:
-                    single_byte += 1
-                elif envelope.hash_size == 2:
-                    double_byte += 1
-                elif envelope.hash_size == 3:
-                    triple_byte += 1
-
-        total_packets = single_byte + double_byte + triple_byte
-        if total_packets == 0:
-            return {
-                "total_packets": 0,
-                "single_byte": 0,
-                "double_byte": 0,
-                "triple_byte": 0,
-                "single_byte_pct": 0.0,
-                "double_byte_pct": 0.0,
-                "triple_byte_pct": 0.0,
-            }
-
-        return {
-            "total_packets": total_packets,
-            "single_byte": single_byte,
-            "double_byte": double_byte,
-            "triple_byte": triple_byte,
-            "single_byte_pct": (single_byte / total_packets) * 100,
-            "double_byte_pct": (double_byte / total_packets) * 100,
-            "triple_byte_pct": (triple_byte / total_packets) * 100,
-        }
+        return await bucket_path_hash_widths(cursor, batch_size=RAW_PACKET_STATS_BATCH_SIZE)
 
     @staticmethod
     async def get_all() -> dict:

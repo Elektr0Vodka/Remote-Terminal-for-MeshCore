@@ -57,6 +57,8 @@ class MessageRepository:
         sender_timestamp: int | None = None,
         path: str | None = None,
         path_len: int | None = None,
+        rssi: int | None = None,
+        snr: float | None = None,
         txt_type: int = 0,
         signature: str | None = None,
         outgoing: bool = False,
@@ -78,6 +80,10 @@ class MessageRepository:
             entry: dict = {"path": path, "received_at": received_at}
             if path_len is not None:
                 entry["path_len"] = path_len
+            if rssi is not None:
+                entry["rssi"] = rssi
+            if snr is not None:
+                entry["snr"] = snr
             paths_json = json.dumps([entry])
 
         # Normalize sender_key to lowercase so queries can match without LOWER().
@@ -116,6 +122,8 @@ class MessageRepository:
         path: str,
         received_at: int | None = None,
         path_len: int | None = None,
+        rssi: int | None = None,
+        snr: float | None = None,
     ) -> list[MessagePath]:
         """Add a new path to an existing message.
 
@@ -129,6 +137,10 @@ class MessageRepository:
         entry: dict = {"path": path, "received_at": ts}
         if path_len is not None:
             entry["path_len"] = path_len
+        if rssi is not None:
+            entry["rssi"] = rssi
+        if snr is not None:
+            entry["snr"] = snr
         new_entry = json.dumps(entry)
         await db.conn.execute(
             """UPDATE messages SET paths = json_insert(
@@ -792,7 +804,7 @@ class MessageRepository:
         """
         import time as _time
 
-        from app.path_utils import parse_packet_envelope
+        from app.path_utils import bucket_path_hash_widths
 
         now = int(_time.time())
         t_1h = now - 3600
@@ -846,9 +858,6 @@ class MessageRepository:
         ]
 
         # Path hash width distribution for last 24h (in-Python parse of raw packet envelopes)
-        single_byte = 0
-        double_byte = 0
-        triple_byte = 0
         cursor3 = await db.conn.execute(
             """
             SELECT rp.data FROM raw_packets rp
@@ -858,31 +867,7 @@ class MessageRepository:
             """,
             (conversation_key, t_24h),
         )
-        while True:
-            batch = await cursor3.fetchmany(500)
-            if not batch:
-                break
-            for pkt_row in batch:
-                envelope = parse_packet_envelope(bytes(pkt_row["data"]))
-                if envelope is None:
-                    continue
-                if envelope.hash_size == 1:
-                    single_byte += 1
-                elif envelope.hash_size == 2:
-                    double_byte += 1
-                elif envelope.hash_size == 3:
-                    triple_byte += 1
-
-        hash_total = single_byte + double_byte + triple_byte
-        path_hash_width_24h = {
-            "total_packets": hash_total,
-            "single_byte": single_byte,
-            "double_byte": double_byte,
-            "triple_byte": triple_byte,
-            "single_byte_pct": (single_byte / hash_total * 100) if hash_total else 0.0,
-            "double_byte_pct": (double_byte / hash_total * 100) if hash_total else 0.0,
-            "triple_byte_pct": (triple_byte / hash_total * 100) if hash_total else 0.0,
-        }
+        path_hash_width_24h = await bucket_path_hash_widths(cursor3)
 
         return {
             "message_counts": message_counts,

@@ -17,8 +17,6 @@ import type {
   MaintenanceResult,
   Message,
   MessagesAroundResponse,
-  MigratePreferencesRequest,
-  MigratePreferencesResponse,
   RawPacket,
   RadioAdvertMode,
   RadioConfig,
@@ -357,13 +355,6 @@ export const api = {
     fetchJson<AppSettings>('/settings/favorites/toggle', {
       method: 'POST',
       body: JSON.stringify({ type, id }),
-    }),
-
-  // Preferences migration (one-time, from localStorage to database)
-  migratePreferences: (request: MigratePreferencesRequest) =>
-    fetchJson<MigratePreferencesResponse>('/settings/migrate', {
-      method: 'POST',
-      body: JSON.stringify(request),
     }),
 
   // Fanout

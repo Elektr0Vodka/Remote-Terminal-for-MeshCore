@@ -9,7 +9,6 @@ from fastapi import APIRouter, HTTPException
 from meshcore import EventType
 from pydantic import BaseModel, Field
 
-from app.dependencies import require_connected
 from app.models import (
     CONTACT_TYPE_REPEATER,
     ContactUpsert,
@@ -24,6 +23,7 @@ from app.models import (
 from app.radio_sync import send_advertisement as do_send_advertisement
 from app.radio_sync import sync_radio_time
 from app.repository import ContactRepository
+from app.routers.server_control import _monotonic
 from app.services.contact_reconciliation import (
     promote_prefix_contacts_for_contact,
     reconcile_contact_messages,
@@ -134,10 +134,6 @@ class RadioAdvertiseRequest(BaseModel):
         default="flood",
         description="Advertisement mode: flood through repeaters or zero-hop local only",
     )
-
-
-def _monotonic() -> float:
-    return time.monotonic()
 
 
 def _better_signal(first: float | None, second: float | None) -> float | None:
@@ -338,7 +334,7 @@ async def _resolve_trace_hops(
 @router.get("/config", response_model=RadioConfigResponse)
 async def get_radio_config() -> RadioConfigResponse:
     """Get the current radio configuration."""
-    mc = require_connected()
+    mc = radio_manager.require_connected()
 
     info = mc.self_info
     if not info:
@@ -370,7 +366,7 @@ async def get_radio_config() -> RadioConfigResponse:
 @router.patch("/config", response_model=RadioConfigResponse)
 async def update_radio_config(update: RadioConfigUpdate) -> RadioConfigResponse:
     """Update radio configuration. Only provided fields will be updated."""
-    require_connected()
+    radio_manager.require_connected()
 
     async with radio_manager.radio_operation("update_radio_config") as mc:
         try:
@@ -392,7 +388,7 @@ async def update_radio_config(update: RadioConfigUpdate) -> RadioConfigResponse:
 @router.put("/private-key")
 async def set_private_key(update: PrivateKeyUpdate) -> dict:
     """Set the radio's private key. This is write-only."""
-    require_connected()
+    radio_manager.require_connected()
 
     try:
         key_bytes = bytes.fromhex(update.private_key)
@@ -426,7 +422,7 @@ async def send_advertisement(request: RadioAdvertiseRequest | None = None) -> di
     Returns:
         status: "ok" if sent successfully
     """
-    require_connected()
+    radio_manager.require_connected()
     mode: RadioAdvertMode = request.mode if request is not None else "flood"
 
     logger.info("Sending %s advertisement", mode.replace("_", "-"))
@@ -442,7 +438,7 @@ async def send_advertisement(request: RadioAdvertiseRequest | None = None) -> di
 @router.post("/discover", response_model=RadioDiscoveryResponse)
 async def discover_mesh(request: RadioDiscoveryRequest) -> RadioDiscoveryResponse:
     """Run a short node-discovery sweep from the local radio."""
-    require_connected()
+    radio_manager.require_connected()
 
     target_bits = _DISCOVERY_TARGET_BITS[request.target]
     tag = random.randint(1, 0xFFFFFFFF)
@@ -509,7 +505,7 @@ async def discover_mesh(request: RadioDiscoveryRequest) -> RadioDiscoveryRespons
 @router.post("/trace", response_model=RadioTraceResponse)
 async def trace_path(request: RadioTraceRequest) -> RadioTraceResponse:
     """Send a multi-hop trace loop through known repeaters and back to the local radio."""
-    require_connected()
+    radio_manager.require_connected()
     trace_nodes, requested_hashes = await _resolve_trace_hops(request.hops, request.hop_hash_bytes)
 
     tag = random.randint(1, 0xFFFFFFFF)

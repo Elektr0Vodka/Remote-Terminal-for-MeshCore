@@ -265,6 +265,10 @@ export interface MessagePath {
   received_at: number;
   /** Hop count (number of intermediate nodes). Null for legacy data (infer as len(path)/2). */
   path_len?: number | null;
+  /** Last-hop RSSI in dBm (null if not available, e.g. older data) */
+  rssi?: number | null;
+  /** Last-hop SNR in dB (null if not available, e.g. older data) */
+  snr?: number | null;
 }
 
 export interface Message {
@@ -353,7 +357,6 @@ export interface AppSettings {
   favorites: Favorite[];
   auto_decrypt_dm_on_advert: boolean;
   last_message_times: Record<string, number>;
-  preferences_migrated: boolean;
   advert_interval: number;
   last_advert_time: number;
   flood_scope: string;
@@ -388,17 +391,6 @@ export interface AppSettingsUpdate {
 export interface TrackedTelemetryResponse {
   tracked_telemetry_repeaters: string[];
   names: Record<string, string>;
-}
-
-export interface MigratePreferencesRequest {
-  favorites: Favorite[];
-  sort_order: string;
-  last_message_times: Record<string, number>;
-}
-
-export interface MigratePreferencesResponse {
-  migrated: boolean;
-  settings: AppSettings;
 }
 
 /** Contact type constants */

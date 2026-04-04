@@ -68,6 +68,8 @@ async def create_message_from_decrypted(
     received_at: int | None = None,
     path: str | None = None,
     path_len: int | None = None,
+    rssi: int | None = None,
+    snr: float | None = None,
     channel_name: str | None = None,
     realtime: bool = True,
 ) -> int | None:
@@ -81,6 +83,8 @@ async def create_message_from_decrypted(
         received_at=received_at,
         path=path,
         path_len=path_len,
+        rssi=rssi,
+        snr=snr,
         channel_name=channel_name,
         realtime=realtime,
         broadcast_fn=broadcast_event,
@@ -95,6 +99,8 @@ async def create_dm_message_from_decrypted(
     received_at: int | None = None,
     path: str | None = None,
     path_len: int | None = None,
+    rssi: int | None = None,
+    snr: float | None = None,
     outgoing: bool = False,
     realtime: bool = True,
 ) -> int | None:
@@ -107,6 +113,8 @@ async def create_dm_message_from_decrypted(
         received_at=received_at,
         path=path,
         path_len=path_len,
+        rssi=rssi,
+        snr=snr,
         outgoing=outgoing,
         realtime=realtime,
         broadcast_fn=broadcast_event,
@@ -351,7 +359,9 @@ async def process_raw_packet(
 
     # Process packets based on payload type
     if payload_type == PayloadType.GROUP_TEXT:
-        decrypt_result = await _process_group_text(raw_bytes, packet_id, ts, packet_info)
+        decrypt_result = await _process_group_text(
+            raw_bytes, packet_id, ts, packet_info, rssi=rssi, snr=snr
+        )
         if decrypt_result:
             result.update(decrypt_result)
 
@@ -361,7 +371,10 @@ async def process_raw_packet(
         )
 
     elif payload_type == PayloadType.TEXT_MESSAGE:
-        decrypt_result = await _process_direct_message(raw_bytes, packet_id, ts, packet_info)
+        # Try to decrypt direct messages using stored private key and known contacts
+        decrypt_result = await _process_direct_message(
+            raw_bytes, packet_id, ts, packet_info, rssi=rssi, snr=snr
+        )
         if decrypt_result:
             result.update(decrypt_result)
 
@@ -397,6 +410,8 @@ async def _process_group_text(
     packet_id: int,
     timestamp: int,
     packet_info: PacketInfo | None,
+    rssi: int | None = None,
+    snr: float | None = None,
 ) -> dict | None:
     """
     Process a GroupText (channel message) packet.
@@ -433,6 +448,8 @@ async def _process_group_text(
             received_at=timestamp,
             path=packet_info.path.hex() if packet_info else None,
             path_len=packet_info.path_length if packet_info else None,
+            rssi=rssi,
+            snr=snr,
         )
 
         # Attribute packet evidence to the sender contact.
@@ -630,6 +647,8 @@ async def _process_direct_message(
     packet_id: int,
     timestamp: int,
     packet_info: PacketInfo | None,
+    rssi: int | None = None,
+    snr: float | None = None,
 ) -> dict | None:
     """
     Process a TEXT_MESSAGE (direct message) packet.
@@ -736,6 +755,8 @@ async def _process_direct_message(
                 received_at=timestamp,
                 path=packet_info.path.hex() if packet_info else None,
                 path_len=packet_info.path_length if packet_info else None,
+                rssi=rssi,
+                snr=snr,
                 outgoing=is_outgoing,
             )
 

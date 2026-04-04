@@ -204,15 +204,6 @@ class Contact(BaseModel):
         """Convert the stored contact to the repository's write contract."""
         return ContactUpsert.from_contact(self, **changes)
 
-    @staticmethod
-    def from_radio_dict(public_key: str, radio_data: dict, on_radio: bool = False) -> dict:
-        """Backward-compatible dict wrapper over ContactUpsert.from_radio_dict()."""
-        return ContactUpsert.from_radio_dict(
-            public_key,
-            radio_data,
-            on_radio=on_radio,
-        ).model_dump()
-
 
 class CreateContactRequest(BaseModel):
     """Request to create a new contact."""
@@ -405,6 +396,8 @@ class MessagePath(BaseModel):
         default=None,
         description="Hop count. None = legacy (infer as len(path)//2, i.e. 1-byte hops)",
     )
+    rssi: int | None = Field(default=None, description="Last-hop RSSI in dBm")
+    snr: float | None = Field(default=None, description="Last-hop SNR in dB")
 
 
 class Message(BaseModel):
@@ -826,10 +819,6 @@ class AppSettings(BaseModel):
         default_factory=dict,
         description="Map of conversation state keys to last message timestamps",
     )
-    preferences_migrated: bool = Field(
-        default=False,
-        description="Whether preferences have been migrated from localStorage",
-    )
     advert_interval: int = Field(
         default=0,
         description="Periodic advertisement interval in seconds (0 = disabled)",
@@ -888,19 +877,6 @@ class AppSettings(BaseModel):
             "are automatically byte-perfect resent once (within the 30-second dedup window)"
         ),
     )
-
-
-class FanoutConfig(BaseModel):
-    """Configuration for a single fanout integration."""
-
-    id: str
-    type: str  # 'mqtt_private' | 'mqtt_community' | 'bot' | 'webhook' | 'apprise' | 'sqs'
-    name: str
-    enabled: bool
-    config: dict
-    scope: dict
-    sort_order: int = 0
-    created_at: int = 0
 
 
 class BusyChannel(BaseModel):
