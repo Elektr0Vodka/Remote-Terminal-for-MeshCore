@@ -98,7 +98,7 @@ export function CrackerPanel({
       .catch((err) => {
         console.error('Failed to load wordlist:', err);
         toast.error('Failed to load wordlist', {
-          description: 'Cracking will not be available',
+          description: 'Channel finder will not be available',
         });
       });
   }, [visible, wordlistLoaded]);
@@ -356,7 +356,7 @@ export function CrackerPanel({
             }
           } catch (err) {
             console.error('Failed to create channel or decrypt historical:', err);
-            toast.error('Failed to save cracked channel', {
+            toast.error('Failed to save found channel', {
               description:
                 err instanceof Error ? err.message : 'Channel discovered but could not be saved',
             });
@@ -409,7 +409,10 @@ export function CrackerPanel({
   const handleStart = () => {
     if (!gpuAvailable) {
       toast.error('WebGPU not available', {
-        description: 'Cracking requires Chrome 113+ or Edge 113+ with WebGPU support.',
+        description:
+          typeof window !== 'undefined' && !window.isSecureContext
+            ? 'WebGPU requires HTTPS when not on localhost. Set up a certificate or configure your browser to treat this origin as secure.'
+            : 'Channel finder requires Chrome 113+ or Edge 113+ with WebGPU support.',
       });
       return;
     }
@@ -537,7 +540,7 @@ export function CrackerPanel({
           Pending: <span className="text-foreground font-medium">{pendingCount}</span>
         </span>
         <span className="text-muted-foreground">
-          Cracked: <span className="text-success font-medium">{crackedCount}</span>
+          Found: <span className="text-success font-medium">{crackedCount}</span>
         </span>
         <span className="text-muted-foreground">
           Failed: <span className="text-destructive font-medium">{failedCount}</span>
@@ -581,7 +584,7 @@ export function CrackerPanel({
             aria-valuenow={Math.round(progress.percent)}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label="Cracking progress"
+            aria-label="Channel finder progress"
           >
             <div
               className="h-full bg-primary transition-all duration-200"
@@ -593,8 +596,26 @@ export function CrackerPanel({
 
       {/* GPU status */}
       {gpuAvailable === false && (
-        <div className="text-sm text-destructive" role="alert">
-          WebGPU not available. Cracking requires Chrome 113+ or Edge 113+.
+        <div className="text-sm text-destructive space-y-1.5" role="alert">
+          <p>WebGPU not available.</p>
+          {typeof window !== 'undefined' && !window.isSecureContext ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive/90">
+              <p className="font-medium mb-1">WebGPU requires HTTPS when not on localhost.</p>
+              <p>To enable it:</p>
+              <ul className="list-disc ml-4 mt-1 space-y-0.5">
+                <li>
+                  Set up a TLS certificate (see the HTTPS section of README_ADVANCED.md, or re-run
+                  the Docker setup script which can generate one automatically)
+                </li>
+                <li>
+                  Or configure your browser to treat this origin as secure (sometimes called
+                  &ldquo;insecure origins treated as secure&rdquo; in browser flags)
+                </li>
+              </ul>
+            </div>
+          ) : (
+            <p>Channel finder requires Chrome 113+ or Edge 113+ with WebGPU support.</p>
+          )}
         </div>
       )}
       {!wordlistLoaded && gpuAvailable !== false && (
@@ -603,10 +624,10 @@ export function CrackerPanel({
         </div>
       )}
 
-      {/* Cracked channels list */}
+      {/* Found channels list */}
       {crackedChannels.length > 0 && (
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Cracked Channels:</div>
+          <div className="text-xs text-muted-foreground mb-1">Found Channels:</div>
           <div className="space-y-1">
             {crackedChannels.map((channel, i) => (
               <div
@@ -630,8 +651,8 @@ export function CrackerPanel({
         force payloads as they arrive, testing channel names up to the specified length to discover
         active channels on the local mesh (GroupText packets may not be hashtag messages; we have no
         way of knowing but try as if they are).
-        <strong> Retry failed at n+1</strong> will let the cracker return to the failed queue and
-        pick up messages it couldn't crack, attempting them at one longer length.
+        <strong> Retry failed at n+1</strong> will return to the failed queue and pick up messages
+        it couldn't find a key for, attempting them at one longer length.
         <strong> Try word pairs</strong> will also try every combination of two dictionary words
         concatenated together (e.g. "hello" + "world" = "#helloworld") after the single-word
         dictionary pass; this can substantially increase search time and also result in
@@ -639,7 +660,7 @@ export function CrackerPanel({
         <strong> Decrypt historical</strong> will run an async job on any channel name it finds to
         see if any historically captured packets will decrypt with that key.
         <strong> Turbo mode</strong> will push your GPU to the max (target dispatch time of 10s) and
-        may allow accelerated cracking and/or system instability.
+        may allow accelerated searching and/or system instability.
       </p>
     </div>
   );
