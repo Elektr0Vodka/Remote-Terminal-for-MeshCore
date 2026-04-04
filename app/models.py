@@ -653,7 +653,7 @@ class RadioTraceRequest(BaseModel):
 
     hop_hash_bytes: Literal[1, 2, 4] = Field(
         default=4,
-        description="Hash width in bytes for every hop in this trace path",
+        description="Hash width in bytes for every hop in this trace path (1/2/4 = MeshCore hash mode 0/1/2)",
     )
     hops: list[RadioTraceHopRequest] = Field(
         min_length=1,

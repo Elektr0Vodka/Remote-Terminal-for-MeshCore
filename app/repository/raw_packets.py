@@ -71,7 +71,9 @@ class RawPacketRepository:
                 )
                 return (existing["id"], False)
             # Shouldn't happen — OR IGNORE said it's a duplicate but we can't find it
-            raise RuntimeError(f"OR IGNORE suppressed insert but no row found for hash {payload_hash.hex()[:12]}")
+            raise RuntimeError(
+                f"OR IGNORE suppressed insert but no row found for hash {payload_hash.hex()[:12]}"
+            )
 
         except sqlite3.IntegrityError:
             # Race condition: a concurrent insert with same payload_hash landed between

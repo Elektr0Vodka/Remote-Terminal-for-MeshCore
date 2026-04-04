@@ -37,7 +37,10 @@ interface MapViewProps {
   onSelectConversation?: (conversation: import('../types').Conversation) => void;
   connectedPublicKey?: string | null;
   onPathDiscovery?: (publicKey: string) => Promise<PathDiscoveryResponse>;
-  onRunTracePath?: (hopHashBytes: 1 | 2 | 4, hops: RadioTraceHopRequest[]) => Promise<RadioTraceResponse>;
+  onRunTracePath?: (
+    hopHashBytes: 1 | 2 | 4,
+    hops: RadioTraceHopRequest[]
+  ) => Promise<RadioTraceResponse>;
   rawPackets?: RawPacket[];
   config?: RadioConfig | null;
 }
@@ -269,9 +272,7 @@ const MapPopupContent = memo(function MapPopupContent({
         }
       }
 
-      allPts.push(
-        isValidLocation(contact.lat, contact.lon) ? [contact.lat!, contact.lon!] : null
-      );
+      allPts.push(isValidLocation(contact.lat, contact.lon) ? [contact.lat!, contact.lon!] : null);
 
       const segments: Pt[][] = [];
       let current: Pt[] = [];
@@ -336,7 +337,10 @@ const MapPopupContent = memo(function MapPopupContent({
       isValidLocation(contact.lat, contact.lon)
     ) {
       onShowPathOnMap(contact.public_key, [
-        [[radioContact.lat!, radioContact.lon!], [contact.lat!, contact.lon!]],
+        [
+          [radioContact.lat!, radioContact.lon!],
+          [contact.lat!, contact.lon!],
+        ],
       ]);
     }
   }, [
@@ -1340,7 +1344,7 @@ export function MapView({
   const { draftHops, effectiveHopHashBytes, addRepeater, removeHop, moveHopAt, clearHops } =
     useTraceBuilder();
   const traceHistory = useTraceHistory();
-  // Manual override for trace hash width; null = auto from hop types (defaults to 4 = 3-byte)
+  // Manual override for trace hash width; null = auto from hop types (defaults to 4 = 4-byte)
   const [traceHashBytesOverride, setTraceHashBytesOverride] = useState<1 | 2 | 4 | null>(null);
   const activeTraceHashBytes: 1 | 2 | 4 = traceHashBytesOverride ?? effectiveHopHashBytes;
 
@@ -1545,7 +1549,10 @@ export function MapView({
         if (myLatLon) allPts.push(myLatLon);
 
         // Intermediate hops from stored path (stored away-from-us, so reverse)
-        const hopPrefixes = parsePathHops(sourceContact.direct_path, sourceContact.direct_path_len!);
+        const hopPrefixes = parsePathHops(
+          sourceContact.direct_path,
+          sourceContact.direct_path_len!
+        );
         for (const prefix of [...hopPrefixes].reverse()) {
           const matches = findContactsByPrefix(prefix, contactsRef.current, true);
           allPts.push(
@@ -1888,7 +1895,11 @@ export function MapView({
       );
       if (traceRunTokenRef.current !== token) return;
       setTraceResult(result);
-      traceHistory.addEntry({ draftHops: [...draftHops], result, hopHashBytes: activeTraceHashBytes });
+      traceHistory.addEntry({
+        draftHops: [...draftHops],
+        result,
+        hopHashBytes: activeTraceHashBytes,
+      });
       const segments = buildTraceSegments(result, contactsRef.current, connectedPublicKey);
       if (segments.length > 0) setActivePathTrace({ contactKey: `trace-${token}`, segments });
     } catch (err) {
@@ -1897,7 +1908,14 @@ export function MapView({
     } finally {
       if (traceRunTokenRef.current === token) setTraceLoading(false);
     }
-  }, [onRunTracePath, draftHops, activeTraceHashBytes, traceHistory, contactsRef, connectedPublicKey]);
+  }, [
+    onRunTracePath,
+    draftHops,
+    activeTraceHashBytes,
+    traceHistory,
+    contactsRef,
+    connectedPublicKey,
+  ]);
 
   // ── Update marker icons imperatively (avoids cluster clearLayers on advert-warning changes) ─
   useEffect(() => {
@@ -1981,7 +1999,16 @@ export function MapView({
         // Only recompute when marker identities/positions/types change (not data-only updates)
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mappableKey, focusedKey, onSelectConversation, openPopup, setMarkerRef, onPathDiscovery, traceModeActive, addRepeater]
+    [
+      mappableKey,
+      focusedKey,
+      onSelectConversation,
+      openPopup,
+      setMarkerRef,
+      onPathDiscovery,
+      traceModeActive,
+      addRepeater,
+    ]
   );
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -1990,39 +2017,39 @@ export function MapView({
       {/* Info bar + recency legend */}
       <div className="px-4 py-2 bg-muted/50 text-xs text-muted-foreground flex items-center justify-between flex-wrap gap-2">
         <span>
-          {showPackets && discoveryMode
-            ? `${mappableContacts.length} node${mappableContacts.length !== 1 ? 's' : ''} discovered from live traffic`
-            : (
-              <>
-                Showing {mappableContacts.length} contact{mappableContacts.length !== 1 ? 's' : ''}
-                {isFullRange
-                  ? ' (all time)'
-                  : isCustomActive
-                    ? ` · custom range`
-                    : ` · last ${activePreset}`}
-                {showPackets ? ' · 3-day packet window' : ''}
-                {activeTypeCount < ALL_TYPE_KEYS.length
-                  ? ` · ${activeTypeCount}/${ALL_TYPE_KEYS.length} types`
-                  : ''}
-                {activeHashModeCount < ALL_HASH_MODE_KEYS.length
-                  ? ` · ${activeHashModeCount}/${ALL_HASH_MODE_KEYS.length} modes`
-                  : ''}
-                {heatmap ? ' · heatmap' : ''}
-                {heatmap && heatLoading ? ' · loading…' : ''}
-                {activePathTrace && (
-                  <span>
-                    {' · '}
-                    <span className="text-cyan-400">path overlay active</span>{' '}
-                    <button
-                      onClick={() => setActivePathTrace(null)}
-                      className="underline text-muted-foreground hover:text-foreground transition"
-                    >
-                      clear
-                    </button>
-                  </span>
-                )}
-              </>
-            )}
+          {showPackets && discoveryMode ? (
+            `${mappableContacts.length} node${mappableContacts.length !== 1 ? 's' : ''} discovered from live traffic`
+          ) : (
+            <>
+              Showing {mappableContacts.length} contact{mappableContacts.length !== 1 ? 's' : ''}
+              {isFullRange
+                ? ' (all time)'
+                : isCustomActive
+                  ? ` · custom range`
+                  : ` · last ${activePreset}`}
+              {showPackets ? ' · 3-day packet window' : ''}
+              {activeTypeCount < ALL_TYPE_KEYS.length
+                ? ` · ${activeTypeCount}/${ALL_TYPE_KEYS.length} types`
+                : ''}
+              {activeHashModeCount < ALL_HASH_MODE_KEYS.length
+                ? ` · ${activeHashModeCount}/${ALL_HASH_MODE_KEYS.length} modes`
+                : ''}
+              {heatmap ? ' · heatmap' : ''}
+              {heatmap && heatLoading ? ' · loading…' : ''}
+              {activePathTrace && (
+                <span>
+                  {' · '}
+                  <span className="text-cyan-400">path overlay active</span>{' '}
+                  <button
+                    onClick={() => setActivePathTrace(null)}
+                    className="underline text-muted-foreground hover:text-foreground transition"
+                  >
+                    clear
+                  </button>
+                </span>
+              )}
+            </>
+          )}
         </span>
         <div className="flex items-center gap-3">
           {!showPackets && !heatmap && (
@@ -2225,7 +2252,11 @@ export function MapView({
               setTraceResult(null);
             }
           }}
-          title={traceModeActive ? 'Exit trace mode' : 'Enter trace mode: click repeaters to build a path'}
+          title={
+            traceModeActive
+              ? 'Exit trace mode'
+              : 'Enter trace mode: click repeaters to build a path'
+          }
           className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors border ${
             traceModeActive
               ? 'bg-primary border-primary text-primary-foreground'
@@ -2410,20 +2441,20 @@ export function MapView({
             🔌 Trace Builder — Click 🗼 repeaters on the map to add hops
           </div>
           <div className="space-y-1 mb-2">
-            <div className="text-muted-foreground">
-              Local radio →
-            </div>
+            <div className="text-muted-foreground">Local radio →</div>
             {draftHops.length === 0 ? (
-              <div className="text-muted-foreground italic">No hops yet. Click a repeater on the map.</div>
+              <div className="text-muted-foreground italic">
+                No hops yet. Click a repeater on the map.
+              </div>
             ) : (
               draftHops.map((hop, index) => {
                 const contact =
                   hop.kind === 'repeater'
-                    ? contacts.find((c) => c.public_key === hop.publicKey) ?? null
+                    ? (contacts.find((c) => c.public_key === hop.publicKey) ?? null)
                     : null;
                 const label =
                   hop.kind === 'repeater'
-                    ? contact?.name ?? hop.publicKey.slice(0, 12)
+                    ? (contact?.name ?? hop.publicKey.slice(0, 12))
                     : `Custom: ${hop.hopHex.toUpperCase()}`;
                 return (
                   <div key={hop.id} className="flex items-center gap-1.5">
@@ -2456,21 +2487,21 @@ export function MapView({
                 );
               })
             )}
-            <div className="text-muted-foreground">
-              → Local radio
-            </div>
+            <div className="text-muted-foreground">→ Local radio</div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Address width selector — 1-byte/2-byte/3-byte (protocol values 1/2/4) */}
             <span className="text-muted-foreground text-[10px]">Width:</span>
-            {([
+            {[
               { label: '1-byte', value: 1 as const },
               { label: '2-byte', value: 2 as const },
-              { label: '3-byte', value: 4 as const },
-            ]).map(({ label, value }) => (
+              { label: '4-byte', value: 4 as const },
+            ].map(({ label, value }) => (
               <button
                 key={value}
-                onClick={() => setTraceHashBytesOverride(traceHashBytesOverride === value ? null : value)}
+                onClick={() =>
+                  setTraceHashBytesOverride(traceHashBytesOverride === value ? null : value)
+                }
                 title={`Use ${label} hop addresses`}
                 className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
                   activeTraceHashBytes === value
@@ -2488,7 +2519,11 @@ export function MapView({
             </span>
             <div className="flex-1" />
             <button
-              onClick={() => { clearHops(); setTraceError(null); setTraceResult(null); }}
+              onClick={() => {
+                clearHops();
+                setTraceError(null);
+                setTraceResult(null);
+              }}
               className="px-2 py-0.5 rounded border border-border bg-muted text-muted-foreground hover:text-foreground text-[10px] transition-colors"
             >
               Clear
@@ -2501,16 +2536,20 @@ export function MapView({
               {traceLoading ? 'Tracing…' : 'Send Trace'}
             </button>
           </div>
-          {traceError && (
-            <div className="mt-1.5 text-destructive">{traceError}</div>
-          )}
+          {traceError && <div className="mt-1.5 text-destructive">{traceError}</div>}
           {traceResult && (
             <div className="mt-1.5 space-y-0.5">
-              <div className="font-medium text-foreground">Result ({traceResult.timeout_seconds.toFixed(1)}s):</div>
+              <div className="font-medium text-foreground">
+                Result ({traceResult.timeout_seconds.toFixed(1)}s):
+              </div>
               {traceResult.nodes.map((node, i) => (
                 <div key={i} className="text-muted-foreground">
-                  {node.role === 'local' ? 'Local radio' : node.name ?? node.public_key?.slice(0, 12) ?? 'Unknown'}
-                  {node.snr != null && <span className="ml-1 font-mono">SNR {formatSNR(node.snr)}</span>}
+                  {node.role === 'local'
+                    ? 'Local radio'
+                    : (node.name ?? node.public_key?.slice(0, 12) ?? 'Unknown')}
+                  {node.snr != null && (
+                    <span className="ml-1 font-mono">SNR {formatSNR(node.snr)}</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -2540,7 +2579,8 @@ export function MapView({
                 <button
                   onClick={() => {
                     const segments = buildTraceSegments(entry.result, contacts, connectedPublicKey);
-                    if (segments.length > 0) setActivePathTrace({ contactKey: `history-${entry.id}`, segments });
+                    if (segments.length > 0)
+                      setActivePathTrace({ contactKey: `history-${entry.id}`, segments });
                   }}
                   className="px-1 text-primary hover:text-primary/70 transition-colors"
                   title="Draw on map"
