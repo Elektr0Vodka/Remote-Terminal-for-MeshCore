@@ -3559,24 +3559,50 @@ async def _migrate_062_foreign_key_cascade(conn: aiosqlite.Connection) -> None:
 
     # --- Phase 3: rebuild contact_advert_paths with ON DELETE CASCADE ---
     if "contact_advert_paths" in existing_tables:
-        await conn.execute(
-            """
-            CREATE TABLE contact_advert_paths_fk (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                public_key TEXT NOT NULL,
-                path_hex TEXT NOT NULL,
-                path_len INTEGER NOT NULL,
-                first_seen INTEGER NOT NULL,
-                last_seen INTEGER NOT NULL,
-                heard_count INTEGER NOT NULL DEFAULT 1,
-                UNIQUE(public_key, path_hex, path_len),
-                FOREIGN KEY (public_key) REFERENCES contacts(public_key) ON DELETE CASCADE
-            )
-            """
+        # Dynamically build column list to preserve extra columns added by our fork
+        # (best_rssi, best_snr from migration 50; hash_mode from migration 54).
+        cap_cursor = await conn.execute("PRAGMA table_info(contact_advert_paths)")
+        cap_old_cols = [row[1] for row in await cap_cursor.fetchall()]
+
+        cap_col_defs = [
+            "id INTEGER PRIMARY KEY AUTOINCREMENT",
+            "public_key TEXT NOT NULL",
+            "path_hex TEXT NOT NULL",
+            "path_len INTEGER NOT NULL",
+            "first_seen INTEGER NOT NULL",
+            "last_seen INTEGER NOT NULL",
+            "heard_count INTEGER NOT NULL DEFAULT 1",
+        ]
+        cap_copy_cols = [
+            "id",
+            "public_key",
+            "path_hex",
+            "path_len",
+            "first_seen",
+            "last_seen",
+            "heard_count",
+        ]
+        # Preserve signal columns added by our fork's migrations 50 and 54
+        if "best_rssi" in cap_old_cols:
+            cap_col_defs.append("best_rssi INTEGER")
+            cap_copy_cols.append("best_rssi")
+        if "best_snr" in cap_old_cols:
+            cap_col_defs.append("best_snr REAL")
+            cap_copy_cols.append("best_snr")
+        if "hash_mode" in cap_old_cols:
+            cap_col_defs.append("hash_mode INTEGER")
+            cap_copy_cols.append("hash_mode")
+        cap_col_defs.append("UNIQUE(public_key, path_hex, path_len)")
+        cap_col_defs.append(
+            "FOREIGN KEY (public_key) REFERENCES contacts(public_key) ON DELETE CASCADE"
         )
+
+        cap_cols_sql = ", ".join(cap_col_defs)
+        cap_copy_sql = ", ".join(cap_copy_cols)
+        await conn.execute(f"CREATE TABLE contact_advert_paths_fk ({cap_cols_sql})")
         await conn.execute(
-            "INSERT INTO contact_advert_paths_fk (id, public_key, path_hex, path_len, first_seen, last_seen, heard_count) "
-            "SELECT id, public_key, path_hex, path_len, first_seen, last_seen, heard_count FROM contact_advert_paths"
+            f"INSERT INTO contact_advert_paths_fk ({cap_copy_sql}) "
+            f"SELECT {cap_copy_sql} FROM contact_advert_paths"
         )
         await conn.execute("DROP TABLE contact_advert_paths")
         await conn.execute("ALTER TABLE contact_advert_paths_fk RENAME TO contact_advert_paths")
