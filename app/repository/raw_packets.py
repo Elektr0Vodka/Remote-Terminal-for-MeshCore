@@ -44,45 +44,38 @@ class RawPacketRepository:
             # For malformed packets, hash the full data
             payload_hash = sha256(data).digest()
 
-        cursor = await db.conn.execute(
-            "INSERT OR IGNORE INTO raw_packets (timestamp, data, payload_hash) VALUES (?, ?, ?)",
-            (ts, data, payload_hash),
-        )
-        await db.conn.commit()
-
-        if cursor.rowcount > 0:
-            assert cursor.lastrowid is not None
-            return (cursor.lastrowid, True)
-
-        # Duplicate payload — look up the existing row.
-        cursor = await db.conn.execute(
-            "SELECT id FROM raw_packets WHERE payload_hash = ?", (payload_hash,)
-        )
-        existing = await cursor.fetchone()
-
-        if existing:
-            # Duplicate - return existing packet ID
-            logger.debug(
-                "Duplicate payload detected (hash=%s..., existing_id=%d)",
-                payload_hash.hex()[:12],
-                existing["id"],
-            )
-            return (existing["id"], False)
-
-        # New packet - insert with hash and signal metadata
         try:
             cursor = await db.conn.execute(
-                "INSERT INTO raw_packets (timestamp, data, payload_hash, rssi, snr, payload_type) "
+                "INSERT OR IGNORE INTO raw_packets "
+                "(timestamp, data, payload_hash, rssi, snr, payload_type) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (ts, data, payload_hash, rssi, snr, payload_type),
             )
             await db.conn.commit()
-            assert cursor.lastrowid is not None  # INSERT always returns a row ID
-            return (cursor.lastrowid, True)
+
+            if cursor.rowcount > 0:
+                # New packet inserted successfully
+                assert cursor.lastrowid is not None
+                return (cursor.lastrowid, True)
+
+            # Duplicate payload (OR IGNORE suppressed the insert) — look up existing row
+            cursor = await db.conn.execute(
+                "SELECT id FROM raw_packets WHERE payload_hash = ?", (payload_hash,)
+            )
+            existing = await cursor.fetchone()
+            if existing:
+                logger.debug(
+                    "Duplicate payload detected (hash=%s..., existing_id=%d)",
+                    payload_hash.hex()[:12],
+                    existing["id"],
+                )
+                return (existing["id"], False)
+            # Shouldn't happen — OR IGNORE said it's a duplicate but we can't find it
+            raise RuntimeError(f"OR IGNORE suppressed insert but no row found for hash {payload_hash.hex()[:12]}")
+
         except sqlite3.IntegrityError:
-            # Race condition: another insert with same payload_hash happened between
-            # our SELECT and INSERT. This is expected for duplicate packets arriving
-            # close together. Query again to get the existing ID.
+            # Race condition: a concurrent insert with same payload_hash landed between
+            # our insert attempt and the SELECT. Query again to get the existing ID.
             logger.debug(
                 "Duplicate packet detected via race condition (payload_hash=%s), dropping",
                 payload_hash.hex()[:16],
@@ -93,7 +86,6 @@ class RawPacketRepository:
             existing = await cursor.fetchone()
             if existing:
                 return (existing["id"], False)
-            # This shouldn't happen, but if it does, re-raise
             raise
 
     @staticmethod
