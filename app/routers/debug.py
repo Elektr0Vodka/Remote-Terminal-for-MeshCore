@@ -133,9 +133,10 @@ class DebugSnapshotResponse(BaseModel):
 
 def _build_system_info() -> DebugSystemInfo:
     try:
-        # os.sysconf is available on Linux/macOS
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        page_count = os.sysconf("SC_PHYS_PAGES")
+        # os.sysconf is available on Linux/macOS only
+        sysconf = os.sysconf  # type: ignore[attr-defined]
+        page_size = sysconf("SC_PAGE_SIZE")
+        page_count = sysconf("SC_PHYS_PAGES")
         total_ram_mb = (page_size * page_count) // (1024 * 1024)
     except (AttributeError, ValueError, OSError):
         total_ram_mb = 0

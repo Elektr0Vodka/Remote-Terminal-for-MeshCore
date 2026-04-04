@@ -356,7 +356,9 @@ async def process_raw_packet(
             result.update(decrypt_result)
 
     elif payload_type == PayloadType.ADVERT:
-        await _process_advertisement(raw_bytes, ts, packet_info, rssi=rssi, snr=snr, is_new_packet=is_new_packet)
+        await _process_advertisement(
+            raw_bytes, ts, packet_info, rssi=rssi, snr=snr, is_new_packet=is_new_packet
+        )
 
     elif payload_type == PayloadType.TEXT_MESSAGE:
         decrypt_result = await _process_direct_message(raw_bytes, packet_id, ts, packet_info)

@@ -792,7 +792,16 @@ class ContactAdvertPathRepository:
                         ELSE contact_advert_paths.best_snr
                     END
                 """,
-                (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr, hash_mode),
+                (
+                    normalized_key,
+                    normalized_path,
+                    path_len,
+                    timestamp,
+                    timestamp,
+                    rssi,
+                    snr,
+                    hash_mode,
+                ),
             )
         else:
             # Relay duplicate: record path if not yet seen, but don't inflate heard_count.
@@ -819,7 +828,16 @@ class ContactAdvertPathRepository:
                         ELSE contact_advert_paths.best_snr
                     END
                 """,
-                (normalized_key, normalized_path, path_len, timestamp, timestamp, rssi, snr, hash_mode),
+                (
+                    normalized_key,
+                    normalized_path,
+                    path_len,
+                    timestamp,
+                    timestamp,
+                    rssi,
+                    snr,
+                    hash_mode,
+                ),
             )
 
         # Keep only the N most recent unique paths per contact.

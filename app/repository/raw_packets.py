@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 import time
 from collections.abc import AsyncIterator
 from hashlib import sha256
