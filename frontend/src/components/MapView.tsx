@@ -58,9 +58,9 @@ const CONTACT_TYPE_CONFIG: Record<
   { label: string; value: number; emoji: string; small?: boolean }
 > = {
   unknown: { label: 'Unknown', value: CONTACT_TYPE_UNKNOWN, emoji: '❓' },
-  client: { label: 'Client', value: CONTACT_TYPE_CLIENT, emoji: '📟', small: true  },
+  client: { label: 'Client', value: CONTACT_TYPE_CLIENT, emoji: '📟', small: true },
   repeater: { label: 'Repeater', value: CONTACT_TYPE_REPEATER, emoji: '🗼', small: true },
-  room: { label: 'Room', value: CONTACT_TYPE_ROOM, emoji: '🏠', small: true  },
+  room: { label: 'Room', value: CONTACT_TYPE_ROOM, emoji: '🏠', small: true },
   sensor: { label: 'Sensor', value: CONTACT_TYPE_SENSOR, emoji: '📡' },
 };
 
