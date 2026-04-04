@@ -6,6 +6,7 @@ import type {
   KmsKeyUpdate,
   BulkCreateHashtagChannelsResult,
   Channel,
+  ChannelImportResult,
   ChannelDetail,
   CommandResponse,
   Contact,
@@ -211,6 +212,27 @@ export const api = {
     }),
   deleteChannel: (key: string) =>
     fetchJson<{ status: string }>(`/channels/${key}`, { method: 'DELETE' }),
+  importChannels: async (file: File, tryHistorical: boolean): Promise<ChannelImportResult> => {
+    const form = new FormData();
+    form.append('file', file);
+    // Use fetch directly so the browser sets the multipart/form-data Content-Type with boundary
+    const res = await fetch(`${API_BASE}/channels/import?try_historical=${tryHistorical}`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text || res.statusText;
+      try {
+        const j = JSON.parse(text);
+        if (j.detail) msg = j.detail;
+      } catch {
+        /* raw */
+      }
+      throw new Error(msg);
+    }
+    return res.json() as Promise<ChannelImportResult>;
+  },
   getChannelDetail: (key: string) => fetchJson<ChannelDetail>(`/channels/${key}/detail`),
   markChannelRead: (key: string) =>
     fetchJson<{ status: string; key: string }>(`/channels/${key}/mark-read`, {

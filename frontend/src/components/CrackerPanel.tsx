@@ -26,6 +26,7 @@ export interface CrackerPanelProps {
   packets: RawPacket[];
   channels: Channel[];
   onChannelCreate: (name: string, key: string) => Promise<void>;
+  onChannelsFound?: (channels: { name: string; key: string }[]) => void;
   onRunningChange?: (running: boolean) => void;
   visible?: boolean;
 }
@@ -34,6 +35,7 @@ export function CrackerPanel({
   packets,
   channels,
   onChannelCreate,
+  onChannelsFound,
   onRunningChange,
   visible = false,
 }: CrackerPanelProps) {
@@ -218,6 +220,13 @@ export function CrackerPanel({
   useEffect(() => {
     onRunningChange?.(isRunning);
   }, [isRunning, onRunningChange]);
+
+  // Notify parent whenever the list of found channels changes
+  useEffect(() => {
+    if (crackedChannels.length > 0) {
+      onChannelsFound?.(crackedChannels.map((c) => ({ name: `#${c.channelName}`, key: c.key })));
+    }
+  }, [crackedChannels, onChannelsFound]);
 
   // Stats (cracking count is implicit - if progress is shown, we're cracking one)
   const pendingCount = Array.from(queue.values()).filter((q) => q.status === 'pending').length;

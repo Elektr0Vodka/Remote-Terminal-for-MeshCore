@@ -3,6 +3,7 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  ArrowDownUp,
   BarChart2,
   Bell,
   Cable,
@@ -326,6 +327,7 @@ interface SidebarProps {
   isConversationNotificationsEnabled?: (type: 'channel' | 'contact', id: string) => boolean;
   blockedKeys?: string[];
   blockedNames?: string[];
+  onOpenChannelImportExport?: () => void;
 }
 
 function loadInitialSectionSortOrders(): SidebarSectionSortOrders {
@@ -357,6 +359,7 @@ export function Sidebar({
   isConversationNotificationsEnabled,
   blockedKeys = [],
   blockedNames = [],
+  onOpenChannelImportExport,
 }: SidebarProps) {
   const isContactBlocked = useCallback(
     (c: Contact) =>
@@ -1373,16 +1376,30 @@ export function Sidebar({
       case 'channels':
         return nonFavoriteChannels.length > 0 ? (
           <div key="channels">
-            {renderSectionHeader(
-              'Channels',
-              channelsCollapsed,
-              () => setChannelsCollapsed((p) => !p),
-              'channels',
-              channelsUnreadCount,
-              channelsHasMention,
-              onMarkAllRead,
-              filteredChannels.length
-            )}
+            <div className="flex items-center">
+              <div className="flex-1 min-w-0">
+                {renderSectionHeader(
+                  'Channels',
+                  channelsCollapsed,
+                  () => setChannelsCollapsed((p) => !p),
+                  'channels',
+                  channelsUnreadCount,
+                  channelsHasMention,
+                  onMarkAllRead,
+                  filteredChannels.length
+                )}
+              </div>
+              {onOpenChannelImportExport && (
+                <button
+                  onClick={onOpenChannelImportExport}
+                  className="mr-3 text-muted-foreground/60 hover:text-foreground transition-colors rounded p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex-shrink-0"
+                  title="Import / Export channels"
+                  aria-label="Import or export channels"
+                >
+                  <ArrowDownUp className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
             {(isSearching || !channelsCollapsed) &&
               channelRows.map((row) => renderConversationRow(row))}
           </div>

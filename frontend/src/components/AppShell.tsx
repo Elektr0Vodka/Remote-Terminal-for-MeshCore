@@ -7,6 +7,8 @@ import { Sidebar } from './Sidebar';
 import { ConversationPane } from './ConversationPane';
 import { NewMessageModal } from './NewMessageModal';
 import { BulkAddChannelResultModal } from './BulkAddChannelResultModal';
+import { ChannelImportExportModal } from './ChannelImportExportModal';
+import type { ChannelImportExportModalProps } from './ChannelImportExportModal';
 import { ContactInfoPane } from './ContactInfoPane';
 import { ChannelInfoPane } from './ChannelInfoPane';
 import { SecurityWarningModal } from './SecurityWarningModal';
@@ -72,6 +74,8 @@ interface AppShellProps {
   bulkAddChannelResultModalProps: BulkAddChannelResultModalProps;
   contactInfoPaneProps: ContactInfoPaneProps;
   channelInfoPaneProps: ChannelInfoPaneProps;
+  channelImportExportProps: ChannelImportExportModalProps;
+  onOpenChannelImportExport: () => void;
   showWarningTicker?: boolean;
   onNavigateToHealth?: (publicKey: string) => void;
 }
@@ -103,6 +107,8 @@ export function AppShell({
   bulkAddChannelResultModalProps,
   contactInfoPaneProps,
   channelInfoPaneProps,
+  channelImportExportProps,
+  onOpenChannelImportExport,
   showWarningTicker = true,
   onNavigateToHealth,
 }: AppShellProps) {
@@ -184,7 +190,7 @@ export function AppShell({
   const activeSidebarContent = showSettings ? (
     settingsSidebarContent
   ) : (
-    <Sidebar {...sidebarProps} />
+    <Sidebar {...sidebarProps} onOpenChannelImportExport={onOpenChannelImportExport} />
   );
 
   return (
@@ -326,6 +332,7 @@ export function AppShell({
         open={showNewMessage}
         onClose={onCloseNewMessage}
       />
+      <ChannelImportExportModal {...channelImportExportProps} />
       <BulkAddChannelResultModal
         {...bulkAddChannelResultModalProps}
         open={showBulkAddResults}

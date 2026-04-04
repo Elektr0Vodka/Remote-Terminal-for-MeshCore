@@ -23,8 +23,15 @@ import type { MessageInputHandle } from './components/MessageInput';
 import { DistanceUnitProvider } from './contexts/DistanceUnitContext';
 import { messageContainsMention } from './utils/messageParser';
 import { getStateKey } from './utils/conversationState';
-import type { BulkCreateHashtagChannelsResult, Conversation, Message, RawPacket } from './types';
+import type {
+  BulkCreateHashtagChannelsResult,
+  Conversation,
+  Message,
+  RawPacket,
+  Channel,
+} from './types';
 import { CONTACT_TYPE_ROOM } from './types';
+import type { CrackerFoundChannel } from './components/ChannelImportExportModal';
 
 interface ChannelUnreadMarker {
   channelId: string;
@@ -99,6 +106,8 @@ export function App() {
     useState<NewMessagePrefillRequest | null>(null);
   const [showBulkAddChannelTab, setShowBulkAddChannelTab] = useState(false);
   const [bulkAddResult, setBulkAddResult] = useState<BulkCreateHashtagChannelsResult | null>(null);
+  const [showChannelImportExport, setShowChannelImportExport] = useState(false);
+  const [crackerFoundChannels, setCrackerFoundChannels] = useState<CrackerFoundChannel[]>([]);
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   const lastUnreadBackfillAttemptRef = useRef<string | null>(null);
   const {
@@ -607,10 +616,25 @@ export function App() {
     trackedTelemetryRepeaters: appSettings?.tracked_telemetry_repeaters ?? [],
     onToggleTrackedTelemetry: handleToggleTrackedTelemetry,
   };
+  const handleCrackerChannelsFound = useCallback((found: CrackerFoundChannel[]) => {
+    setCrackerFoundChannels(found);
+  }, []);
+
+  const handleChannelsImported = useCallback(
+    async (imported: Channel[]) => {
+      if (imported.length > 0) {
+        const updated = await api.getChannels();
+        setChannels(updated);
+      }
+    },
+    [setChannels]
+  );
+
   const crackerProps = {
     packets: rawPackets,
     channels,
     onChannelCreate: handleCreateCrackedChannel,
+    onChannelsFound: handleCrackerChannelsFound,
   };
   const newMessageModalProps = {
     undecryptedCount,
@@ -713,6 +737,14 @@ export function App() {
         bulkAddChannelResultModalProps={bulkAddChannelResultModalProps}
         contactInfoPaneProps={contactInfoPaneProps}
         channelInfoPaneProps={channelInfoPaneProps}
+        channelImportExportProps={{
+          open: showChannelImportExport,
+          onClose: () => setShowChannelImportExport(false),
+          channels,
+          crackerFoundChannels,
+          onChannelsImported: handleChannelsImported,
+        }}
+        onOpenChannelImportExport={() => setShowChannelImportExport(true)}
         showWarningTicker={appSettings?.show_warning_ticker ?? true}
         onNavigateToHealth={(publicKey) =>
           handleSelectConversationWithTargetReset({
