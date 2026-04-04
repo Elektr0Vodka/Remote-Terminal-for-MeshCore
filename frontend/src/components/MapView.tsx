@@ -1340,6 +1340,9 @@ export function MapView({
   const { draftHops, effectiveHopHashBytes, addRepeater, removeHop, moveHopAt, clearHops } =
     useTraceBuilder();
   const traceHistory = useTraceHistory();
+  // Manual override for trace hash width; null = auto from hop types (defaults to 4 = 3-byte)
+  const [traceHashBytesOverride, setTraceHashBytesOverride] = useState<1 | 2 | 4 | null>(null);
+  const activeTraceHashBytes: 1 | 2 | 4 = traceHashBytesOverride ?? effectiveHopHashBytes;
 
   // ── Time window presets ─────────────────────────────────────────────────────
   const TIME_PRESETS = [
@@ -1507,39 +1510,92 @@ export function MapView({
   // Determine time window for packet visualization
   const threeDaysAgoSec = useMemo(() => Date.now() / 1000 - THREE_DAYS_SEC, []);
 
-  // Resolve a path of hop tokens to geographic waypoints (only unambiguous + has GPS)
+  // ── Contacts ref — kept current without triggering re-renders ────────────
+  const contactsRef = useRef<import('../types').Contact[]>(contacts);
+  contactsRef.current = contacts;
+
+  // Resolve a path of hop tokens to geographic waypoints.
+  // Prefers the source contact's stored direct_path (validated by the server) over
+  // re-resolving raw packet hash bytes, which gives a more accurate route and avoids
+  // the "crow flies" effect when intermediate nodes lack GPS.
   const resolvePacketPath = useCallback(
     (parsed: ReturnType<typeof parsePacket>): [number, number][] | null => {
       if (!parsed) return null;
 
-      const waypoints: [number, number][] = [];
+      type Pt = [number, number];
 
-      // Source: advertPubkey, srcHash, or groupTextSender resolved by name
+      // ── Resolve source contact ──────────────────────────────────────────
       let sourceContact: Contact | null = null;
       if (parsed.advertPubkey) {
         const prefix = parsed.advertPubkey.slice(0, 12).toLowerCase();
         const matches = prefixIndex.get(prefix);
-        if (matches?.length === 1 && isValidLocation(matches[0].lat, matches[0].lon)) {
-          sourceContact = matches[0];
-        }
+        if (matches?.length === 1) sourceContact = matches[0];
       } else if (parsed.srcHash) {
-        sourceContact = resolveHopToGps(parsed.srcHash, prefixIndex);
+        const matches = prefixIndex.get(parsed.srcHash.toLowerCase());
+        if (matches?.length === 1) sourceContact = matches[0];
       } else if (parsed.groupTextSender) {
-        sourceContact = resolveNameToGps(parsed.groupTextSender, nameIndex);
+        sourceContact = nameIndex.get(parsed.groupTextSender) ?? null;
       }
 
-      if (sourceContact) {
+      // ── Try stored direct_path from source contact first ─────────────────
+      if (sourceContact?.direct_path && (sourceContact.direct_path_len ?? 0) > 0) {
+        const allPts: (Pt | null)[] = [];
+
+        // Self (our radio) at the near end
+        if (myLatLon) allPts.push(myLatLon);
+
+        // Intermediate hops from stored path (stored away-from-us, so reverse)
+        const hopPrefixes = parsePathHops(sourceContact.direct_path, sourceContact.direct_path_len!);
+        for (const prefix of [...hopPrefixes].reverse()) {
+          const matches = findContactsByPrefix(prefix, contactsRef.current, true);
+          allPts.push(
+            matches.length === 1 && isValidLocation(matches[0].lat, matches[0].lon)
+              ? [matches[0].lat!, matches[0].lon!]
+              : null
+          );
+        }
+
+        // Source at the far end
+        if (isValidLocation(sourceContact.lat, sourceContact.lon)) {
+          allPts.push([sourceContact.lat!, sourceContact.lon!]);
+        }
+
+        // Build connected segments from runs of non-null points
+        const segments: Pt[][] = [];
+        let cur: Pt[] = [];
+        for (const pt of allPts) {
+          if (pt) cur.push(pt);
+          else {
+            if (cur.length >= 2) segments.push(cur);
+            cur = [];
+          }
+        }
+        if (cur.length >= 2) segments.push(cur);
+
+        if (segments.length > 0) {
+          const waypoints = segments.flat();
+          const deduped = dedupeConsecutive(waypoints.map((w) => `${w[0]},${w[1]}`));
+          if (deduped.length >= 2) {
+            return deduped.map((s) => {
+              const [lat, lon] = s.split(',').map(Number);
+              return [lat, lon] as Pt;
+            });
+          }
+        }
+      }
+
+      // ── Fallback: resolve from raw packet path bytes ──────────────────────
+      const waypoints: Pt[] = [];
+
+      if (sourceContact && isValidLocation(sourceContact.lat, sourceContact.lon)) {
         waypoints.push([sourceContact.lat!, sourceContact.lon!]);
       }
 
-      // Intermediate hops (path bytes)
+      // Intermediate hops (path bytes) — skip 1-byte hops to avoid ambiguity
       for (const hop of parsed.pathBytes) {
-        // Only resolve 2+ byte hops (4+ hex chars) to avoid ambiguous 1-byte hops
         if (hop.length < 4) continue;
         const contact = resolveHopToGps(hop, prefixIndex);
-        if (contact) {
-          waypoints.push([contact.lat!, contact.lon!]);
-        }
+        if (contact) waypoints.push([contact.lat!, contact.lon!]);
       }
 
       // Destination: self (our radio), or dstHash
@@ -1547,21 +1603,18 @@ export function MapView({
         waypoints.push(myLatLon);
       } else if (parsed.dstHash) {
         const dest = resolveHopToGps(parsed.dstHash, prefixIndex);
-        if (dest) {
-          waypoints.push([dest.lat!, dest.lon!]);
-        }
+        if (dest) waypoints.push([dest.lat!, dest.lon!]);
       }
 
-      // Dedupe consecutive identical waypoints
       const deduped = dedupeConsecutive(waypoints.map((w) => `${w[0]},${w[1]}`));
       if (deduped.length < 2) return null;
 
       return deduped.map((s) => {
         const [lat, lon] = s.split(',').map(Number);
-        return [lat, lon] as [number, number];
+        return [lat, lon] as Pt;
       });
     },
-    [prefixIndex, nameIndex, myLatLon]
+    [prefixIndex, nameIndex, myLatLon, contactsRef]
   );
 
   // Process new packets into particles and track discovered contacts
@@ -1784,11 +1837,6 @@ export function MapView({
     setActivePathTrace(segments.length > 0 ? { contactKey, segments } : null);
   }, []);
 
-  // ── Contacts ref — kept current without triggering re-renders ───────────────
-
-  const contactsRef = useRef<import('../types').Contact[]>(contacts);
-  contactsRef.current = contacts;
-
   // ── Marker refs ─────────────────────────────────────────────────────────────
   const markerRefs = useRef<Record<string, L.Marker | null>>({});
   const setMarkerRef = useCallback((key: string, ref: L.Marker | null) => {
@@ -1833,16 +1881,14 @@ export function MapView({
     setTraceResult(null);
     try {
       const result = await onRunTracePath(
-        effectiveHopHashBytes,
+        activeTraceHashBytes,
         draftHops.map((h) =>
           h.kind === 'repeater' ? { public_key: h.publicKey } : { hop_hex: h.hopHex }
         )
       );
       if (traceRunTokenRef.current !== token) return;
       setTraceResult(result);
-      // save to history
-      traceHistory.addEntry({ draftHops: [...draftHops], result, hopHashBytes: effectiveHopHashBytes });
-      // draw on map
+      traceHistory.addEntry({ draftHops: [...draftHops], result, hopHashBytes: activeTraceHashBytes });
       const segments = buildTraceSegments(result, contactsRef.current, connectedPublicKey);
       if (segments.length > 0) setActivePathTrace({ contactKey: `trace-${token}`, segments });
     } catch (err) {
@@ -1851,7 +1897,7 @@ export function MapView({
     } finally {
       if (traceRunTokenRef.current === token) setTraceLoading(false);
     }
-  }, [onRunTracePath, draftHops, effectiveHopHashBytes, traceHistory, contactsRef, connectedPublicKey]);
+  }, [onRunTracePath, draftHops, activeTraceHashBytes, traceHistory, contactsRef, connectedPublicKey]);
 
   // ── Update marker icons imperatively (avoids cluster clearLayers on advert-warning changes) ─
   useEffect(() => {
@@ -2415,11 +2461,32 @@ export function MapView({
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-muted-foreground">
+            {/* Address width selector — 1-byte/2-byte/3-byte (protocol values 1/2/4) */}
+            <span className="text-muted-foreground text-[10px]">Width:</span>
+            {([
+              { label: '1-byte', value: 1 as const },
+              { label: '2-byte', value: 2 as const },
+              { label: '3-byte', value: 4 as const },
+            ]).map(({ label, value }) => (
+              <button
+                key={value}
+                onClick={() => setTraceHashBytesOverride(traceHashBytesOverride === value ? null : value)}
+                title={`Use ${label} hop addresses`}
+                className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                  activeTraceHashBytes === value
+                    ? 'bg-primary/20 border-primary/50 text-foreground font-medium'
+                    : 'bg-muted border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="text-muted-foreground ml-1">
               {draftHops.length === 0
-                ? 'No hops'
-                : `${draftHops.length} hop${draftHops.length === 1 ? '' : 's'} · ${effectiveHopHashBytes}-byte trace`}
+                ? '· no hops'
+                : `· ${draftHops.length} hop${draftHops.length === 1 ? '' : 's'}`}
             </span>
+            <div className="flex-1" />
             <button
               onClick={() => { clearHops(); setTraceError(null); setTraceResult(null); }}
               className="px-2 py-0.5 rounded border border-border bg-muted text-muted-foreground hover:text-foreground text-[10px] transition-colors"
@@ -2428,7 +2495,7 @@ export function MapView({
             </button>
             <button
               onClick={handleRunMapTrace}
-              disabled={traceLoading || draftHops.length === 0 || !onRunTracePath}
+              disabled={traceLoading || draftHops.length === 0}
               className="px-2 py-0.5 rounded border border-primary bg-primary text-primary-foreground text-[10px] transition-colors disabled:opacity-50"
             >
               {traceLoading ? 'Tracing…' : 'Send Trace'}

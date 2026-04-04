@@ -206,6 +206,10 @@ export function ConversationPane({
               focusedKey={activeConversation.mapFocusKey}
               rawPackets={rawPackets}
               config={config}
+              connectedPublicKey={config?.public_key ?? null}
+              onSelectConversation={onSelectConversation}
+              onPathDiscovery={onPathDiscovery}
+              onRunTracePath={onRunTracePath}
             />
           </Suspense>
         </div>
