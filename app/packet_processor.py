@@ -534,24 +534,24 @@ async def _process_advertisement(
             )
             return
 
-    # Always record the relay path so diversity tracking is complete, but only
-    # count heard_count for the first (non-duplicate) arrival of each payload.
-    await ContactAdvertPathRepository.record_observation(
-        public_key=advert.public_key.lower(),
-        path_hex=new_path_hex,
-        timestamp=timestamp,
-        max_paths=10,
-        hop_count=new_path_len,
-        rssi=rssi,
-        snr=snr,
-        # hash_size is bytes per hop (1/2/3); hash_mode is hash_size - 1 (0/1/2)
-        hash_mode=packet_info.path_hash_size - 1 if packet_info.path_hash_size else None,
-        is_new_packet=is_new_packet,
-    )
-
     # Relay duplicates carry identical contact data — skip the upsert and
     # broadcast to avoid redundant DB writes and frontend re-renders.
+    # Only record the relay path if the contact already exists; with FK
+    # enforcement enabled we cannot insert a child row before its parent.
     if not is_new_packet:
+        if existing is not None:
+            await ContactAdvertPathRepository.record_observation(
+                public_key=advert.public_key.lower(),
+                path_hex=new_path_hex,
+                timestamp=timestamp,
+                max_paths=10,
+                hop_count=new_path_len,
+                rssi=rssi,
+                snr=snr,
+                # hash_size is bytes per hop (1/2/3); hash_mode is hash_size - 1 (0/1/2)
+                hash_mode=packet_info.path_hash_size - 1 if packet_info.path_hash_size else None,
+                is_new_packet=False,
+            )
         return
 
     contact_upsert = ContactUpsert(
@@ -579,6 +579,11 @@ async def _process_advertisement(
         timestamp=timestamp,
         max_paths=10,
         hop_count=new_path_len,
+        rssi=rssi,
+        snr=snr,
+        # hash_size is bytes per hop (1/2/3); hash_mode is hash_size - 1 (0/1/2)
+        hash_mode=packet_info.path_hash_size - 1 if packet_info.path_hash_size else None,
+        is_new_packet=True,
     )
     promoted_keys = await promote_prefix_contacts_for_contact(
         public_key=advert.public_key,
