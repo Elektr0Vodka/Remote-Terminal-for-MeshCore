@@ -58,9 +58,9 @@ const CONTACT_TYPE_CONFIG: Record<
   { label: string; value: number; emoji: string; small?: boolean }
 > = {
   unknown: { label: 'Unknown', value: CONTACT_TYPE_UNKNOWN, emoji: '❓' },
-  client: { label: 'Client', value: CONTACT_TYPE_CLIENT, emoji: '📟' },
+  client: { label: 'Client', value: CONTACT_TYPE_CLIENT, emoji: '📟', small: true  },
   repeater: { label: 'Repeater', value: CONTACT_TYPE_REPEATER, emoji: '🗼', small: true },
-  room: { label: 'Room', value: CONTACT_TYPE_ROOM, emoji: '🏠' },
+  room: { label: 'Room', value: CONTACT_TYPE_ROOM, emoji: '🏠', small: true  },
   sensor: { label: 'Sensor', value: CONTACT_TYPE_SENSOR, emoji: '📡' },
 };
 
@@ -1350,6 +1350,7 @@ export function MapView({
 
   // ── Time window presets ─────────────────────────────────────────────────────
   const TIME_PRESETS = [
+    { label: '30m', seconds: 1800 },
     { label: '1h', seconds: 3600 },
     { label: '2h', seconds: 2 * 3600 },
     { label: '6h', seconds: 6 * 3600 },
@@ -1357,10 +1358,9 @@ export function MapView({
     { label: '24h', seconds: 86400 },
     { label: '7d', seconds: 7 * 86400 },
     { label: '30d', seconds: 30 * 86400 },
-    { label: 'All', seconds: null },
   ] as const;
 
-  const [activePreset, setActivePreset] = useState<string>('7d');
+  const [activePreset, setActivePreset] = useState<string>('12h');
 
   // ── Custom time range ───────────────────────────────────────────────────────
   const [customFrom, setCustomFrom] = useState('');
