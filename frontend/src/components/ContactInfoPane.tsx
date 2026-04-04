@@ -482,7 +482,6 @@ export function ContactInfoPane({
                           </span>
                         </div>
                       ))}
-
                     </div>
                   </div>
                 );

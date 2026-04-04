@@ -7,7 +7,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Contact, HealthStatus, NoiseFloorSample, RadioConfig, RawPacket, StatisticsResponse } from '../types';
+import type {
+  Contact,
+  HealthStatus,
+  NoiseFloorSample,
+  RadioConfig,
+  RawPacket,
+  StatisticsResponse,
+} from '../types';
 import { api } from '../api';
 import {
   buildRawPacketStatsSnapshot,
@@ -799,7 +806,9 @@ function NoiseFloorLineChart({
 
   const showIdx = [0, Math.floor(samples.length / 2), samples.length - 1];
 
-  let tipX = 0, tipY = 0, tipVal: number | null = null;
+  let tipX = 0,
+    tipY = 0,
+    tipVal: number | null = null;
   if (hov !== null) {
     tipVal = values[hov];
     tipX = xPos(hov);
@@ -828,26 +837,82 @@ function NoiseFloorLineChart({
         const y = yPos(v);
         return (
           <g key={li}>
-            <line x1={PAD_L} x2={CW} y1={y.toFixed(1)} y2={y.toFixed(1)} stroke="hsl(var(--border))" strokeWidth="0.5" strokeDasharray="2,2" />
-            <text x={PAD_L - 3} y={y.toFixed(1)} textAnchor="end" dominantBaseline="middle" fontSize="8" fill="hsl(var(--muted-foreground))">{v}</text>
+            <line
+              x1={PAD_L}
+              x2={CW}
+              y1={y.toFixed(1)}
+              y2={y.toFixed(1)}
+              stroke="hsl(var(--border))"
+              strokeWidth="0.5"
+              strokeDasharray="2,2"
+            />
+            <text
+              x={PAD_L - 3}
+              y={y.toFixed(1)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fontSize="8"
+              fill="hsl(var(--muted-foreground))"
+            >
+              {v}
+            </text>
           </g>
         );
       })}
       <path d={areaPath} fill={`url(#${id})`} />
-      <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <path
+        d={linePath}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
       {hov !== null && tipVal != null && (
-        <circle cx={xPos(hov).toFixed(1)} cy={yPos(tipVal).toFixed(1)} r="3" fill={color} stroke="hsl(var(--background))" strokeWidth="1.5" />
+        <circle
+          cx={xPos(hov).toFixed(1)}
+          cy={yPos(tipVal).toFixed(1)}
+          r="3"
+          fill={color}
+          stroke="hsl(var(--background))"
+          strokeWidth="1.5"
+        />
       )}
       {hov !== null && tipVal !== null && (
         <g transform={`translate(${tipX.toFixed(1)},${tipY.toFixed(1)})`}>
-          <rect x="-28" y="-11" width="56" height="22" rx="2" fill="hsl(var(--popover))" stroke="hsl(var(--border))" strokeWidth="0.5" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }} />
-          <text textAnchor="middle" y="1" fontSize="8.5" fontWeight="600" fill="hsl(var(--popover-foreground))">{tipVal} dBm</text>
+          <rect
+            x="-28"
+            y="-11"
+            width="56"
+            height="22"
+            rx="2"
+            fill="hsl(var(--popover))"
+            stroke="hsl(var(--border))"
+            strokeWidth="0.5"
+            style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.3))' }}
+          />
+          <text
+            textAnchor="middle"
+            y="1"
+            fontSize="8.5"
+            fontWeight="600"
+            fill="hsl(var(--popover-foreground))"
+          >
+            {tipVal} dBm
+          </text>
           <text textAnchor="middle" fontSize="6.5" fill="hsl(var(--muted-foreground))" dy="-12">
             NF · {fmtTime(timestamps[hov], windowSeconds)}
           </text>
         </g>
       )}
-      <line x1={PAD_L} x2={CW} y1={INNER_H} y2={INNER_H} stroke="hsl(var(--border))" strokeWidth="0.5" />
+      <line
+        x1={PAD_L}
+        x2={CW}
+        y1={INNER_H}
+        y2={INNER_H}
+        stroke="hsl(var(--border))"
+        strokeWidth="0.5"
+      />
       {showIdx.map((i) => (
         <text
           key={i}
@@ -1137,7 +1202,13 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
       (samples) => setNoiseFloorSamples(samples),
       () => {} // silently ignore — chart will just show no data
     );
-  }, [selectedWindow.key, selectedWindow.useLive, selectedWindow.seconds, nowSec, noiseFloorSupported]);
+  }, [
+    selectedWindow.key,
+    selectedWindow.useLive,
+    selectedWindow.seconds,
+    nowSec,
+    noiseFloorSupported,
+  ]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const windowSeconds = useMemo((): number => {
@@ -1574,7 +1645,10 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
                         : undefined
                     }
                   >
-                    <NoiseFloorLineChart samples={noiseFloorSamples} windowSeconds={windowSeconds} />
+                    <NoiseFloorLineChart
+                      samples={noiseFloorSamples}
+                      windowSeconds={windowSeconds}
+                    />
                   </ChartCard>
                 )}
               </div>
@@ -1661,10 +1735,7 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
                         value={sessionSnapshot.distinctPaths}
                         sub={`${fmtPct(sessionSnapshot.pathBearingRate)} path-bearing`}
                       />
-                      <StatTile
-                        label="Best RSSI"
-                        value={fmtRssi(sessionSnapshot.bestRssi)}
-                      />
+                      <StatTile label="Best RSSI" value={fmtRssi(sessionSnapshot.bestRssi)} />
                       <StatTile
                         label="Median RSSI"
                         value={fmtRssi(sessionSnapshot.medianRssi)}

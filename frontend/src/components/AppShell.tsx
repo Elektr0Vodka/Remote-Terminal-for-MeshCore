@@ -218,7 +218,9 @@ export function AppShell({
       <WarningTicker enabled={showWarningTicker} onNavigateToHealth={onNavigateToHealth} />
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="hidden md:block shrink-0 min-h-0 overflow-hidden">{activeSidebarContent}</div>
+        <div className="hidden md:block shrink-0 min-h-0 overflow-hidden">
+          {activeSidebarContent}
+        </div>
 
         <Sheet open={sidebarOpen} onOpenChange={onSidebarOpenChange}>
           <SheetContent

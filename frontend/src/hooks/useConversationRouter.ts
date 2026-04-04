@@ -141,7 +141,6 @@ export function useConversationRouter({
 
     if (channels.length === 0) return;
 
-
     // Handle channel hash (ID-first with legacy-name fallback)
     if (hashConv?.type === 'channel') {
       const channel = resolveChannelFromHashToken(hashConv.name, channels);

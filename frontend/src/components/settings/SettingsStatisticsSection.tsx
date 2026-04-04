@@ -244,71 +244,73 @@ export function SettingsStatisticsSection({ className }: { className?: string })
           <Separator />
 
           {/* Path Hash Width */}
-          {stats.path_hash_width_24h && <div>
-            <h4 className="text-sm font-medium mb-2">Path Hash Width (24h)</h4>
-            <div className="mb-2 text-xs text-muted-foreground">
-              Parsed stored raw packets from the last 24 hours:{' '}
-              {stats.path_hash_width_24h.total_packets}
-            </div>
-            {stats.path_hash_width_24h.total_packets > 0 ? (
-              <ResponsiveContainer width="100%" height={120}>
-                <BarChart
-                  data={[
-                    {
-                      name: '1-byte',
-                      count: stats.path_hash_width_24h.single_byte,
-                      pct: stats.path_hash_width_24h.single_byte_pct,
-                    },
-                    {
-                      name: '2-byte',
-                      count: stats.path_hash_width_24h.double_byte,
-                      pct: stats.path_hash_width_24h.double_byte_pct,
-                    },
-                    {
-                      name: '3-byte',
-                      count: stats.path_hash_width_24h.triple_byte,
-                      pct: stats.path_hash_width_24h.triple_byte_pct,
-                    },
-                  ]}
-                  margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="hsl(var(--border))"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <RechartsTooltip
-                    {...TOOLTIP_STYLE}
-                    cursor={{ fill: 'hsl(var(--muted))', opacity: 0.5 }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(value: any, _: any, props: any) => [
-                      `${Number(value).toLocaleString()} (${formatPercent(props.payload.pct)})`,
-                      'Packets',
+          {stats.path_hash_width_24h && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">Path Hash Width (24h)</h4>
+              <div className="mb-2 text-xs text-muted-foreground">
+                Parsed stored raw packets from the last 24 hours:{' '}
+                {stats.path_hash_width_24h.total_packets}
+              </div>
+              {stats.path_hash_width_24h.total_packets > 0 ? (
+                <ResponsiveContainer width="100%" height={120}>
+                  <BarChart
+                    data={[
+                      {
+                        name: '1-byte',
+                        count: stats.path_hash_width_24h.single_byte,
+                        pct: stats.path_hash_width_24h.single_byte_pct,
+                      },
+                      {
+                        name: '2-byte',
+                        count: stats.path_hash_width_24h.double_byte,
+                        pct: stats.path_hash_width_24h.double_byte_pct,
+                      },
+                      {
+                        name: '3-byte',
+                        count: stats.path_hash_width_24h.triple_byte,
+                        pct: stats.path_hash_width_24h.triple_byte_pct,
+                      },
                     ]}
-                  />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                    <Cell fill="#0ea5e9" />
-                    <Cell fill="#10b981" />
-                    <Cell fill="#f59e0b" />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground">No path data in the last 24 hours.</p>
-            )}
-          </div>}
+                    margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <RechartsTooltip
+                      {...TOOLTIP_STYLE}
+                      cursor={{ fill: 'hsl(var(--muted))', opacity: 0.5 }}
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      formatter={(value: any, _: any, props: any) => [
+                        `${Number(value).toLocaleString()} (${formatPercent(props.payload.pct)})`,
+                        'Packets',
+                      ]}
+                    />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      <Cell fill="#0ea5e9" />
+                      <Cell fill="#10b981" />
+                      <Cell fill="#f59e0b" />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-muted-foreground">No path data in the last 24 hours.</p>
+              )}
+            </div>
+          )}
 
           {/* Busiest Channels */}
           {stats.busiest_channels_24h.length > 0 && (

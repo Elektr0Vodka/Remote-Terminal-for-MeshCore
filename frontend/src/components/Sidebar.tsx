@@ -159,7 +159,7 @@ const TOOL_LABELS: Record<ToolKey, string> = {
   'mesh-health': 'Mesh Health',
   'room-finder': 'Room Finder',
   'mc-kms': 'MC-KMS',
-  'trace': 'Trace',
+  trace: 'Trace',
 };
 
 const ALL_TOOL_KEYS: ToolKey[] = [
@@ -1018,8 +1018,7 @@ export function Sidebar({
           active: isActive('map', 'map'),
           icon: <Map className="h-4 w-4" />,
           label: 'Node Map',
-          onClick: () =>
-            handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
+          onClick: () => handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
         }),
         renderSidebarActionRow({
           key: 'tool-visualizer',
@@ -1027,15 +1026,18 @@ export function Sidebar({
           icon: <ChartNetwork className="h-4 w-4" />,
           label: 'Mesh Visualizer',
           onClick: () =>
-            handleSelectConversation({ type: 'visualizer', id: 'visualizer', name: 'Mesh Visualizer' }),
+            handleSelectConversation({
+              type: 'visualizer',
+              id: 'visualizer',
+              name: 'Mesh Visualizer',
+            }),
         }),
         renderSidebarActionRow({
           key: 'tool-trace',
           active: isActive('trace', 'trace'),
           icon: <Cable className="h-4 w-4" />,
           label: 'Trace',
-          onClick: () =>
-            handleSelectConversation({ type: 'trace', id: 'trace', name: 'Trace' }),
+          onClick: () => handleSelectConversation({ type: 'trace', id: 'trace', name: 'Trace' }),
         }),
         renderSidebarActionRow({
           key: 'tool-search',
@@ -1071,7 +1073,11 @@ export function Sidebar({
             </span>
           ),
           onClick: () =>
-            handleSelectConversation({ type: 'mesh-health', id: 'mesh-health', name: 'Mesh Health' }),
+            handleSelectConversation({
+              type: 'mesh-health',
+              id: 'mesh-health',
+              name: 'Mesh Health',
+            }),
         }),
         renderSidebarActionRow({
           key: 'tool-cracker',
