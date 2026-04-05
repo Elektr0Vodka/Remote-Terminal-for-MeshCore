@@ -552,6 +552,12 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 78)
         applied += 1
 
+    if version < 79:
+        logger.info("Applying migration 79: create bot_detection_nodes table")
+        await _migrate_079_bot_detection_nodes(conn)
+        await set_version(conn, 79)
+        applied += 1
+
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -3749,4 +3755,30 @@ async def _migrate_078_restore_raw_packet_signal_columns(conn: aiosqlite.Connect
         if column not in existing:
             await conn.execute(f"ALTER TABLE raw_packets ADD COLUMN {column} {typedef}")
             logger.debug("Restored raw_packets.%s", column)
+    await conn.commit()
+
+
+async def _migrate_079_bot_detection_nodes(conn: aiosqlite.Connection) -> None:
+    """Create the bot_detection_nodes table for per-node automation scoring."""
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bot_detection_nodes (
+            public_key          TEXT PRIMARY KEY,
+            automation_score    REAL    DEFAULT 0.0,
+            impact_score        REAL    DEFAULT 0.0,
+            classification      TEXT    DEFAULT 'unknown',
+            manual_tag          TEXT,
+            message_count       INTEGER DEFAULT 0,
+            last_seen           INTEGER,
+            timing_cv           REAL,
+            pattern_ratio       REAL,
+            structured_ratio    REAL,
+            avg_interval_seconds REAL,
+            messages_per_hour   REAL    DEFAULT 0.0,
+            avg_message_length  REAL    DEFAULT 0.0,
+            insufficient_data   INTEGER DEFAULT 1,
+            last_analyzed_at    INTEGER
+        )
+        """
+    )
     await conn.commit()

@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useState, type Ref } from 'react';
 import { ChatHeader } from './ChatHeader';
 import { MessageInput, type MessageInputHandle } from './MessageInput';
 import { MessageList } from './MessageList';
+import { BotDetectorPane } from './BotDetectorPane';
 import { RawPacketFeedView } from './RawPacketFeedView';
 import { RoomServerPanel } from './RoomServerPanel';
 import { TracePane } from './TracePane';
@@ -298,6 +299,10 @@ export function ConversationPane({
 
   if (activeConversation.type === 'trace') {
     return <TracePane contacts={contacts} config={config} onRunTracePath={onRunTracePath} />;
+  }
+
+  if (activeConversation.type === 'bot-detector') {
+    return <BotDetectorPane />;
   }
 
   if (activeContactIsRepeater) {

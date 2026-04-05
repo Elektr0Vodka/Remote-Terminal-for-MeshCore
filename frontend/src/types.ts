@@ -325,7 +325,8 @@ type ConversationType =
   | 'mesh-health'
   | 'kms'
   | 'contact-analytics'
-  | 'trace';
+  | 'trace'
+  | 'bot-detector';
 
 export interface Conversation {
   type: ConversationType;
@@ -657,4 +658,26 @@ export interface KmsKeyUpdate {
   last_registered_failure?: string | null;
   assigned_to?: string | null;
   notes?: string | null;
+}
+
+export type ManualTag = 'likely_bot' | 'utility_bot' | 'test' | 'not_a_bot';
+
+export interface BotDetectionNode {
+  public_key: string;
+  display_name: string;
+  automation_score: number;
+  impact_score: number;
+  classification: 'likely_human' | 'automated_utility' | 'automated_high_impact' | 'insufficient_data' | 'unknown';
+  manual_tag: ManualTag | null;
+  message_count: number;
+  last_seen: number | null;
+  timing_cv: number | null;
+  pattern_ratio: number | null;
+  structured_ratio: number | null;
+  avg_interval_seconds: number | null;
+  messages_per_hour: number;
+  avg_message_length: number;
+  insufficient_data: boolean;
+  last_analyzed_at: number | null;
+  recent_messages?: Array<{ text: string | null; received_at: number | null; type: string | null }>;
 }

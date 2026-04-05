@@ -120,6 +120,11 @@ export function useConversationRouter({
       hasSetDefaultConversation.current = true;
       return;
     }
+    if (hashConv?.type === 'bot-detector') {
+      setActiveConversationState({ type: 'bot-detector', id: 'bot-detector', name: 'Bot Detector' });
+      hasSetDefaultConversation.current = true;
+      return;
+    }
 
     // No hash: optionally restore last-viewed non-data conversation if enabled on this device.
     if (!hashConv && getReopenLastConversationEnabled()) {
@@ -131,7 +136,8 @@ export function useConversationRouter({
           lastViewed.type === 'visualizer' ||
           lastViewed.type === 'node' ||
           lastViewed.type === 'mesh-health' ||
-          lastViewed.type === 'trace')
+          lastViewed.type === 'trace' ||
+          lastViewed.type === 'bot-detector')
       ) {
         setActiveConversationState(lastViewed);
         hasSetDefaultConversation.current = true;

@@ -15,7 +15,8 @@ interface ParsedHashConversation {
     | 'mesh-health'
     | 'kms'
     | 'contact-analytics'
-    | 'trace';
+    | 'trace'
+    | 'bot-detector';
   /** Conversation identity token (channel key or contact public key, or legacy name token) */
   name: string;
   /** Optional human-readable label segment (ignored for identity resolution) */
@@ -81,6 +82,9 @@ export function parseHashConversation(): ParsedHashConversation | null {
 
   if (hash === 'trace') {
     return { type: 'trace', name: 'trace' };
+  }
+  if (hash === 'bot-detector') {
+    return { type: 'bot-detector', name: 'bot-detector' };
   }
 
   // Check for map with focus: #map/focus/{pubkey_prefix}
@@ -195,6 +199,7 @@ export function getConversationHash(conv: Conversation | null): string {
     return `#contact-analytics/${encodeURIComponent(conv.id)}/${encodeURIComponent(conv.name)}`;
   }
   if (conv.type === 'trace') return '#trace';
+  if (conv.type === 'bot-detector') return '#bot-detector';
 
   // Use immutable IDs for identity, append readable label for UX.
   if (conv.type === 'channel') {

@@ -43,6 +43,8 @@ import type {
   NoiseFloorSample,
   TraceResponse,
   UnreadCounts,
+  BotDetectionNode,
+  ManualTag,
 } from './types';
 
 const API_BASE = '/api';
@@ -480,6 +482,18 @@ export const api = {
     fetchJson<RepeaterLppTelemetryResponse>(`/contacts/${publicKey}/room/lpp-telemetry`, {
       method: 'POST',
     }),
+
+  // ── Bot Detection ─────────────────────────────────────────────────────────
+  botDetectionListNodes: () => fetchJson<BotDetectionNode[]>('/bot-detection/nodes'),
+  botDetectionGetNode: (publicKey: string) =>
+    fetchJson<BotDetectionNode>(`/bot-detection/nodes/${publicKey}`),
+  botDetectionSetTag: (publicKey: string, tag: ManualTag | null) =>
+    fetchJson<{ public_key: string; manual_tag: ManualTag | null }>(
+      `/bot-detection/nodes/${publicKey}/tag`,
+      { method: 'POST', body: JSON.stringify({ tag }) }
+    ),
+  botDetectionAnalyze: () =>
+    fetchJson<{ nodes_analyzed: number }>('/bot-detection/analyze', { method: 'POST' }),
 
   // ── KMS ──────────────────────────────────────────────────────────────────
   kmsListKeys: () => fetchJson<KmsKey[]>('/kms/keys'),

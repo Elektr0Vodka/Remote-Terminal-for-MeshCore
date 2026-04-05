@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Ban, Search, Star } from 'lucide-react';
+import { Ban, Bot, Search, Star } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -11,6 +11,7 @@ import {
   Legend,
 } from 'recharts';
 import { api, isAbortError } from '../api';
+import type { ManualTag } from '../types';
 import { formatTime } from '../utils/messageParser';
 import {
   getContactDisplayName,
@@ -101,6 +102,8 @@ export function ContactInfoPane({
 
   const [analytics, setAnalytics] = useState<ContactAnalytics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [botTag, setBotTag] = useState<ManualTag | null>(null);
+  const [botTagLoading, setBotTagLoading] = useState(false);
   // Get live contact data from contacts array (real-time via WS)
   const liveContact =
     contactKey && !isNameOnly ? (contacts.find((c) => c.public_key === contactKey) ?? null) : null;
@@ -137,6 +140,32 @@ export function ContactInfoPane({
       controller.abort();
     };
   }, [contactKey, isNameOnly, nameOnlyValue]);
+
+  // Load bot tag for this contact
+  useEffect(() => {
+    if (!contactKey || isNameOnly) {
+      setBotTag(null);
+      return;
+    }
+    api
+      .botDetectionGetNode(contactKey)
+      .then((node) => setBotTag(node.manual_tag))
+      .catch(() => setBotTag(null));
+  }, [contactKey, isNameOnly]);
+
+  const handleToggleBotTag = async (tag: ManualTag) => {
+    if (!contactKey || isNameOnly || botTagLoading) return;
+    setBotTagLoading(true);
+    try {
+      const next = botTag === tag ? null : tag;
+      await api.botDetectionSetTag(contactKey, next);
+      setBotTag(next);
+    } catch {
+      // silently ignore
+    } finally {
+      setBotTagLoading(false);
+    }
+  };
 
   // Use live contact data where available, fall back to analytics snapshot
   const contact = liveContact ?? analytics?.contact ?? null;
@@ -398,6 +427,48 @@ export function ContactInfoPane({
                 )}
               </button>
             </div>
+
+            {/* Bot detection tag */}
+            {!isNameOnly && (
+              <div className="px-5 py-3 border-b border-border space-y-2">
+                <button
+                  type="button"
+                  disabled={botTagLoading}
+                  className="text-sm flex items-center gap-2 hover:text-primary transition-colors disabled:opacity-50"
+                  onClick={() => void handleToggleBotTag('likely_bot')}
+                >
+                  {botTag === 'likely_bot' ? (
+                    <>
+                      <Bot className="h-4.5 w-4.5 text-destructive" aria-hidden="true" />
+                      <span>Remove "likely bot" tag</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="h-4.5 w-4.5 text-muted-foreground" aria-hidden="true" />
+                      <span>Mark as likely bot</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={botTagLoading}
+                  className="text-sm flex items-center gap-2 hover:text-primary transition-colors disabled:opacity-50"
+                  onClick={() => void handleToggleBotTag('not_a_bot')}
+                >
+                  {botTag === 'not_a_bot' ? (
+                    <>
+                      <Bot className="h-4.5 w-4.5 text-green-600" aria-hidden="true" />
+                      <span>Remove "not a bot" tag</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="h-4.5 w-4.5 text-muted-foreground" aria-hidden="true" />
+                      <span>Mark as not a bot</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
 
             {/* Block toggles */}
             {(onToggleBlockedKey || onToggleBlockedName) && (

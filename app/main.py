@@ -25,6 +25,7 @@ from app.radio_sync import (
     stop_telemetry_collect,
 )
 from app.routers import (
+    bot_detection,
     channels,
     contacts,
     debug,
@@ -42,6 +43,7 @@ from app.routers import (
     ws,
 )
 from app.security import add_optional_basic_auth_middleware
+from app.services.bot_analyzer import start_bot_analyzer, stop_bot_analyzer
 from app.services.radio_noise_floor import start_noise_floor_sampling, stop_noise_floor_sampling
 from app.services.radio_runtime import radio_runtime as radio_manager
 from app.version_info import get_app_build_info
@@ -122,6 +124,8 @@ async def lifespan(app: FastAPI):
     global _auto_delete_task
     _auto_delete_task = asyncio.create_task(_auto_delete_raw_loop())
 
+    start_bot_analyzer()
+
     yield
 
     logger.info("Shutting down")
@@ -148,6 +152,7 @@ async def lifespan(app: FastAPI):
             await _auto_delete_task
         except asyncio.CancelledError:
             pass
+    await stop_bot_analyzer()
     await db.disconnect()
 
 
@@ -176,6 +181,7 @@ async def radio_disconnected_handler(request: Request, exc: RadioDisconnectedErr
 
 
 # API routes - all prefixed with /api for production compatibility
+app.include_router(bot_detection.router, prefix="/api")
 app.include_router(health.router, prefix="/api")
 app.include_router(debug.router, prefix="/api")
 app.include_router(kms.router, prefix="/api")

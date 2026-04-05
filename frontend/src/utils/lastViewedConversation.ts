@@ -11,6 +11,7 @@ const SUPPORTED_TYPES: Conversation['type'][] = [
   'map',
   'visualizer',
   'trace',
+  'bot-detector',
 ];
 
 function isSupportedType(value: unknown): value is Conversation['type'] {
@@ -103,6 +104,10 @@ export function captureLastViewedConversationFromHash(): void {
   }
   if (hashConversation.type === 'trace') {
     saveLastViewedConversation({ type: 'trace', id: 'trace', name: 'Trace' });
+    return;
+  }
+  if (hashConversation.type === 'bot-detector') {
+    saveLastViewedConversation({ type: 'bot-detector', id: 'bot-detector', name: 'Bot Detector' });
     return;
   }
 

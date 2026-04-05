@@ -41,7 +41,8 @@ app/
 │   ├── radio_lifecycle.py       # Post-connect setup and reconnect/setup helpers
 │   ├── radio_commands.py        # Radio config/private-key command workflows
 │   ├── radio_noise_floor.py     # In-memory local radio noise-floor sampling/history
-│   └── radio_runtime.py         # Router/dependency seam over the global RadioManager
+│   ├── radio_runtime.py         # Router/dependency seam over the global RadioManager
+│   └── bot_analyzer.py          # Periodic bot-behaviour scoring (automation + impact scores)
 ├── radio.py             # RadioManager transport/session state + lock management
 ├── radio_sync.py        # Polling, sync, periodic advertisement loop
 ├── decoder.py           # Packet parsing/decryption
@@ -71,6 +72,7 @@ app/
     ├── fanout.py
     ├── repeaters.py
     ├── statistics.py
+    ├── bot_detection.py
     └── ws.py
 ```
 
@@ -156,6 +158,16 @@ app/
 - Controlled by `app_settings.advert_interval` (seconds).
 - `0` means disabled.
 - Last send time tracked in `app_settings.last_advert_time`.
+
+### Bot analyzer
+
+- `services/bot_analyzer.py` scores every sender key in the `messages` table every 5 minutes via a background `asyncio.Task` started in `main.py` lifespan.
+- `start_bot_analyzer()` / `stop_bot_analyzer()` are the lifespan entry points; do not import `_bot_analyze_task` directly.
+- Scoring has three automation components (timing regularity, template repetition, structured content) plus a flat name-keyword bonus when "bot" appears in the display name. The bonus applies even when message data is insufficient so self-identified bots always surface.
+- Noise messages (short phrases like "Test", "Hello", "OK") are stripped from the scoring pool before any scoring runs. Nodes whose entire meaningful-message history is below `MIN_MESSAGES` (4) receive `insufficient_data=True` with automation derived only from the name bonus.
+- Template normalization strips `@[node]` references, 8+ char hex sequences, `>` and `,` separated hex-byte path payloads, and numeric literals to expose structural patterns.
+- `repository/bot_detection.py` uses `db.conn.execute()` / `db.conn.commit()` directly — not `async with db.connection()`.
+- Manual tags (`likely_bot`, `utility_bot`, `test`, `not_a_bot`) are preserved across re-analyses via `ON CONFLICT DO UPDATE` (the `manual_tag` column is excluded from the upsert's UPDATE clause).
 
 ### Fanout bus
 
@@ -257,6 +269,12 @@ app/
 - `DELETE /fanout/{id}` — delete fanout config (stops module)
 - `POST /fanout/bots/disable-until-restart` — stop bot modules and keep bots disabled until restart
 
+### Bot Detection
+- `GET /bot-detection/nodes` — all scored nodes sorted by automation score descending
+- `GET /bot-detection/nodes/{public_key}` — single node with score details and recent messages
+- `POST /bot-detection/nodes/{public_key}/tag` — set or clear a manual tag (`likely_bot`, `utility_bot`, `test`, `not_a_bot`, or `null`)
+- `POST /bot-detection/analyze` — trigger an immediate full re-analysis of all nodes
+
 ### Statistics
 - `GET /statistics` — aggregated mesh network stats (entity counts, message/packet splits, activity windows, busiest channels)
 
@@ -290,6 +308,7 @@ Main tables:
 - `raw_packets`
 - `contact_advert_paths` (recent unique advertisement paths per contact, keyed by contact + path bytes + hop count)
 - `contact_name_history` (tracks name changes over time)
+- `bot_detection_nodes` (per-sender automation/impact scores, manual tags, and scoring detail columns — created by migration 79)
 - `app_settings`
 
 Contact route state is canonicalized on the backend:

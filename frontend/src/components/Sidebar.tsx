@@ -6,6 +6,7 @@ import {
   ArrowDownUp,
   BarChart2,
   Bell,
+  Bot,
   Cable,
   ChartNetwork,
   CheckCheck,
@@ -149,7 +150,8 @@ type ToolKey =
   | 'mesh-health'
   | 'room-finder'
   | 'mc-kms'
-  | 'trace';
+  | 'trace'
+  | 'bot-detector';
 
 const TOOL_LABELS: Record<ToolKey, string> = {
   'packet-feed': 'Packet Feed',
@@ -161,6 +163,7 @@ const TOOL_LABELS: Record<ToolKey, string> = {
   'room-finder': 'Room Finder',
   'mc-kms': 'MC-KMS',
   trace: 'Trace',
+  'bot-detector': 'Bot Detector',
 };
 
 const ALL_TOOL_KEYS: ToolKey[] = [
@@ -173,6 +176,7 @@ const ALL_TOOL_KEYS: ToolKey[] = [
   'room-finder',
   'mc-kms',
   'trace',
+  'bot-detector',
 ];
 
 const SIDEBAR_TOOL_ORDER_KEY = 'remoteterm-sidebar-tool-order';
@@ -446,7 +450,8 @@ export function Sidebar({
       | 'node'
       | 'mesh-health'
       | 'kms'
-      | 'trace',
+      | 'trace'
+      | 'bot-detector',
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
@@ -1107,6 +1112,18 @@ export function Sidebar({
           icon: <KeyRound className="h-4 w-4" />,
           label: 'MC-KMS',
           onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-bot-detector',
+          active: isActive('bot-detector', 'bot-detector'),
+          icon: <Bot className="h-4 w-4" />,
+          label: 'Bot Detector',
+          onClick: () =>
+            handleSelectConversation({
+              type: 'bot-detector',
+              id: 'bot-detector',
+              name: 'Bot Detector',
+            }),
         }),
       ]
     : [];

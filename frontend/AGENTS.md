@@ -107,6 +107,7 @@ frontend/src/
 │   ├── RawPacketDetailModal.tsx # On-demand packet inspector dialog
 │   ├── MapView.tsx
 │   ├── TracePane.tsx           # Multi-hop route trace builder/results view
+│   ├── BotDetectorPane.tsx     # Bot detection scoring view (node list + detail panel)
 │   ├── VisualizerView.tsx
 │   ├── PacketVisualizer3D.tsx
 │   ├── PathModal.tsx
@@ -243,6 +244,7 @@ High-level state is delegated to hooks:
 - visualizer
 - raw packet feed
 - trace view
+- bot detector (`BotDetectorPane`)
 - repeater dashboard
 - room-server auth/status gate before room chat
 - normal chat chrome (`ChatHeader` + `MessageList` + `MessageInput`)
@@ -306,6 +308,7 @@ Supported routes:
 - `#visualizer`
 - `#search`
 - `#trace`
+- `#bot-detector`
 - `#settings/{section}`
 - `#channel/{channelKey}`
 - `#channel/{channelKey}/{label}`
@@ -361,6 +364,10 @@ LocalStorage migration helpers for favorites; canonical favorites are server-sid
 Note: MQTT, bot, and community MQTT settings were migrated to the `fanout_configs` table (managed via `/api/fanout`). They are no longer part of `AppSettings`.
 
 `HealthStatus` includes `fanout_statuses: Record<string, FanoutStatusEntry>` mapping config IDs to `{name, type, status}`. Also includes `bots_disabled: boolean`.
+
+`ManualTag` is `'likely_bot' | 'utility_bot' | 'test' | 'not_a_bot'`. The `'human'` tag was deliberately removed — `'not_a_bot'` covers that role.
+
+`BotDetectionNode` carries `automation_score`, `impact_score`, `classification`, `manual_tag`, timing/pattern/structured breakdown fields, and an optional `recent_messages` array (populated only by the single-node endpoint).
 
 `FanoutConfig` represents a single fanout integration: `{id, type, name, enabled, config, scope, sort_order, created_at}`.
 
