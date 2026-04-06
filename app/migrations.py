@@ -558,10 +558,10 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 79)
         applied += 1
 
-    if version < 55:
-        logger.info("Applying migration 55: move favorites to per-entity columns")
-        await _migrate_055_favorites_to_columns(conn)
-        await set_version(conn, 55)
+    if version < 80:
+        logger.info("Applying migration 80: move favorites to per-entity columns")
+        await _migrate_080_favorites_to_columns(conn)
+        await set_version(conn, 80)
         applied += 1
 
     if applied > 0:
@@ -3745,7 +3745,7 @@ async def _migrate_054_auto_resend_channel(conn: aiosqlite.Connection) -> None:
         await conn.commit()
 
 
-async def _migrate_055_favorites_to_columns(conn: aiosqlite.Connection) -> None:
+async def _migrate_080_favorites_to_columns(conn: aiosqlite.Connection) -> None:
     """Move favorites from app_settings JSON blob to per-entity boolean columns.
 
     1. Add ``favorite`` column to contacts and channels tables.
