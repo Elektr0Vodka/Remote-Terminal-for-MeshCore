@@ -105,7 +105,7 @@ frontend/src/
 │   ├── RawPacketList.tsx
 │   ├── RawPacketFeedView.tsx   # Live raw packet feed + session stats drawer
 │   ├── RawPacketDetailModal.tsx # On-demand packet inspector dialog
-│   ├── MapView.tsx
+│   ├── MapView.tsx             # Leaflet contact map; time-window/type/hash-mode/country filters; heatmap; path overlay; uses @rapideditor/country-coder (offline) for country detection
 │   ├── TracePane.tsx           # Multi-hop route trace builder/results view
 │   ├── BotDetectorPane.tsx     # Bot detection scoring view (node list + detail panel)
 │   ├── VisualizerView.tsx

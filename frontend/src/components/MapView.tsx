@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
 import { Cable, Info, Search, X } from 'lucide-react';
+import { iso1A2Code, emojiFlag, feature as ccFeature } from '@rapideditor/country-coder';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
@@ -114,6 +115,24 @@ function isHashModeObservedOnly(c: Contact): boolean {
  */
 function getContactHashModeKeyForFilter(c: Contact): HashModeKey {
   return getContactHashModeKey(c) ?? '1B';
+}
+
+// ─── Country lookup (pure local, no network) ─────────────────────────────────
+
+interface CountryInfo {
+  code: string; // ISO 3166-1 alpha-2
+  name: string; // English short name
+  flag: string; // emoji flag
+}
+
+function getCountryFromCoords(lat: number, lon: number): CountryInfo | null {
+  // country-coder uses GeoJSON [lon, lat] order
+  const code = iso1A2Code([lon, lat]);
+  if (!code) return null;
+  const flag = emojiFlag(code) ?? '';
+  const feat = ccFeature([lon, lat]);
+  const name = feat?.properties?.nameEn ?? code;
+  return { code, name, flag };
 }
 
 // ─── Recency colors ──────────────────────────────────────────────────────────
@@ -1423,6 +1442,16 @@ export function MapView({
   });
   const toggleHashMode = (k: HashModeKey) => setVisibleHashModes((p) => ({ ...p, [k]: !p[k] }));
 
+  // ── Country filter ──────────────────────────────────────────────────────────
+  const [selectedCountries, setSelectedCountries] = useState<Set<string>>(new Set());
+  const toggleCountry = (code: string) =>
+    setSelectedCountries((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+
   // ── Owned-only filter ───────────────────────────────────────────────────────
   const [showOwnedOnly, setShowOwnedOnly] = useState(() => {
     try {
@@ -1504,6 +1533,32 @@ export function MapView({
     }
     return { prefixIndex: prefix, nameIndex: name };
   }, [contacts]);
+
+  // ── Country map — public_key → CountryInfo | null ───────────────────────────
+  // Computed once from all contacts with valid GPS; instant (no network).
+  const contactCountryMap = useMemo(() => {
+    const map = new Map<string, CountryInfo | null>();
+    for (const c of contacts) {
+      if (isValidLocation(c.lat, c.lon)) {
+        map.set(c.public_key, getCountryFromCoords(c.lat!, c.lon!));
+      }
+    }
+    return map;
+  }, [contacts]);
+
+  // Sorted list of countries present among GPS-bearing contacts, with counts
+  const availableCountries = useMemo(() => {
+    const counts = new Map<string, { info: CountryInfo; count: number }>();
+    for (const [, info] of contactCountryMap) {
+      if (!info) continue;
+      const existing = counts.get(info.code);
+      if (existing) existing.count++;
+      else counts.set(info.code, { info, count: 1 });
+    }
+    return Array.from(counts.values()).sort((a, b) =>
+      a.info.name.localeCompare(b.info.name)
+    );
+  }, [contactCountryMap]);
 
   // Self GPS
   const myLatLon = useMemo<[number, number] | null>(() => {
@@ -1757,6 +1812,10 @@ export function MapView({
       const hmKey = getContactHashModeKeyForFilter(c);
       const allHashModesEnabled = ALL_HASH_MODE_KEYS.every((k) => visibleHashModes[k]);
       if (!allHashModesEnabled && !visibleHashModes[hmKey]) return false;
+      if (selectedCountries.size > 0) {
+        const country = contactCountryMap.get(c.public_key);
+        if (!country || !selectedCountries.has(country.code)) return false;
+      }
       return true;
     });
   }, [
@@ -1771,6 +1830,8 @@ export function MapView({
     discoveryMode,
     discoveredKeys,
     threeDaysAgoSec,
+    selectedCountries,
+    contactCountryMap,
   ]);
 
   const focusedContact = useMemo(
@@ -2034,6 +2095,9 @@ export function MapView({
               {activeHashModeCount < ALL_HASH_MODE_KEYS.length
                 ? ` · ${activeHashModeCount}/${ALL_HASH_MODE_KEYS.length} modes`
                 : ''}
+              {selectedCountries.size > 0
+                ? ` · ${selectedCountries.size}/${availableCountries.length} countr${selectedCountries.size === 1 ? 'y' : 'ies'}`
+                : ''}
               {heatmap ? ' · heatmap' : ''}
               {heatmap && heatLoading ? ' · loading…' : ''}
               {activePathTrace && (
@@ -2217,6 +2281,42 @@ export function MapView({
             </button>
           )}
         </div>
+
+        {/* Country filter — only shown when >1 country is present */}
+        {availableCountries.length > 1 && (
+          <div className="flex items-center gap-1 border-l border-border pl-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-0.5">
+              Country:
+            </span>
+            {availableCountries.map(({ info, count }) => {
+              const active = selectedCountries.size === 0 || selectedCountries.has(info.code);
+              return (
+                <button
+                  key={info.code}
+                  onClick={() => toggleCountry(info.code)}
+                  title={`${active && selectedCountries.size > 0 ? 'Hide' : 'Show only'} ${info.name} (${count})`}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors border ${
+                    active
+                      ? 'bg-primary/10 border-primary/40 text-foreground'
+                      : 'bg-muted border-border text-muted-foreground opacity-50'
+                  }`}
+                >
+                  <span aria-hidden="true">{info.flag}</span>
+                  <span className="font-mono">{info.code}</span>
+                  <span className="tabular-nums text-[10px] text-muted-foreground">{count}</span>
+                </button>
+              );
+            })}
+            {selectedCountries.size > 0 && (
+              <button
+                onClick={() => setSelectedCountries(new Set())}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                all
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="flex-1" />
 

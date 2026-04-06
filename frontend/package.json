@@ -27,6 +27,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@rapideditor/country-coder": "^5.6.1",
     "@types/leaflet.heat": "^0.2.5",
     "@uiw/react-codemirror": "^4.25.4",
     "class-variance-authority": "^0.7.1",
