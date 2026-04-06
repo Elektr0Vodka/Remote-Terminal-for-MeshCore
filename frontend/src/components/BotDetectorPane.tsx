@@ -296,6 +296,13 @@ export function BotDetectorPane() {
     try {
       await api.botDetectionAnalyze();
       await loadNodes();
+      // Refresh the open detail panel so scores update without closing/reopening
+      if (selectedKey) {
+        api
+          .botDetectionGetNode(selectedKey)
+          .then((d) => setSelectedDetail(d))
+          .catch(() => setSelectedDetail(null));
+      }
     } finally {
       setAnalyzing(false);
     }

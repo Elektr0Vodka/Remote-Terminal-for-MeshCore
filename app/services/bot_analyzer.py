@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 _ANALYZE_INTERVAL_SECONDS = 300  # re-score every 5 minutes
 MIN_MESSAGES = 4  # minimum messages needed for meaningful scoring
-_ANALYSIS_WINDOW_MESSAGES = 300  # max messages fetched per node
+_ANALYSIS_WINDOW_MESSAGES = 9999  # max messages fetched per node
 
 # Timing regularity: need at least this many intervals for a meaningful score.
 # Short message series (e.g. 6 "Test" messages) cannot reliably signal automation.
@@ -56,7 +56,7 @@ _HUMAN_NOISE_WORDS: frozenset[str] = frozenset(
         "test", "test2", "test3", "testing", "test 1", "test 2",
         "hello", "hi", "hoi", "hey", "hallo",
         "ok", "oke", "okay", "roger", "copy", "check", "received",
-        "gm", "gn", "73", "cq", "tnx", "thx", "ack", "ping", "pong",
+        "gm", "gn", "73", "cq", "tnx", "thx", "ack", "ping",
         "welterusten", "goedemorgen", "goedemiddag", "goedenavond",
     }
 )

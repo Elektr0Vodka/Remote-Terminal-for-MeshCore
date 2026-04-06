@@ -361,7 +361,7 @@ All endpoints are prefixed with `/api` (e.g., `/api/health`).
 | POST | `/api/messages/channel` | Send channel message |
 | POST | `/api/messages/channel/{message_id}/resend` | Resend channel message (default: byte-perfect within 30s; `?new_timestamp=true`: fresh timestamp, no time limit, creates new message row) |
 | GET | `/api/packets/undecrypted/count` | Count of undecrypted packets |
-| GET | `/api/packets/recent` | Most recent raw packets (default 500, max 2000), oldest-first — used to seed the packet feed on mount |
+| GET | `/api/packets/recent` | Most recent raw packets (default 500, max 5000), oldest-first — used to seed the packet feed on mount; optional `after_ts`/`before_ts` Unix-second filters for historical time windows |
 | GET | `/api/packets/timeseries` | Time-binned packet counts, byte totals, signal averages, and type breakdowns for a window (`start_ts`, `end_ts`, `bin_count`) |
 | GET | `/api/packets/historical-stats` | Aggregate DB stats for a window: totals, signal averages, type breakdown, top neighbors from `contact_advert_paths` |
 | GET | `/api/packets/mesh-health` | Advert-frequency health per contact in a window; flags HIGH (>8 adverts) and MEDIUM (>2 adverts) nodes |

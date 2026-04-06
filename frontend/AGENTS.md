@@ -272,6 +272,7 @@ High-level state is delegated to hooks:
 ### Visualizer behavior
 
 - `VisualizerView.tsx` hosts `PacketVisualizer3D.tsx` (desktop split-pane and mobile tabs).
+- A time-window toolbar sits below the header with preset buttons (Session · 30m · 1h · 2h · 6h · 12h · 24h) and a Custom date-range picker. In **Session** mode the live-stream `packets` prop is used as-is. In any other mode `api.getRecentPackets({ afterTs, beforeTs, limit: 5000 })` is called and the result replaces the live-stream data. A `vizKey` counter is incremented on every window change to remount `PacketVisualizer3D` and `RawPacketList`, resetting the incremental `processedRef` state so the 3D graph rebuilds cleanly.
 - `PacketVisualizer3D.tsx` is now a thin composition shell over visualizer-specific hooks/components in `components/visualizer/`.
 - `PacketVisualizer3D` uses persistent Three.js geometries for links/highlights/particles and updates typed-array buffers in-place per frame.
 - Packet repeat aggregation keys prefer decoder `messageHash` (path-insensitive), with hash fallback for malformed packets.

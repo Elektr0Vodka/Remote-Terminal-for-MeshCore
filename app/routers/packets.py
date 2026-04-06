@@ -324,16 +324,35 @@ async def run_maintenance(request: MaintenanceRequest) -> MaintenanceResult:
 
 
 @router.get("/recent")
-async def get_recent_packets(limit: int = 500) -> list[dict]:
+async def get_recent_packets(
+    limit: int = 500,
+    after_ts: int | None = None,
+    before_ts: int | None = None,
+) -> list[dict]:
     """
     Return the most recent raw packets from the database in the same shape
     as the WebSocket raw_packet broadcast, so the frontend can seed the
     packet feed on mount and after reconnect without losing history.
 
-    - limit: max packets to return (default 500, max 2000)
+    - limit: max packets to return (default 500, max 5000)
+    - after_ts: optional Unix timestamp (seconds); only return packets with
+      timestamp >= after_ts
+    - before_ts: optional Unix timestamp (seconds); only return packets with
+      timestamp <= before_ts
     - Ordered oldest-first so the frontend can append in natural order
     """
-    limit = min(max(1, limit), 2000)
+    limit = min(max(1, limit), 5000)
+
+    # Build WHERE clause from optional timestamp filters
+    conditions: list[str] = []
+    params: list[int] = []
+    if after_ts is not None:
+        conditions.append("timestamp >= ?")
+        params.append(after_ts)
+    if before_ts is not None:
+        conditions.append("timestamp <= ?")
+        params.append(before_ts)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     async with aiosqlite.connect(db.db_path) as conn:
         conn.row_factory = aiosqlite.Row
@@ -344,22 +363,24 @@ async def get_recent_packets(limit: int = 500) -> list[dict]:
         has_signal_cols = "rssi" in columns and "snr" in columns and "payload_type" in columns
 
         if has_signal_cols:
-            query = """
+            query = f"""
                 SELECT id, timestamp, data, message_id, rssi, snr, payload_type
                 FROM raw_packets
+                {where}
                 ORDER BY id DESC
                 LIMIT ?
             """
         else:
-            query = """
+            query = f"""
                 SELECT id, timestamp, data, message_id,
                        NULL as rssi, NULL as snr, NULL as payload_type
                 FROM raw_packets
+                {where}
                 ORDER BY id DESC
                 LIMIT ?
             """
 
-        async with conn.execute(query, (limit,)) as cursor:
+        async with conn.execute(query, (*params, limit)) as cursor:
             rows = await cursor.fetchall()
 
     # Reverse so oldest-first for natural append order on frontend
