@@ -65,7 +65,7 @@ describe('MapView', () => {
     expect(screen.getByText('Last heard: Never heard by this server')).toBeInTheDocument();
   });
 
-  it('keeps the 7-day cutoff stable for the lifetime of the mounted map', () => {
+  it('keeps the 12h cutoff stable for the lifetime of the mounted map', () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date('2026-03-15T12:00:00Z'));
@@ -84,7 +84,7 @@ describe('MapView', () => {
         last_advert: null,
         lat: 41,
         lon: -73,
-        last_seen: Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60 + 60,
+        last_seen: Math.floor(Date.now() / 1000) - 12 * 60 * 60 + 60,
         on_radio: false,
         favorite: false,
         last_contacted: null,

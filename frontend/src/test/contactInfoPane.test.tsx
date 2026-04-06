@@ -4,13 +4,16 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ContactInfoPane } from '../components/ContactInfoPane';
 import type { Contact, ContactAnalytics } from '../types';
 
-const { getContactAnalytics } = vi.hoisted(() => ({
+const { getContactAnalytics, botDetectionGetNode } = vi.hoisted(() => ({
   getContactAnalytics: vi.fn(),
+  botDetectionGetNode: vi.fn().mockResolvedValue({ manual_tag: null }),
 }));
 
 vi.mock('../api', () => ({
   api: {
     getContactAnalytics,
+    botDetectionGetNode,
+    botDetectionSetTag: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
