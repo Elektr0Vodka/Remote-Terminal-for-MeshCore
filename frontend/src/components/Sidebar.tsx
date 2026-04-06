@@ -31,7 +31,6 @@ import {
   type Contact,
   type Channel,
   type Conversation,
-  type Favorite,
 } from '../types';
 import {
   buildSidebarSectionSortOrders,
@@ -48,7 +47,6 @@ import { isPublicChannelKey } from '../utils/publicChannel';
 import { getContactDisplayName } from '../utils/pubkey';
 import { handleKeyboardActivate } from '../utils/a11y';
 import { ContactAvatar } from './ContactAvatar';
-import { isFavorite } from '../utils/favorites';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
@@ -327,7 +325,6 @@ interface SidebarProps {
   crackerRunning: boolean;
   onToggleCracker: () => void;
   onMarkAllRead: () => void;
-  favorites: Favorite[];
   isConversationNotificationsEnabled?: (type: 'channel' | 'contact', id: string) => boolean;
   blockedKeys?: string[];
   blockedNames?: string[];
@@ -359,7 +356,6 @@ export function Sidebar({
   crackerRunning,
   onToggleCracker,
   onMarkAllRead,
-  favorites,
   isConversationNotificationsEnabled,
   blockedKeys = [],
   blockedNames = [],
@@ -791,29 +787,20 @@ export function Sidebar({
     ownedRooms,
     ownedSensors,
   } = useMemo(() => {
-    const favChannels = filteredChannels.filter((c) => isFavorite(favorites, 'channel', c.key));
-    const nonFavChannels = filteredChannels.filter((c) => !isFavorite(favorites, 'channel', c.key));
-    const favContacts = filteredNonRepeaterContacts.filter((c) =>
-      isFavorite(favorites, 'contact', c.public_key)
-    );
-    const nonFavContacts = filteredNonRepeaterContacts.filter(
-      (c) => !isFavorite(favorites, 'contact', c.public_key)
-    );
-    const favRooms = filteredRooms.filter((c) => isFavorite(favorites, 'contact', c.public_key));
-    const nonFavRooms = filteredRooms.filter(
-      (c) => !isFavorite(favorites, 'contact', c.public_key)
-    );
-    const favRepeaters = filteredRepeaters.filter((c) =>
-      isFavorite(favorites, 'contact', c.public_key)
-    );
-    const nonFavRepeaters = filteredRepeaters.filter(
-      (c) => !isFavorite(favorites, 'contact', c.public_key)
-    );
+    const favChannels = filteredChannels.filter((c) => c.favorite);
+    const favContacts = [
+      ...filteredNonRepeaterContacts,
+      ...filteredRooms,
+      ...filteredRepeaters,
+    ].filter((c) => c.favorite);
+    const nonFavChannels = filteredChannels.filter((c) => !c.favorite);
+    const nonFavContacts = filteredNonRepeaterContacts.filter((c) => !c.favorite);
+    const nonFavRooms = filteredRooms.filter((c) => !c.favorite);
+    const nonFavRepeaters = filteredRepeaters.filter((c) => !c.favorite);
+
     const items: FavoriteItem[] = [
       ...favChannels.map((channel) => ({ type: 'channel' as const, channel })),
       ...favContacts.map((contact) => ({ type: 'contact' as const, contact })),
-      ...favRooms.map((contact) => ({ type: 'contact' as const, contact })),
-      ...favRepeaters.map((contact) => ({ type: 'contact' as const, contact })),
     ];
     // Owned: nodes with owner_id set — search ALL contacts (including favourites)
     const ownedReps = filteredRepeaters.filter((c) => c.owner_id);
@@ -839,7 +826,6 @@ export function Sidebar({
     filteredNonRepeaterContacts,
     filteredRooms,
     filteredRepeaters,
-    favorites,
     sectionSortOrders.favorites,
     sortFavoriteItemsByOrder,
   ]);

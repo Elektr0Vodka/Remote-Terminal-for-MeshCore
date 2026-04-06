@@ -13,7 +13,6 @@ import type {
   ContactAnalytics,
   ContactAdvertPathSummary,
   FanoutConfig,
-  Favorite,
   HealthStatus,
   MaintenanceResult,
   Message,
@@ -47,7 +46,7 @@ import type {
   ManualTag,
 } from './types';
 
-const API_BASE = '/api';
+const API_BASE = './api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const hasBody = options?.body !== undefined;
@@ -375,8 +374,8 @@ export const api = {
     }),
 
   // Favorites
-  toggleFavorite: (type: Favorite['type'], id: string) =>
-    fetchJson<AppSettings>('/settings/favorites/toggle', {
+  toggleFavorite: (type: 'channel' | 'contact', id: string) =>
+    fetchJson<{ type: string; id: string; favorite: boolean }>('/settings/favorites/toggle', {
       method: 'POST',
       body: JSON.stringify({ type, id }),
     }),

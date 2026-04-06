@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     first_seen INTEGER,
     last_read_at INTEGER,
     advert_hash_mode INTEGER,
-    observed_hash_mode INTEGER
+    observed_hash_mode INTEGER,
+    favorite INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS channels (
@@ -39,7 +40,8 @@ CREATE TABLE IF NOT EXISTS channels (
     on_radio INTEGER DEFAULT 0,
     flood_scope_override TEXT,
     path_hash_mode_override INTEGER,
-    last_read_at INTEGER
+    last_read_at INTEGER,
+    favorite INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS messages (

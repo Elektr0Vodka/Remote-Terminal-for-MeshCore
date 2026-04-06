@@ -59,7 +59,6 @@ const baseHealth: HealthStatus = {
 
 const baseSettings: AppSettings = {
   max_radio_contacts: 200,
-  favorites: [],
   auto_decrypt_dm_on_advert: false,
   last_message_times: {},
 
@@ -753,7 +752,7 @@ describe('SettingsModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Statistics/i }));
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith('/api/statistics', expect.any(Object));
+      expect(fetchSpy).toHaveBeenCalledWith('./api/statistics', expect.any(Object));
     });
 
     await waitFor(() => {

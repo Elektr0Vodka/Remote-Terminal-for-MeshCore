@@ -11,7 +11,6 @@ import type {
   Channel,
   Contact,
   Conversation,
-  Favorite,
   HealthStatus,
   Message,
   PathDiscoveryResponse,
@@ -51,7 +50,6 @@ interface ConversationPaneProps {
   notificationsSupported: boolean;
   notificationsEnabled: boolean;
   notificationsPermission: NotificationPermission | 'unsupported';
-  favorites: Favorite[];
   messages: Message[];
   preSorted?: boolean;
   messagesLoading: boolean;
@@ -129,7 +127,6 @@ export function ConversationPane({
   notificationsSupported,
   notificationsEnabled,
   notificationsPermission,
-  favorites,
   messages,
   preSorted,
   messagesLoading,
@@ -312,7 +309,6 @@ export function ConversationPane({
           key={activeConversation.id}
           conversation={activeConversation}
           contacts={contacts}
-          favorites={favorites}
           notificationsSupported={notificationsSupported}
           notificationsEnabled={notificationsEnabled}
           notificationsPermission={notificationsPermission}
@@ -341,7 +337,6 @@ export function ConversationPane({
         contacts={contacts}
         channels={channels}
         config={config}
-        favorites={favorites}
         notificationsSupported={notificationsSupported}
         notificationsEnabled={notificationsEnabled}
         notificationsPermission={notificationsPermission}

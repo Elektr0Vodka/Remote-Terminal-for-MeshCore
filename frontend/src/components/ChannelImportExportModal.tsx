@@ -162,6 +162,7 @@ export function ChannelImportExportModal({
         flood_scope_override: null,
         path_hash_mode_override: null,
         last_read_at: null,
+        favorite: false,
       }));
       if (toExport.length === 0) {
         toast.warning('No channels found yet', {

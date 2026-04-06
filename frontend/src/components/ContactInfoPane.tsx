@@ -30,7 +30,6 @@ import {
 } from '../utils/pathUtils';
 import { isPublicChannelKey } from '../utils/publicChannel';
 import { getMapFocusHash } from '../utils/urlHash';
-import { isFavorite } from '../utils/favorites';
 import { handleKeyboardActivate } from '../utils/a11y';
 import { ContactAvatar } from './ContactAvatar';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
@@ -43,7 +42,6 @@ import type {
   ContactAnalytics,
   ContactAnalyticsHourlyBucket,
   ContactAnalyticsWeeklyBucket,
-  Favorite,
   RadioConfig,
 } from '../types';
 
@@ -68,7 +66,6 @@ interface ContactInfoPaneProps {
   onClose: () => void;
   contacts: Contact[];
   config: RadioConfig | null;
-  favorites: Favorite[];
   onToggleFavorite: (type: 'channel' | 'contact', id: string) => void;
   onNavigateToChannel?: (channelKey: string) => void;
   onSearchMessagesByKey?: (publicKey: string) => void;
@@ -86,7 +83,6 @@ export function ContactInfoPane({
   onClose,
   contacts,
   config,
-  favorites,
   onToggleFavorite,
   onNavigateToChannel,
   onSearchMessagesByKey,
@@ -414,7 +410,7 @@ export function ContactInfoPane({
                 onClick={() => onToggleFavorite('contact', contact.public_key)}
                 title="Favorite contacts stay loaded on the radio for ACK support"
               >
-                {isFavorite(favorites, 'contact', contact.public_key) ? (
+                {contact.favorite ? (
                   <>
                     <Star className="h-4.5 w-4.5 fill-current text-favorite" aria-hidden="true" />
                     <span>Remove from favorites</span>
