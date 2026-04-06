@@ -1,4 +1,5 @@
 import { getContactAvatar } from '../utils/contactAvatar';
+import { isFlagEmoji, FlagEmoji } from '../utils/flagEmoji';
 
 interface ContactAvatarProps {
   name: string | null;
@@ -74,7 +75,11 @@ export function ContactAvatar({
       }}
       aria-hidden="true"
     >
-      {avatar.text}
+      {isFlagEmoji(avatar.text) ? (
+        <FlagEmoji flag={avatar.text} size={size * 0.72} />
+      ) : (
+        avatar.text
+      )}
     </div>
   );
 }
