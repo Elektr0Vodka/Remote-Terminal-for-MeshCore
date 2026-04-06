@@ -1,3 +1,88 @@
+# Country Flag Emoji Fix for Windows/Chromium (07-4-2026)
+
+Country flag emoji (🇳🇱, 🇬🇧, etc.) were rendering as two-letter ISO codes on Windows/Chromium because `Segoe UI Emoji` does not support regional indicator pairs. Fixed using `country-flag-emoji-polyfill`, which detects the missing support at runtime and injects a `@font-face` rule using the bundled `TwemojiCountryFlags.woff2` COLR subset font (77 kB). The font is served locally from `public/fonts/` — no CDN dependency, fully offline.
+
+## What's changed
+
+### Font polyfill (`frontend/src/main.tsx`)
+- Calls `polyfillCountryFlagEmojis('Twemoji Country Flags', './fonts/TwemojiCountryFlags.woff2')` on startup. Only activates on browsers that support colour emoji but not flag emoji (Windows/Chromium); no-op on macOS/Linux/Firefox.
+
+### CSS font stack (`frontend/src/index.css`)
+- `--font-sans` prefixed with `"Twemoji Country Flags"`. The font's `unicode-range` (U+1F1E6–1F1FF) restricts it to flag sequences only, leaving all other text rendering unchanged.
+
+### Bundled font (`frontend/public/fonts/TwemojiCountryFlags.woff2`)
+- Subset of Twemoji Mozilla, copied from `country-flag-emoji-polyfill` npm package. Served as a static asset.
+
+### New dependency
+- `country-flag-emoji-polyfill` — 0.7 kB gzipped JS + 77 kB WOFF2 font.
+
+---
+
+# Map Country Filter (07-4-2026)
+
+Adds a country filter to the Node Map. Contacts can be filtered by the country their GPS coordinates fall in, using entirely offline lookup.
+
+## What's changed
+
+### Country detection (`frontend/src/components/MapView.tsx`)
+- `getCountryFromCoords(lat, lon)` uses `iso1A2Code`, `emojiFlag`, and `feature` from `@rapideditor/country-coder` (bundled GeoJSON, no network). Returns ISO code, name, and flag emoji.
+- `contactCountryMap` memo maps each GPS-bearing contact's public key to its `CountryInfo`.
+
+### Two-phase filtering
+- `baseFilteredContacts` memo applies time/type/hash-mode filters (all existing filters except country). Used to compute the country button list so it respects the current time window.
+- `mappableContacts` applies the country filter on top as a second pass. Avoids a circular dependency between the country list and the country filter.
+
+### Country button toolbar
+- Rendered when more than one country is present among currently visible contacts.
+- Each button shows the flag emoji and a contact count. Tooltip shows the country name. Active/inactive state styled consistently with the type filter buttons.
+- "all" reset link clears the selection.
+- A `useEffect` prunes selected countries that leave the visible set when the time window or type filter changes, preventing zero-result dead selections.
+
+### Info bar
+- Shows `· N/M countr(y|ies)` when a country filter is active.
+
+### New dependency
+- `@rapideditor/country-coder` — offline-capable GeoJSON country lookup.
+
+---
+
+# Mesh Visualizer Time Window (07-4-2026)
+
+The Mesh Visualizer now supports historical time windows, not just the live session.
+
+## What's changed
+
+### Time window toolbar (`frontend/src/components/VisualizerView.tsx`)
+- Added preset buttons: **Session · 30m · 1h · 2h · 6h · 12h · 24h · Custom**.
+- Session mode streams live WebSocket packets as before.
+- Historical modes call `GET /api/packets/recent?after_ts=&before_ts=&limit=5000` and display the returned snapshot.
+- Custom mode exposes from/to datetime inputs.
+- Changing the window remounts `PacketVisualizer3D` and `RawPacketList` via a `vizKey` counter, resetting incremental graph state.
+
+### Backend endpoint (`app/routers/packets.py`)
+- `GET /api/packets/recent` extended with optional `after_ts` and `before_ts` Unix-second query parameters.
+- `limit` cap raised from 2000 to 5000.
+
+### API client (`frontend/src/api.ts`)
+- `api.getRecentPackets({ afterTs?, beforeTs?, limit? })` added.
+
+---
+
+# Channel Finder Queue & Count Fixes (07-4-2026)
+
+Two bugs in the channel cracker panel corrected.
+
+## What's changed
+
+### Queue staleness (`frontend/src/components/CrackerPanel.tsx`)
+- The effect that enqueues new `GROUP_TEXT` packets for cracking used `[undecryptedGroupText.length]` as its dependency. Under React 18 concurrent rendering with frequent state updates, this missed packets that arrived while cracking was active. Changed to `[undecryptedGroupText]` (full array reference) so every state update triggers a re-evaluation.
+
+### Undecrypted count refresh timing
+- The 2-minute polling interval was replaced with a per-packet refresh: `refreshUndecryptedCount()` is called after each packet finishes its decrypt/fail sequence, immediately before the next packet is scheduled. Count now stays current rather than drifting 50+ packets behind.
+- `refreshUndecryptedCount` extracted as a `useCallback` to keep the `processNext` dependency array clean.
+
+---
+
 # Migration Fix: Upstream FK Rebuild Stripped Signal Data (04-4-2026)
 
 The upstream FK cascade migration (62) introduced in the 3.7.0 merge rebuilt
