@@ -106,18 +106,19 @@ export function CrackerPanel({
   }, [visible, wordlistLoaded]);
 
   // Fetch undecrypted packet count
-  useEffect(() => {
-    const fetchCount = () => {
-      api
-        .getUndecryptedPacketCount()
-        .then(({ count }) => setUndecryptedPacketCount(count))
-        .catch(() => setUndecryptedPacketCount(null));
-    };
-    fetchCount();
-    // Refresh hourly (this is just for display; not critical to be up-to-date)
-    const interval = setInterval(fetchCount, 3600000);
-    return () => clearInterval(interval);
+  const refreshUndecryptedCount = useCallback(() => {
+    api
+      .getUndecryptedPacketCount()
+      .then(({ count }) => setUndecryptedPacketCount(count))
+      .catch(() => setUndecryptedPacketCount(null));
   }, []);
+
+  useEffect(() => {
+    refreshUndecryptedCount();
+    // Refresh every 2 minutes so the count stays reasonably fresh while cracking
+    const interval = setInterval(refreshUndecryptedCount, 120000);
+    return () => clearInterval(interval);
+  }, [refreshUndecryptedCount]);
 
   // Get existing channel keys for filtering (memoized to avoid recreating on every render)
   const existingChannelKeys = useMemo(
@@ -136,7 +137,8 @@ export function CrackerPanel({
   );
 
   // Update queue when packets change (deduplicated by payload)
-  // Note: We intentionally depend on .length only to avoid re-running on every array identity change
+  // We depend on the full array (not just .length) so new packets arriving while cracking is active
+  // are always picked up. setQueue bails out cheaply (returns prev) when nothing new is found.
   useEffect(() => {
     let newSkipped = 0;
 
@@ -179,8 +181,7 @@ export function CrackerPanel({
     if (newSkipped > 0) {
       setSkippedDuplicates((prev) => prev + newSkipped);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [undecryptedGroupText.length]);
+  }, [undecryptedGroupText]);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -362,6 +363,8 @@ export function CrackerPanel({
                 key_type: 'channel',
                 channel_name: channelName,
               });
+              // Refresh the count now that some historical packets have been decrypted
+              refreshUndecryptedCount();
             }
           } catch (err) {
             console.error('Failed to create channel or decrypt historical:', err);
@@ -412,7 +415,7 @@ export function CrackerPanel({
     if (isRunningRef.current) {
       setTimeout(() => processNext(), 100);
     }
-  }, [onChannelCreate]);
+  }, [onChannelCreate, refreshUndecryptedCount]);
 
   // Start/stop handlers
   const handleStart = () => {
