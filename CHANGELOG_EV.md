@@ -83,6 +83,103 @@ Two bugs in the channel cracker panel corrected.
 
 ---
 
+# Bot Detection Module (06-4-2026)
+
+Adds a behaviour-based bot detection system that scores nodes on automation likelihood and impact without requiring manual review.
+
+## What's changed
+
+### Backend (`app/services/bot_analyzer.py`, `app/repository/bot_detection.py`, `app/routers/bot_detection.py`)
+- `BotAnalyzerService` scores contacts on two axes: **automation score** (timing regularity via coefficient of variation, template repetition, structured content patterns, name keyword bonus) and **impact score** (message volume, channel reach).
+- Noise pre-filter strips routine human check-ins (Test, Hello, etc.) before scoring so genuine chatty humans aren't penalised.
+- Template normalisation handles MeshCore path payloads (`>`-separated and `,`-separated hex bytes).
+- Background analysis task runs periodically; individual re-analysis available via API.
+- Manual tags: `likely_bot`, `utility_bot`, `test`, `not_a_bot`.
+- Migrations add `bot_scores` and `bot_manual_tags` tables.
+- REST endpoints: `GET /api/bot-detection/nodes`, `GET /api/bot-detection/nodes/{key}`, `POST /api/bot-detection/nodes/{key}/analyze`, `POST /api/bot-detection/nodes/{key}/tag`.
+
+### BotDetectorPane (`frontend/src/components/BotDetectorPane.tsx`)
+- Sortable/filterable node table with automation and impact score bars.
+- Detail panel: score breakdown, message samples, Analyze now button (auto-refreshes panel on completion).
+- URL hash persistence (`#bot-detector`), last-viewed restore, sidebar nav entry (🤖).
+
+### ContactInfoPane integration
+- Bot tag toggle buttons (Likely bot / Not a bot) added to the contact detail sheet.
+
+### Bot detection improvements (`411779a`)
+- Analysis window raised from 300 → 9999 messages so high-traffic routing relays are scored over their full history.
+- "pong" removed from human noise words (valid bot response pattern).
+- Detail panel auto-refreshes after "Analyze now" without requiring panel close/reopen.
+
+---
+
+# Channel Import / Export (05-4-2026)
+
+Channels can now be exported and imported using a plain-text format, and imported channels can optionally trigger a historical decrypt pass.
+
+## What's changed
+
+### Backend (`app/routers/channels.py`)
+- `GET /api/channels/export` — exports all channels as a `.txt` file in `#name - key` format. Three modes: all channels, named channels only, or channels with keys only.
+- `POST /api/channels/import` — parses the same format, creates missing channels, and returns a summary of added/skipped/failed entries.
+- `POST /api/channels/import/decrypt` — after import, re-runs the historical decrypt pass over stored `GROUP_TEXT` packets using the newly imported keys.
+
+### ChannelImportExportModal (`frontend/src/components/ChannelImportExportModal.tsx`)
+- Import tab: file picker or paste area, preview of parsed entries, conflict summary, optional "decrypt historical packets" checkbox after import completes.
+- Export tab: three export scope buttons with live download.
+
+### Sidebar / CrackerPanel integration
+- Import/Export button added to the Channels section header.
+- CrackerPanel wired to accept a post-import trigger to kick off historical decrypt.
+
+### New dependency
+- `python-multipart` added for file upload handling.
+
+---
+
+# Migration Fix: Favorites Migration Number Collision (05-4-2026)
+
+Our fork's new migrations (051–055) collided with upstream's numbering and became unreachable on any database already past version 50. Renumbered to 080–085 so they run correctly on all existing databases.
+
+---
+
+# Bugfix: Signal Data (rssi/snr/payload_type) Never Saved for New Packets (04-4-2026)
+
+`raw_packets` INSERT used only `(timestamp, data, payload_hash)` as the conflict key, so the `rssi`, `snr`, and `payload_type` columns were always `NULL` on newly inserted packets. Fixed by including those columns in the single `INSERT OR IGNORE` and using `cursor.rowcount` to distinguish new rows from duplicates.
+
+---
+
+# MapView Fork Features Restored After Upstream Merge (04-4-2026)
+
+An upstream merge had replaced our ~2500-line MapView with the upstream minimal version (~860 lines), silently dropping all fork-specific features. This commit re-merges both codebases.
+
+## What's restored
+
+- Contact type filter buttons with live counts
+- Hash mode filter buttons (1B / 2B / 3B)
+- Time window presets + custom date range picker
+- Heatmap mode (`leaflet.heat`, `/api/contacts/heatmap`)
+- `MarkerClusterGroup` with custom cluster icons
+- Emoji `DivIcon` markers with recency colour dots and health warning rings
+- Full `MapPopupContent`: editable notes, owner ID, live trace, Show Path, copy coords/key, owned nodes, Send DM, Manage Node
+- `FlyToHandler`, `MapViewPersist` (pan/zoom to `localStorage`), `MapBoundsHandler`
+- Trace Builder + Trace History panels
+- Owned-only filter, tile layer picker, node search
+
+## Trace button and prop fixes (`f5c4332`)
+
+- `ConversationPane` was not forwarding `rawPackets`, `connectedPublicKey`, `onSelectConversation`, `onPathDiscovery`, or `onRunTracePath` to `MapView`, silently disabling Send Trace and Show Path. All props now correctly passed.
+- Trace builder gains **1-byte / 2-byte / 3-byte** hop width selector (protocol values 1 / 2 / 4). Default follows detected hop type; manually overridable.
+- `resolvePacketPath` now prefers the source contact's stored `direct_path` over re-resolving raw hash bytes, routing particles through known repeater GPS points.
+
+## MapView correctness fixes (`796ac83`)
+
+- 4-byte trace mode protocol value corrected.
+- Missing props propagated to nested components.
+- UI labels corrected.
+
+---
+
 # Migration Fix: Upstream FK Rebuild Stripped Signal Data (04-4-2026)
 
 The upstream FK cascade migration (62) introduced in the 3.7.0 merge rebuilt
