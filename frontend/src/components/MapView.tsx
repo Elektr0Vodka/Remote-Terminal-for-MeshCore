@@ -1546,20 +1546,6 @@ export function MapView({
     return map;
   }, [contacts]);
 
-  // Sorted list of countries present among GPS-bearing contacts, with counts
-  const availableCountries = useMemo(() => {
-    const counts = new Map<string, { info: CountryInfo; count: number }>();
-    for (const [, info] of contactCountryMap) {
-      if (!info) continue;
-      const existing = counts.get(info.code);
-      if (existing) existing.count++;
-      else counts.set(info.code, { info, count: 1 });
-    }
-    return Array.from(counts.values()).sort((a, b) =>
-      a.info.name.localeCompare(b.info.name)
-    );
-  }, [contactCountryMap]);
-
   // Self GPS
   const myLatLon = useMemo<[number, number] | null>(() => {
     if (!_config || !isValidLocation(_config.lat, _config.lon)) return null;
@@ -1792,30 +1778,24 @@ export function MapView({
   }, [showPackets, particles]);
 
   // ── Filtered contacts ───────────────────────────────────────────────────────
-  const mappableContacts = useMemo(() => {
-    // When packet visualization + discovery mode is active, only show discovered nodes
+  // Phase 1: all filters except country — used to build the country button list
+  const baseFilteredContacts = useMemo(() => {
     if (showPackets && discoveryMode) {
       return contacts.filter(
         (c) => isValidLocation(c.lat, c.lon) && discoveredKeys.has(c.public_key)
       );
     }
-
     return contacts.filter((c) => {
       if (!isValidLocation(c.lat, c.lon)) return false;
       if (c.public_key === focusedKey) return true;
       if (c.last_seen == null || c.last_seen < effectiveStart || c.last_seen > effectiveEnd)
         return false;
-      // When packet viz is on, also apply 3-day window filter
       if (showPackets && c.last_seen < threeDaysAgoSec) return false;
       if (showOwnedOnly && !(OWNER_CAPABLE_TYPES.has(c.type) && c.owner_id)) return false;
       if (!visibleTypes[getTypeKey(c.type)]) return false;
       const hmKey = getContactHashModeKeyForFilter(c);
       const allHashModesEnabled = ALL_HASH_MODE_KEYS.every((k) => visibleHashModes[k]);
       if (!allHashModesEnabled && !visibleHashModes[hmKey]) return false;
-      if (selectedCountries.size > 0) {
-        const country = contactCountryMap.get(c.public_key);
-        if (!country || !selectedCountries.has(country.code)) return false;
-      }
       return true;
     });
   }, [
@@ -1830,9 +1810,45 @@ export function MapView({
     discoveryMode,
     discoveredKeys,
     threeDaysAgoSec,
-    selectedCountries,
-    contactCountryMap,
   ]);
+
+  // Countries present among the time/type-filtered contacts, sorted alphabetically
+  const availableCountries = useMemo(() => {
+    const counts = new Map<string, { info: CountryInfo; count: number }>();
+    for (const c of baseFilteredContacts) {
+      const info = contactCountryMap.get(c.public_key);
+      if (!info) continue;
+      const existing = counts.get(info.code);
+      if (existing) existing.count++;
+      else counts.set(info.code, { info, count: 1 });
+    }
+    return Array.from(counts.values()).sort((a, b) =>
+      a.info.name.localeCompare(b.info.name)
+    );
+  }, [baseFilteredContacts, contactCountryMap]);
+
+  // Drop selected countries that have left the current timeframe window
+  useEffect(() => {
+    if (selectedCountries.size === 0) return;
+    const available = new Set(availableCountries.map((c) => c.info.code));
+    const stale = [...selectedCountries].filter((code) => !available.has(code));
+    if (stale.length > 0) {
+      setSelectedCountries((prev) => {
+        const next = new Set(prev);
+        stale.forEach((code) => next.delete(code));
+        return next;
+      });
+    }
+  }, [availableCountries, selectedCountries]);
+
+  // Phase 2: apply country filter on top
+  const mappableContacts = useMemo(() => {
+    if (selectedCountries.size === 0) return baseFilteredContacts;
+    return baseFilteredContacts.filter((c) => {
+      const country = contactCountryMap.get(c.public_key);
+      return country != null && selectedCountries.has(country.code);
+    });
+  }, [baseFilteredContacts, selectedCountries, contactCountryMap]);
 
   const focusedContact = useMemo(
     () => (focusedKey ? (mappableContacts.find((c) => c.public_key === focusedKey) ?? null) : null),
@@ -2295,14 +2311,13 @@ export function MapView({
                   key={info.code}
                   onClick={() => toggleCountry(info.code)}
                   title={`${active && selectedCountries.size > 0 ? 'Hide' : 'Show only'} ${info.name} (${count})`}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors border ${
+                  className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs transition-colors border ${
                     active
                       ? 'bg-primary/10 border-primary/40 text-foreground'
                       : 'bg-muted border-border text-muted-foreground opacity-50'
                   }`}
                 >
-                  <span aria-hidden="true">{info.flag}</span>
-                  <span className="font-mono">{info.code}</span>
+                  <span className="text-base leading-none">{info.flag}</span>
                   <span className="tabular-nums text-[10px] text-muted-foreground">{count}</span>
                 </button>
               );
