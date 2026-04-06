@@ -115,9 +115,6 @@ export function CrackerPanel({
 
   useEffect(() => {
     refreshUndecryptedCount();
-    // Refresh every 2 minutes so the count stays reasonably fresh while cracking
-    const interval = setInterval(refreshUndecryptedCount, 120000);
-    return () => clearInterval(interval);
   }, [refreshUndecryptedCount]);
 
   // Get existing channel keys for filtering (memoized to avoid recreating on every render)
@@ -363,8 +360,6 @@ export function CrackerPanel({
                 key_type: 'channel',
                 channel_name: channelName,
               });
-              // Refresh the count now that some historical packets have been decrypted
-              refreshUndecryptedCount();
             }
           } catch (err) {
             console.error('Failed to create channel or decrypt historical:', err);
@@ -413,6 +408,8 @@ export function CrackerPanel({
 
     // Continue processing if still running
     if (isRunningRef.current) {
+      // Refresh the historical undecrypted count between packets so it stays current
+      refreshUndecryptedCount();
       setTimeout(() => processNext(), 100);
     }
   }, [onChannelCreate, refreshUndecryptedCount]);
