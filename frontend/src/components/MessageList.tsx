@@ -17,6 +17,7 @@ import {
   parseSenderFromText,
 } from '../utils/messageParser';
 import { formatHopCounts, type SenderInfo } from '../utils/pathUtils';
+import { TextWithFlags } from '../utils/flagEmoji';
 import { getDirectContactRoute } from '../utils/pathUtils';
 import { ContactAvatar } from './ContactAvatar';
 import { PathModal } from './PathModal';
@@ -985,10 +986,10 @@ export function MessageList({
                           onClick={() => onSenderClick(displaySender)}
                           title={`Mention ${displaySender}`}
                         >
-                          {displaySender}
+                          <TextWithFlags text={displaySender} />
                         </span>
                       ) : (
-                        displaySender
+                        <TextWithFlags text={displaySender} />
                       )}
                       <span className="font-normal text-muted-foreground ml-2 text-[0.6875rem]">
                         {formatTime(msg.received_at)}
