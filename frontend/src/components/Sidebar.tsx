@@ -47,7 +47,6 @@ import { isPublicChannelKey } from '../utils/publicChannel';
 import { getContactDisplayName } from '../utils/pubkey';
 import { handleKeyboardActivate } from '../utils/a11y';
 import { ContactAvatar } from './ContactAvatar';
-import { TextWithFlags } from '../utils/flagEmoji';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
@@ -882,7 +881,7 @@ export function Sidebar({
             contactType={row.contact.type}
           />
         )}
-        <span className="name flex-1 truncate text-[0.8125rem]"><TextWithFlags text={row.name} /></span>
+        <span className="name flex-1 truncate text-[0.8125rem]">{row.name}</span>
         <span className="ml-auto flex items-center gap-1">
           {row.notificationsEnabled && (
             <span aria-label="Notifications enabled" title="Notifications enabled">

@@ -31,7 +31,6 @@ import {
   dedupeConsecutive,
 } from '../utils/visualizerUtils';
 import { getRawPacketObservationKey } from '../utils/rawPacketIdentity';
-import { FlagEmoji } from '../utils/flagEmoji';
 
 interface MapViewProps {
   contacts: Contact[];
@@ -2318,7 +2317,7 @@ export function MapView({
                       : 'bg-muted border-border text-muted-foreground opacity-50'
                   }`}
                 >
-                  <FlagEmoji flag={info.flag} size="1.15em" />
+                  <span className="text-base leading-none">{info.flag}</span>
                   <span className="tabular-nums text-[10px] text-muted-foreground">{count}</span>
                 </button>
               );

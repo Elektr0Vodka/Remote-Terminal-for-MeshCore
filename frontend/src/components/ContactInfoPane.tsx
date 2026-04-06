@@ -18,7 +18,6 @@ import {
   isPrefixOnlyContact,
   isUnknownFullKeyContact,
 } from '../utils/pubkey';
-import { TextWithFlags } from '../utils/flagEmoji';
 import {
   isValidLocation,
   calculateDistance,
@@ -303,7 +302,7 @@ export function ContactInfoPane({
                 />
                 <div className="flex-1 min-w-0">
                   <h2 className="text-lg font-semibold truncate">
-                    <TextWithFlags text={getContactDisplayName(contact.name, contact.public_key, contact.last_advert)} />
+                    {getContactDisplayName(contact.name, contact.public_key, contact.last_advert)}
                   </h2>
                   <span
                     className="text-xs font-mono text-muted-foreground cursor-pointer hover:text-primary transition-colors block truncate"
