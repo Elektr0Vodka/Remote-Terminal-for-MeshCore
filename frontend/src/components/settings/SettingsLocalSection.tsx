@@ -29,6 +29,7 @@ import {
   getSavedFontScale,
   setSavedFontScale,
 } from '../../utils/fontScale';
+import { getAutoFocusInputEnabled, setAutoFocusInputEnabled } from '../../utils/autoFocusInput';
 
 export function SettingsLocalSection({
   onLocalLabelChange,
@@ -54,6 +55,7 @@ export function SettingsLocalSection({
   });
   const [localLabelText, setLocalLabelText] = useState(() => getLocalLabel().text);
   const [localLabelColor, setLocalLabelColor] = useState(() => getLocalLabel().color);
+  const [autoFocusInput, setAutoFocusInput] = useState(getAutoFocusInputEnabled);
   const [highAdvertThreshold, setHighAdvertThreshold] = useState('');
   const [mediumAdvertThreshold, setMediumAdvertThreshold] = useState('');
   const [showWarningTicker, setShowWarningTicker] = useState(true);
@@ -288,33 +290,50 @@ export function SettingsLocalSection({
 
       <Separator />
 
-      <label className="flex items-center gap-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={reopenLastConversation}
-          onChange={(e) => handleToggleReopenLastConversation(e.target.checked)}
-          className="w-4 h-4 rounded border-input accent-primary"
-        />
-        <span className="text-sm">Reopen to last viewed channel/conversation</span>
-      </label>
+      <div className="space-y-3">
+        <Label>UI Tweaks</Label>
 
-      <label className="flex items-center gap-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={darkMap}
-          onChange={(e) => {
-            const v = e.target.checked;
-            setDarkMap(v);
-            try {
-              localStorage.setItem('remoteterm-dark-map', String(v));
-            } catch {
-              // localStorage may be disabled
-            }
-          }}
-          className="w-4 h-4 rounded border-input accent-primary"
-        />
-        <span className="text-sm">Dark mode map tiles</span>
-      </label>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={reopenLastConversation}
+            onChange={(e) => handleToggleReopenLastConversation(e.target.checked)}
+            className="w-4 h-4 rounded border-input accent-primary"
+          />
+          <span className="text-sm">Reopen to last viewed channel/conversation</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={darkMap}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setDarkMap(v);
+              try {
+                localStorage.setItem('remoteterm-dark-map', String(v));
+              } catch {
+                // localStorage may be disabled
+              }
+            }}
+            className="w-4 h-4 rounded border-input accent-primary"
+          />
+          <span className="text-sm">Dark mode map tiles</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoFocusInput}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setAutoFocusInput(v);
+              setAutoFocusInputEnabled(v);
+            }}
+            className="w-4 h-4 rounded border-input accent-primary"
+          />
+          <span className="text-sm">Auto-focus input on conversation load (desktop only)</span>
+        </label>
 
       {appSettings && (
         <>
@@ -388,6 +407,7 @@ export function SettingsLocalSection({
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

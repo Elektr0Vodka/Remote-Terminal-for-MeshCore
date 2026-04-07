@@ -21,7 +21,7 @@ from meshcore import EventType, MeshCore
 from app.channel_constants import PUBLIC_CHANNEL_KEY, PUBLIC_CHANNEL_NAME
 from app.config import settings
 from app.event_handlers import cleanup_expired_acks, on_contact_message
-from app.models import Contact, ContactUpsert
+from app.models import _VALID_CONTACT_TYPES, Contact, ContactUpsert
 from app.radio import RadioOperationBusyError
 from app.repository import (
     AmbiguousPublicKeyPrefixError,
@@ -1070,8 +1070,14 @@ async def sync_contacts_from_radio(mc: MeshCore) -> dict:
 
         logger.debug("Synced %d contacts from radio snapshot", synced)
 
-        # Import radio-favorited contacts into app favorites
-        radio_fav_keys = [pk for pk, data in contacts.items() if data.get("flags", 0) & 0x01]
+        # Import radio-favorited contacts into app favorites.
+        # Only trust the favorite bit on contacts with a valid type (0-4);
+        # garbled radio data can have junk flags with bit 0 set.
+        radio_fav_keys = [
+            pk
+            for pk, data in contacts.items()
+            if data.get("flags", 0) & 0x01 and data.get("type", -1) in _VALID_CONTACT_TYPES
+        ]
         if radio_fav_keys:
             try:
                 imported = 0

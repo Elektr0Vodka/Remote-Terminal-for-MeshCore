@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, type ComponentProps } from 'react';
+import { lazy, Suspense, useCallback, useRef, type ComponentProps } from 'react';
 import { useSwipeable } from 'react-swipeable';
 
 import { StatusBar } from './StatusBar';
@@ -11,6 +11,7 @@ import { ChannelImportExportModal } from './ChannelImportExportModal';
 import type { ChannelImportExportModalProps } from './ChannelImportExportModal';
 import { ContactInfoPane } from './ContactInfoPane';
 import { ChannelInfoPane } from './ChannelInfoPane';
+import { CommandPalette } from './CommandPalette';
 import { SecurityWarningModal } from './SecurityWarningModal';
 import { Toaster } from './ui/sonner';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
@@ -78,6 +79,7 @@ interface AppShellProps {
   onOpenChannelImportExport: () => void;
   showWarningTicker?: boolean;
   onNavigateToHealth?: (publicKey: string) => void;
+  onRepeaterAutoLogin: (publicKey: string, displayName: string) => void;
 }
 
 export function AppShell({
@@ -111,6 +113,7 @@ export function AppShell({
   onOpenChannelImportExport,
   showWarningTicker = true,
   onNavigateToHealth,
+  onRepeaterAutoLogin,
 }: AppShellProps) {
   const swipeHandlers = useSwipeable({
     onSwipedRight: ({ initial }) => {
@@ -129,6 +132,14 @@ export function AppShell({
     trackMouse: false,
     preventScrollOnSwipe: false,
   });
+
+  const handleOpenSettings = useCallback(
+    (section: SettingsSection) => {
+      onSettingsSectionChange(section);
+      if (!showSettings) onToggleSettingsView();
+    },
+    [onSettingsSectionChange, onToggleSettingsView, showSettings]
+  );
 
   const searchMounted = useRef(false);
   if (conversationPaneProps.activeConversation?.type === 'search') {
@@ -339,6 +350,13 @@ export function AppShell({
         onClose={onCloseBulkAddResults}
       />
 
+      <CommandPalette
+        contacts={sidebarProps.contacts}
+        channels={sidebarProps.channels}
+        onSelectConversation={sidebarProps.onSelectConversation}
+        onOpenSettings={handleOpenSettings}
+        onRepeaterAutoLogin={onRepeaterAutoLogin}
+      />
       <SecurityWarningModal health={statusProps.health} />
       <ContactInfoPane {...contactInfoPaneProps} />
       <ChannelInfoPane {...channelInfoPaneProps} />

@@ -89,6 +89,8 @@ interface ConversationPaneProps {
   onSelectConversation?: (conversation: Conversation) => void;
   trackedTelemetryRepeaters: string[];
   onToggleTrackedTelemetry: (publicKey: string) => Promise<void>;
+  repeaterAutoLoginKey: string | null;
+  onClearRepeaterAutoLogin: () => void;
 }
 
 function LoadingPane({ label }: { label: string }) {
@@ -160,6 +162,8 @@ export function ConversationPane({
   onSelectConversation,
   trackedTelemetryRepeaters,
   onToggleTrackedTelemetry,
+  repeaterAutoLoginKey,
+  onClearRepeaterAutoLogin,
 }: ConversationPaneProps) {
   const [roomAuthenticated, setRoomAuthenticated] = useState(false);
   const activeContactIsRepeater = useMemo(() => {
@@ -323,6 +327,8 @@ export function ConversationPane({
           onOpenContactInfo={onOpenContactInfo}
           trackedTelemetryRepeaters={trackedTelemetryRepeaters}
           onToggleTrackedTelemetry={onToggleTrackedTelemetry}
+          autoLoginAndLoadAll={repeaterAutoLoginKey === activeConversation.id}
+          onAutoLoginConsumed={onClearRepeaterAutoLogin}
         />
       </Suspense>
     );

@@ -31,7 +31,8 @@ import type {
   RawPacket,
   Channel,
 } from './types';
-import { CONTACT_TYPE_ROOM } from './types';
+import { CONTACT_TYPE_REPEATER, CONTACT_TYPE_ROOM } from './types';
+import { shouldAutoFocusInput } from './utils/autoFocusInput';
 import type { CrackerFoundChannel } from './components/ChannelImportExportModal';
 
 interface ChannelUnreadMarker {
@@ -109,6 +110,7 @@ export function App() {
   const [bulkAddResult, setBulkAddResult] = useState<BulkCreateHashtagChannelsResult | null>(null);
   const [showChannelImportExport, setShowChannelImportExport] = useState(false);
   const [crackerFoundChannels, setCrackerFoundChannels] = useState<CrackerFoundChannel[]>([]);
+  const [repeaterAutoLoginKey, setRepeaterAutoLoginKey] = useState<string | null>(null);
   const [visibilityVersion, setVisibilityVersion] = useState(0);
   const lastUnreadBackfillAttemptRef = useRef<string | null>(null);
   const {
@@ -316,6 +318,21 @@ export function App() {
   } = useConversationMessages(activeConversation, targetMessageId);
   removeConversationMessagesRef.current = removeConversationMessages;
 
+  // Auto-focus the message input on conversation change (desktop only by default)
+  useEffect(() => {
+    if (!activeConversation) return;
+    if (activeConversation.type !== 'channel' && activeConversation.type !== 'contact') return;
+    // Repeaters show a login form, not a message input
+    if (activeConversation.type === 'contact') {
+      const contact = contacts.find((c) => c.public_key === activeConversation.id);
+      if (contact?.type === CONTACT_TYPE_REPEATER) return;
+    }
+    if (!shouldAutoFocusInput()) return;
+    // Defer to let the input mount/render first
+    const raf = requestAnimationFrame(() => messageInputRef.current?.focus?.());
+    return () => cancelAnimationFrame(raf);
+  }, [activeConversation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Room servers replay stored history as a burst of DMs, all arriving with similar received_at
   // but spanning a wide range of sender_timestamps. Sort by sender_timestamp for room contacts
   // so the display reflects the original send order rather than our radio's receipt order.
@@ -478,6 +495,18 @@ export function App() {
     [fetchUndecryptedCount, setChannels]
   );
 
+  const handleRepeaterAutoLogin = useCallback(
+    (publicKey: string, displayName: string) => {
+      handleSelectConversationWithTargetReset({
+        type: 'contact',
+        id: publicKey,
+        name: displayName,
+      });
+      setRepeaterAutoLoginKey(publicKey);
+    },
+    [handleSelectConversationWithTargetReset]
+  );
+
   const handleOpenNewMessage = useCallback(
     (event?: MouseEvent<HTMLButtonElement>) => {
       setNewMessagePrefillRequest(null);
@@ -609,6 +638,8 @@ export function App() {
     onSelectConversation: handleSelectConversationWithTargetReset,
     trackedTelemetryRepeaters: appSettings?.tracked_telemetry_repeaters ?? [],
     onToggleTrackedTelemetry: handleToggleTrackedTelemetry,
+    repeaterAutoLoginKey,
+    onClearRepeaterAutoLogin: () => setRepeaterAutoLoginKey(null),
   };
   const searchProps = {
     contacts,
@@ -781,6 +812,7 @@ export function App() {
             healthFocusKey: publicKey,
           })
         }
+        onRepeaterAutoLogin={handleRepeaterAutoLogin}
       />
     </DistanceUnitProvider>
   );
