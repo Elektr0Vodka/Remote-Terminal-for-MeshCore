@@ -588,6 +588,11 @@ export interface NoiseFloorHistoryStats {
   samples: NoiseFloorSample[];
 }
 
+interface PacketsPerHourBucket {
+  timestamp: number;
+  count: number;
+}
+
 export interface StatisticsResponse {
   busiest_channels_24h: BusyChannel[];
   contact_count: number;
@@ -610,7 +615,8 @@ export interface StatisticsResponse {
     single_byte_pct: number;
     double_byte_pct: number;
     triple_byte_pct: number;
-  } | null;
+  };
+  packets_per_hour_72h: PacketsPerHourBucket[];
   noise_floor_24h: NoiseFloorHistoryStats;
 }
 
