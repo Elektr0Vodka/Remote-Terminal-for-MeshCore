@@ -198,10 +198,16 @@ export function AppShell({
     </nav>
   );
 
-  const activeSidebarContent = showSettings ? (
+  const desktopSidebarContent = showSettings ? (
     settingsSidebarContent
   ) : (
     <Sidebar {...sidebarProps} onOpenChannelImportExport={onOpenChannelImportExport} />
+  );
+
+  const mobileSidebarContent = showSettings ? (
+    settingsSidebarContent
+  ) : (
+    <Sidebar {...sidebarProps} onOpenChannelImportExport={onOpenChannelImportExport} forceExpanded />
   );
 
   return (
@@ -236,7 +242,7 @@ export function AppShell({
 
       <div className="flex flex-1 overflow-hidden">
         <div className="hidden md:block shrink-0 min-h-0 overflow-hidden">
-          {activeSidebarContent}
+          {desktopSidebarContent}
         </div>
 
         <Sheet open={sidebarOpen} onOpenChange={onSidebarOpenChange}>
@@ -253,7 +259,7 @@ export function AppShell({
               <SheetDescription>Sidebar navigation</SheetDescription>
             </SheetHeader>
             <div className="flex-1 overflow-hidden" {...closeSwipeHandlers}>
-              {activeSidebarContent}
+              {mobileSidebarContent}
             </div>
           </SheetContent>
         </Sheet>

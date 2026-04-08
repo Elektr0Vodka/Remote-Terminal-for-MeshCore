@@ -12,6 +12,7 @@ import {
   CheckCheck,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronsDown,
   ChevronsUp,
@@ -20,6 +21,7 @@ import {
   LockOpen,
   Logs,
   Map,
+  MoreHorizontal,
   Search as SearchIcon,
   Settings,
   SquarePen,
@@ -72,6 +74,7 @@ type CollapseState = {
   tools: boolean;
   favorites: boolean;
   owned: boolean;
+  theMesh: boolean;
   channels: boolean;
   contacts: boolean;
   rooms: boolean;
@@ -87,33 +90,15 @@ type CollapseState = {
 
 // ─── Section ordering ────────────────────────────────────────────────────────
 
-type SidebarSection =
-  | 'tools'
-  | 'favorites'
-  | 'owned'
-  | 'channels'
-  | 'contacts'
-  | 'rooms'
-  | 'repeaters';
+type SidebarSection = 'tools' | 'favorites' | 'owned' | 'the-mesh';
 
-const ALL_SECTIONS: SidebarSection[] = [
-  'tools',
-  'favorites',
-  'owned',
-  'channels',
-  'contacts',
-  'rooms',
-  'repeaters',
-];
+const ALL_SECTIONS: SidebarSection[] = ['tools', 'favorites', 'owned', 'the-mesh'];
 
 const SECTION_LABELS: Record<SidebarSection, string> = {
   tools: 'Tools',
   favorites: 'Favorites',
   owned: 'Owned',
-  channels: 'Channels',
-  contacts: 'Contacts',
-  rooms: 'Room Servers',
-  repeaters: 'Repeaters',
+  'the-mesh': 'The Mesh',
 };
 
 const SIDEBAR_SECTION_ORDER_KEY = 'remoteterm-sidebar-section-order';
@@ -123,7 +108,22 @@ function loadSectionOrder(): SidebarSection[] {
     const raw = localStorage.getItem(SIDEBAR_SECTION_ORDER_KEY);
     if (!raw) return [...ALL_SECTIONS];
     const parsed = JSON.parse(raw) as string[];
-    const valid = parsed.filter((s): s is SidebarSection =>
+
+    // Migrate legacy individual section keys → 'the-mesh'
+    const legacyKeys = ['channels', 'contacts', 'rooms', 'repeaters'];
+    const hasLegacy = parsed.some((s) => legacyKeys.includes(s));
+    let migrated = parsed;
+    if (hasLegacy) {
+      const firstLegacyIdx = parsed.findIndex((s) => legacyKeys.includes(s));
+      const withoutLegacy = parsed.filter((s) => !legacyKeys.includes(s));
+      const insertAt = parsed
+        .slice(0, firstLegacyIdx)
+        .filter((s) => !legacyKeys.includes(s)).length;
+      withoutLegacy.splice(insertAt, 0, 'the-mesh');
+      migrated = withoutLegacy;
+    }
+
+    const valid = migrated.filter((s): s is SidebarSection =>
       ALL_SECTIONS.includes(s as SidebarSection)
     );
     const missing = ALL_SECTIONS.filter((s) => !valid.includes(s));
@@ -199,11 +199,13 @@ function saveToolOrder(order: ToolKey[]): void {
 // ─── Collapse state ──────────────────────────────────────────────────────────
 
 const SIDEBAR_COLLAPSE_STATE_KEY = 'remoteterm-sidebar-collapse-state';
+const SIDEBAR_RAIL_KEY = 'remoteterm-sidebar-rail-collapsed';
 
 const DEFAULT_COLLAPSE_STATE: CollapseState = {
   tools: false,
   favorites: false,
   owned: false,
+  theMesh: false,
   channels: false,
   contacts: false,
   rooms: false,
@@ -226,6 +228,7 @@ function loadCollapsedState(): CollapseState {
       tools: parsed.tools ?? false,
       favorites: parsed.favorites ?? false,
       owned: parsed.owned ?? false,
+      theMesh: parsed.theMesh ?? false,
       channels: parsed.channels ?? false,
       contacts: parsed.contacts ?? false,
       rooms: parsed.rooms ?? false,
@@ -310,6 +313,140 @@ function DragList<T extends string>({
   );
 }
 
+// ─── Section header component ─────────────────────────────────────────────────
+
+interface SectionHeaderProps {
+  title: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  sortSection?: SidebarSortableSection | null;
+  sectionSortOrder?: SortOrder | null;
+  unreadCount?: number;
+  highlightUnread?: boolean;
+  onMarkRead?: () => void;
+  itemCount?: number;
+  isSearching: boolean;
+  onSortToggle?: (section: SidebarSortableSection) => void;
+  extraButton?: React.ReactNode;
+}
+
+function SectionHeader({
+  title,
+  collapsed,
+  onToggle,
+  sortSection,
+  sectionSortOrder,
+  unreadCount = 0,
+  highlightUnread = false,
+  onMarkRead,
+  itemCount,
+  isSearching,
+  onSortToggle,
+  extraButton,
+}: SectionHeaderProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const effectiveCollapsed = isSearching ? false : collapsed;
+  const hasMenuItems = !!(sortSection || (onMarkRead && unreadCount > 0));
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
+  return (
+    <div className="group flex items-center px-3 py-2 pt-3.5 gap-1">
+      <button
+        className={cn(
+          'flex items-center gap-1.5 text-[0.625rem] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded flex-1 min-w-0',
+          isSearching && 'cursor-default'
+        )}
+        aria-expanded={!effectiveCollapsed}
+        onClick={() => {
+          if (!isSearching) onToggle();
+        }}
+        title={effectiveCollapsed ? `Expand ${title}` : `Collapse ${title}`}
+      >
+        {effectiveCollapsed ? (
+          <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+        )}
+        <span className="truncate">
+          {title}
+          {itemCount !== undefined && itemCount > 0 ? ` (${itemCount})` : ''}
+        </span>
+      </button>
+
+      {unreadCount > 0 && (
+        <span
+          className={cn(
+            'text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0',
+            highlightUnread
+              ? 'bg-badge-mention text-badge-mention-foreground'
+              : 'bg-secondary text-muted-foreground'
+          )}
+          aria-label={`${unreadCount} unread`}
+        >
+          {unreadCount}
+        </span>
+      )}
+
+      {extraButton}
+
+      {hasMenuItems && (
+        <div ref={menuRef} className="relative flex-shrink-0">
+          <button
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-0.5 rounded text-muted-foreground/60 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setMenuOpen((p) => !p)}
+            aria-label={`${title} options`}
+            title={`${title} options`}
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-0.5 z-50 min-w-[168px] rounded-md border border-border bg-popover shadow-md py-1 text-[0.8125rem]">
+              {sortSection && sectionSortOrder && onSortToggle && (
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-accent transition-colors text-left"
+                  onClick={() => {
+                    onSortToggle(sortSection);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <ArrowDownUp className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                  <span>
+                    Sort:{' '}
+                    {sectionSortOrder === 'alpha' ? 'A–Z → Recent' : '⏱ Recent → A–Z'}
+                  </span>
+                </button>
+              )}
+              {onMarkRead && unreadCount > 0 && (
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-accent transition-colors text-left"
+                  onClick={() => {
+                    onMarkRead();
+                    setMenuOpen(false);
+                  }}
+                >
+                  <CheckCheck className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                  <span>Mark all read</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -329,6 +466,8 @@ interface SidebarProps {
   blockedKeys?: string[];
   blockedNames?: string[];
   onOpenChannelImportExport?: () => void;
+  /** When true, always render fully expanded (used inside the mobile sheet). */
+  forceExpanded?: boolean;
 }
 
 function loadInitialSectionSortOrders(): SidebarSectionSortOrders {
@@ -360,6 +499,7 @@ export function Sidebar({
   blockedKeys = [],
   blockedNames = [],
   onOpenChannelImportExport,
+  forceExpanded = false,
 }: SidebarProps) {
   const isContactBlocked = useCallback(
     (c: Contact) =>
@@ -372,12 +512,27 @@ export function Sidebar({
   const [showSettings, setShowSettings] = useState(false);
   const [sectionOrder, setSectionOrder] = useState<SidebarSection[]>(loadSectionOrder);
   const [toolOrder, setToolOrder] = useState<ToolKey[]>(loadToolOrder);
+  const [railCollapsed, setRailCollapsed] = useState<boolean>(
+    () => !forceExpanded && localStorage.getItem(SIDEBAR_RAIL_KEY) === 'true'
+  );
+
+  // Keep rail open on mobile (forceExpanded)
+  const isRailCollapsed = forceExpanded ? false : railCollapsed;
+
+  const toggleRail = () => {
+    setRailCollapsed((p) => {
+      const next = !p;
+      localStorage.setItem(SIDEBAR_RAIL_KEY, String(next));
+      return next;
+    });
+  };
 
   const initialSectionSortOrders = useMemo(loadInitialSectionSortOrders, []);
   const [sectionSortOrders, setSectionSortOrders] = useState(initialSectionSortOrders);
   const initialCollapsedState = useMemo(loadCollapsedState, []);
   const [toolsCollapsed, setToolsCollapsed] = useState(initialCollapsedState.tools);
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(initialCollapsedState.favorites);
+  const [theMeshCollapsed, setTheMeshCollapsed] = useState(initialCollapsedState.theMesh);
   const [channelsCollapsed, setChannelsCollapsed] = useState(initialCollapsedState.channels);
   const [contactsCollapsed, setContactsCollapsed] = useState(initialCollapsedState.contacts);
   const [roomsCollapsed, setRoomsCollapsed] = useState(initialCollapsedState.rooms);
@@ -657,6 +812,7 @@ export function Sidebar({
         tools: toolsCollapsed,
         favorites: favoritesCollapsed,
         owned: ownedCollapsed,
+        theMesh: theMeshCollapsed,
         channels: channelsCollapsed,
         contacts: contactsCollapsed,
         rooms: roomsCollapsed,
@@ -674,6 +830,7 @@ export function Sidebar({
     toolsCollapsed,
     favoritesCollapsed,
     ownedCollapsed,
+    theMeshCollapsed,
     channelsCollapsed,
     contactsCollapsed,
     roomsCollapsed,
@@ -695,6 +852,7 @@ export function Sidebar({
           tools: toolsCollapsed,
           favorites: favoritesCollapsed,
           owned: ownedCollapsed,
+          theMesh: theMeshCollapsed,
           channels: channelsCollapsed,
           contacts: contactsCollapsed,
           rooms: roomsCollapsed,
@@ -712,6 +870,7 @@ export function Sidebar({
         toolsCollapsed ||
         favoritesCollapsed ||
         ownedCollapsed ||
+        theMeshCollapsed ||
         channelsCollapsed ||
         contactsCollapsed ||
         roomsCollapsed ||
@@ -727,6 +886,7 @@ export function Sidebar({
         setToolsCollapsed(false);
         setFavoritesCollapsed(false);
         setOwnedCollapsed(false);
+        setTheMeshCollapsed(false);
         setChannelsCollapsed(false);
         setContactsCollapsed(false);
         setRoomsCollapsed(false);
@@ -747,6 +907,7 @@ export function Sidebar({
       setToolsCollapsed(prev.tools);
       setFavoritesCollapsed(prev.favorites);
       setOwnedCollapsed(prev.owned);
+      setTheMeshCollapsed(prev.theMesh);
       setChannelsCollapsed(prev.channels);
       setContactsCollapsed(prev.contacts);
       setRoomsCollapsed(prev.rooms);
@@ -764,6 +925,7 @@ export function Sidebar({
     toolsCollapsed,
     favoritesCollapsed,
     ownedCollapsed,
+    theMeshCollapsed,
     channelsCollapsed,
     contactsCollapsed,
     roomsCollapsed,
@@ -924,18 +1086,22 @@ export function Sidebar({
       data-active={active ? 'true' : undefined}
       className={cn(
         'sidebar-action-row px-3 py-2 cursor-pointer flex items-center gap-2 border-l-2 border-transparent hover:bg-accent transition-colors text-[0.8125rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        active && 'bg-accent border-l-primary'
+        active && 'bg-accent border-l-primary',
+        isRailCollapsed && 'justify-center px-0'
       )}
       role="button"
       tabIndex={0}
       aria-current={active ? 'page' : undefined}
       onKeyDown={handleKeyboardActivate}
       onClick={onClick}
+      title={isRailCollapsed ? String(label) : undefined}
     >
-      <span className="sidebar-tool-icon" aria-hidden="true">
+      <span className="sidebar-tool-icon flex-shrink-0" aria-hidden="true">
         {icon}
       </span>
-      <span className="sidebar-tool-label flex-1 truncate">{label}</span>
+      {!isRailCollapsed && (
+        <span className="sidebar-tool-label flex-1 truncate">{label}</span>
+      )}
     </div>
   );
 
@@ -997,6 +1163,7 @@ export function Sidebar({
   ]);
   const favoritesHasMention = sectionHasMention(favoriteRows);
   const channelsHasMention = sectionHasMention(channelRows);
+
   const toolRows = !query
     ? [
         renderSidebarActionRow({
@@ -1114,90 +1281,47 @@ export function Sidebar({
       ]
     : [];
 
-  const renderSectionHeader = (
-    title: string,
+  // ── Sub-section header helper ───────────────────────────────────────────────
+
+  const renderSubSectionHeader = (
+    label: string,
     collapsed: boolean,
     onToggle: () => void,
-    sortSection: SidebarSortableSection | null = null,
-    unreadCount = 0,
-    highlightUnread = false,
-    onMarkRead?: () => void,
-    itemCount?: number
-  ) => {
-    const effectiveCollapsed = isSearching ? false : collapsed;
-    const sectionSortOrder = sortSection ? sectionSortOrders[sortSection] : null;
-
-    return (
-      <div className="flex justify-between items-center px-3 py-2 pt-3.5">
-        <button
-          className={cn(
-            'flex items-center gap-1.5 text-[0.625rem] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded',
-            isSearching && 'cursor-default'
-          )}
-          aria-expanded={!effectiveCollapsed}
-          onClick={() => {
-            if (!isSearching) onToggle();
-          }}
-          title={effectiveCollapsed ? `Expand ${title}` : `Collapse ${title}`}
-        >
-          {effectiveCollapsed ? (
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
-          <span>
-            {title}
-            {itemCount !== undefined && itemCount > 0 ? ` (${itemCount})` : ''}
-          </span>
-        </button>
-        {(sortSection || unreadCount > 0) && (
-          <div className="ml-auto flex items-center gap-1.5">
-            {sortSection && sectionSortOrder && (
-              <button
-                className="bg-transparent text-muted-foreground/60 px-1 py-0.5 text-[0.625rem] rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => handleSortToggle(sortSection)}
-                aria-label={
-                  sectionSortOrder === 'alpha'
-                    ? `Sort ${title} by recent`
-                    : `Sort ${title} alphabetically`
-                }
-                title={
-                  sectionSortOrder === 'alpha'
-                    ? `Sort ${title} by recent`
-                    : `Sort ${title} alphabetically`
-                }
-              >
-                {sectionSortOrder === 'alpha' ? 'A-Z' : '⏱'}
-              </button>
-            )}
-            {onMarkRead && unreadCount > 0 && (
-              <button
-                className="text-muted-foreground/60 hover:text-foreground transition-colors rounded p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={onMarkRead}
-                title="Mark all as read"
-                aria-label="Mark all as read"
-              >
-                <CheckCheck className="h-3.5 w-3.5" />
-              </button>
-            )}
-            {unreadCount > 0 && (
-              <span
-                className={cn(
-                  'text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full',
-                  highlightUnread
-                    ? 'bg-badge-mention text-badge-mention-foreground'
-                    : 'bg-secondary text-muted-foreground'
-                )}
-                aria-label={`${unreadCount} unread`}
-              >
-                {unreadCount}
-              </span>
-            )}
-          </div>
+    sortKey?: SidebarSortableSection,
+    extraAction?: React.ReactNode
+  ) => (
+    <div className="group flex items-center w-full">
+      <button
+        className="flex-1 flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+      >
+        {collapsed ? (
+          <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+        ) : (
+          <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
         )}
+        {label}
+      </button>
+      <div className="flex items-center gap-0.5 pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        {sortKey && (
+          <button
+            onClick={() => handleSortToggle(sortKey)}
+            className="p-0.5 text-muted-foreground/60 hover:text-foreground text-[0.5625rem] rounded transition-colors focus-visible:outline-none"
+            title={
+              sectionSortOrders[sortKey] === 'alpha' ? 'Sort by recent' : 'Sort alphabetically'
+            }
+            aria-label={
+              sectionSortOrders[sortKey] === 'alpha' ? 'Sort by recent' : 'Sort alphabetically'
+            }
+          >
+            {sectionSortOrders[sortKey] === 'alpha' ? 'A-Z' : '⏱'}
+          </button>
+        )}
+        {extraAction}
       </div>
-    );
-  };
+    </div>
+  );
 
   // ── Section renderer ────────────────────────────────────────────────────────
 
@@ -1206,93 +1330,73 @@ export function Sidebar({
       case 'tools':
         return toolRows.length > 0 ? (
           <div key="tools">
-            {renderSectionHeader('Tools', toolsCollapsed, () => setToolsCollapsed((p) => !p))}
+            <SectionHeader
+              title="Tools"
+              collapsed={toolsCollapsed}
+              onToggle={() => setToolsCollapsed((p) => !p)}
+              isSearching={isSearching}
+            />
             {(isSearching || !toolsCollapsed) && toolRows}
           </div>
         ) : null;
+
       case 'favorites':
         return favoriteItems.length > 0 ? (
           <div key="favorites">
-            {renderSectionHeader(
-              'Favorites',
-              favoritesCollapsed,
-              () => setFavoritesCollapsed((p) => !p),
-              'favorites',
-              favoritesUnreadCount,
-              favoritesHasMention,
-              undefined,
-              favoriteItems.length
-            )}
+            <SectionHeader
+              title="Favorites"
+              collapsed={favoritesCollapsed}
+              onToggle={() => setFavoritesCollapsed((p) => !p)}
+              sortSection="favorites"
+              sectionSortOrder={sectionSortOrders.favorites}
+              unreadCount={favoritesUnreadCount}
+              highlightUnread={favoritesHasMention}
+              itemCount={favoriteItems.length}
+              isSearching={isSearching}
+              onSortToggle={handleSortToggle}
+            />
             {(isSearching || !favoritesCollapsed) && (
               <>
                 {favChannelRows.length > 0 && (
                   <>
-                    <button
-                      className="w-full flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
-                      onClick={() => setFavChannelsCollapsed((p) => !p)}
-                      aria-expanded={!favChannelsCollapsed}
-                    >
-                      {favChannelsCollapsed ? (
-                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      )}
-                      Channels
-                    </button>
+                    {renderSubSectionHeader(
+                      'Channels',
+                      favChannelsCollapsed,
+                      () => setFavChannelsCollapsed((p) => !p)
+                    )}
                     {(isSearching || !favChannelsCollapsed) &&
                       favChannelRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {favContactRows.length > 0 && (
                   <>
-                    <button
-                      className="w-full flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
-                      onClick={() => setFavContactsCollapsed((p) => !p)}
-                      aria-expanded={!favContactsCollapsed}
-                    >
-                      {favContactsCollapsed ? (
-                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      )}
-                      Contacts
-                    </button>
+                    {renderSubSectionHeader(
+                      'Contacts',
+                      favContactsCollapsed,
+                      () => setFavContactsCollapsed((p) => !p)
+                    )}
                     {(isSearching || !favContactsCollapsed) &&
                       favContactRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {favRoomRows.length > 0 && (
                   <>
-                    <button
-                      className="w-full flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
-                      onClick={() => setFavRoomsCollapsed((p) => !p)}
-                      aria-expanded={!favRoomsCollapsed}
-                    >
-                      {favRoomsCollapsed ? (
-                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      )}
-                      Room Servers
-                    </button>
+                    {renderSubSectionHeader(
+                      'Room Servers',
+                      favRoomsCollapsed,
+                      () => setFavRoomsCollapsed((p) => !p)
+                    )}
                     {(isSearching || !favRoomsCollapsed) &&
                       favRoomRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {favRepeaterRows.length > 0 && (
                   <>
-                    <button
-                      className="w-full flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
-                      onClick={() => setFavRepeatersCollapsed((p) => !p)}
-                      aria-expanded={!favRepeatersCollapsed}
-                    >
-                      {favRepeatersCollapsed ? (
-                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      )}
-                      Repeaters
-                    </button>
+                    {renderSubSectionHeader(
+                      'Repeaters',
+                      favRepeatersCollapsed,
+                      () => setFavRepeatersCollapsed((p) => !p)
+                    )}
                     {(isSearching || !favRepeatersCollapsed) &&
                       favRepeaterRows.map((row) => renderConversationRow(row))}
                   </>
@@ -1301,72 +1405,50 @@ export function Sidebar({
             )}
           </div>
         ) : null;
+
       case 'owned': {
         const totalOwned = ownedRepeaters.length + ownedRooms.length + ownedSensors.length;
         return totalOwned > 0 ? (
           <div key="owned">
-            {renderSectionHeader(
-              'Owned',
-              ownedCollapsed,
-              () => setOwnedCollapsed((p) => !p),
-              null,
-              ownedUnreadCount,
-              false,
-              undefined,
-              totalOwned
-            )}
+            <SectionHeader
+              title="Owned"
+              collapsed={ownedCollapsed}
+              onToggle={() => setOwnedCollapsed((p) => !p)}
+              unreadCount={ownedUnreadCount}
+              itemCount={totalOwned}
+              isSearching={isSearching}
+            />
             {(isSearching || !ownedCollapsed) && (
               <>
                 {ownedRepeaterRows.length > 0 && (
                   <>
-                    <button
-                      className="w-full flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
-                      onClick={() => setOwnedRepeatersCollapsed((p) => !p)}
-                      aria-expanded={!ownedRepeatersCollapsed}
-                    >
-                      {ownedRepeatersCollapsed ? (
-                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      )}
-                      Repeaters
-                    </button>
+                    {renderSubSectionHeader(
+                      'Repeaters',
+                      ownedRepeatersCollapsed,
+                      () => setOwnedRepeatersCollapsed((p) => !p)
+                    )}
                     {(isSearching || !ownedRepeatersCollapsed) &&
                       ownedRepeaterRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {ownedRoomRows.length > 0 && (
                   <>
-                    <button
-                      className="w-full flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
-                      onClick={() => setOwnedRoomsCollapsed((p) => !p)}
-                      aria-expanded={!ownedRoomsCollapsed}
-                    >
-                      {ownedRoomsCollapsed ? (
-                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      )}
-                      Room Servers
-                    </button>
+                    {renderSubSectionHeader(
+                      'Room Servers',
+                      ownedRoomsCollapsed,
+                      () => setOwnedRoomsCollapsed((p) => !p)
+                    )}
                     {(isSearching || !ownedRoomsCollapsed) &&
                       ownedRoomRows.map((row) => renderConversationRow(row))}
                   </>
                 )}
                 {ownedSensorRows.length > 0 && (
                   <>
-                    <button
-                      className="w-full flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
-                      onClick={() => setOwnedSensorsCollapsed((p) => !p)}
-                      aria-expanded={!ownedSensorsCollapsed}
-                    >
-                      {ownedSensorsCollapsed ? (
-                        <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-                      )}
-                      Sensors
-                    </button>
+                    {renderSubSectionHeader(
+                      'Sensors',
+                      ownedSensorsCollapsed,
+                      () => setOwnedSensorsCollapsed((p) => !p)
+                    )}
                     {(isSearching || !ownedSensorsCollapsed) &&
                       ownedSensorRows.map((row) => renderConversationRow(row))}
                   </>
@@ -1376,87 +1458,96 @@ export function Sidebar({
           </div>
         ) : null;
       }
-      case 'channels':
-        return nonFavoriteChannels.length > 0 ? (
-          <div key="channels">
-            <div className="flex items-center">
-              <div className="flex-1 min-w-0">
-                {renderSectionHeader(
-                  'Channels',
-                  channelsCollapsed,
-                  () => setChannelsCollapsed((p) => !p),
-                  'channels',
-                  channelsUnreadCount,
-                  channelsHasMention,
-                  onMarkAllRead,
-                  filteredChannels.length
+
+      case 'the-mesh': {
+        const totalMesh =
+          nonFavoriteChannels.length +
+          nonFavoriteContacts.length +
+          nonFavoriteRooms.length +
+          nonFavoriteRepeaters.length;
+        const meshUnreadCount =
+          channelsUnreadCount + contactsUnreadCount + roomsUnreadCount + repeatersUnreadCount;
+        const meshHasMention =
+          channelsHasMention || sectionHasMention([...contactRows, ...roomRows]);
+
+        return totalMesh > 0 ? (
+          <div key="the-mesh">
+            <SectionHeader
+              title="The Mesh"
+              collapsed={theMeshCollapsed}
+              onToggle={() => setTheMeshCollapsed((p) => !p)}
+              unreadCount={meshUnreadCount}
+              highlightUnread={meshHasMention}
+              onMarkRead={onMarkAllRead}
+              itemCount={totalMesh}
+              isSearching={isSearching}
+            />
+            {(isSearching || !theMeshCollapsed) && (
+              <>
+                {nonFavoriteChannels.length > 0 && (
+                  <>
+                    {renderSubSectionHeader(
+                      'Channels',
+                      channelsCollapsed,
+                      () => setChannelsCollapsed((p) => !p),
+                      'channels',
+                      onOpenChannelImportExport ? (
+                        <button
+                          onClick={onOpenChannelImportExport}
+                          className="p-0.5 text-muted-foreground/60 hover:text-foreground rounded transition-colors focus-visible:outline-none"
+                          title="Import / Export channels"
+                          aria-label="Import or export channels"
+                        >
+                          <ArrowDownUp className="h-3 w-3" />
+                        </button>
+                      ) : undefined
+                    )}
+                    {(isSearching || !channelsCollapsed) &&
+                      channelRows.map((row) => renderConversationRow(row))}
+                  </>
                 )}
-              </div>
-              {onOpenChannelImportExport && (
-                <button
-                  onClick={onOpenChannelImportExport}
-                  className="mr-3 text-muted-foreground/60 hover:text-foreground transition-colors rounded p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex-shrink-0"
-                  title="Import / Export channels"
-                  aria-label="Import or export channels"
-                >
-                  <ArrowDownUp className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            {(isSearching || !channelsCollapsed) &&
-              channelRows.map((row) => renderConversationRow(row))}
-          </div>
-        ) : null;
-      case 'contacts':
-        return nonFavoriteContacts.length > 0 ? (
-          <div key="contacts">
-            {renderSectionHeader(
-              'Contacts',
-              contactsCollapsed,
-              () => setContactsCollapsed((p) => !p),
-              'contacts',
-              contactsUnreadCount,
-              contactsUnreadCount > 0,
-              undefined,
-              filteredNonRepeaterContacts.length
+                {nonFavoriteContacts.length > 0 && (
+                  <>
+                    {renderSubSectionHeader(
+                      'Contacts',
+                      contactsCollapsed,
+                      () => setContactsCollapsed((p) => !p),
+                      'contacts'
+                    )}
+                    {(isSearching || !contactsCollapsed) &&
+                      contactRows.map((row) => renderConversationRow(row))}
+                  </>
+                )}
+                {nonFavoriteRooms.length > 0 && (
+                  <>
+                    {renderSubSectionHeader(
+                      'Room Servers',
+                      roomsCollapsed,
+                      () => setRoomsCollapsed((p) => !p),
+                      'rooms'
+                    )}
+                    {(isSearching || !roomsCollapsed) &&
+                      roomRows.map((row) => renderConversationRow(row))}
+                  </>
+                )}
+                {nonFavoriteRepeaters.length > 0 && (
+                  <>
+                    {renderSubSectionHeader(
+                      'Repeaters',
+                      repeatersCollapsed,
+                      () => setRepeatersCollapsed((p) => !p),
+                      'repeaters'
+                    )}
+                    {(isSearching || !repeatersCollapsed) &&
+                      repeaterRows.map((row) => renderConversationRow(row))}
+                  </>
+                )}
+              </>
             )}
-            {(isSearching || !contactsCollapsed) &&
-              contactRows.map((row) => renderConversationRow(row))}
           </div>
         ) : null;
-      case 'rooms':
-        return nonFavoriteRooms.length > 0 ? (
-          <div key="rooms">
-            {renderSectionHeader(
-              'Room Servers',
-              roomsCollapsed,
-              () => setRoomsCollapsed((p) => !p),
-              'rooms',
-              roomsUnreadCount,
-              roomsUnreadCount > 0,
-              undefined,
-              filteredRooms.length
-            )}
-            {(isSearching || !roomsCollapsed) && roomRows.map((row) => renderConversationRow(row))}
-          </div>
-        ) : null;
-      case 'repeaters':
-        return nonFavoriteRepeaters.length > 0 ? (
-          <div key="repeaters">
-            {renderSectionHeader(
-              'Repeaters',
-              repeatersCollapsed,
-              () => setRepeatersCollapsed((p) => !p),
-              'repeaters',
-              repeatersUnreadCount,
-              false,
-              undefined,
-              filteredRepeaters.length
-            )}
-            {(isSearching || !repeatersCollapsed) &&
-              repeaterRows.map((row) => renderConversationRow(row))}
-          </div>
-        ) : null;
+      }
+
       default:
         return null;
     }
@@ -1476,21 +1567,28 @@ export function Sidebar({
 
   return (
     <nav
-      className="sidebar w-60 h-full min-h-0 overflow-hidden bg-card border-r border-border flex flex-col"
+      className={cn(
+        'sidebar h-full min-h-0 overflow-hidden bg-card border-r border-border flex flex-col transition-[width] duration-200',
+        isRailCollapsed ? 'w-12' : 'w-60'
+      )}
       aria-label="Conversations"
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+      <div
+        className={cn(
+          'flex items-center border-b border-border py-2',
+          isRailCollapsed ? 'flex-col gap-1 px-1.5' : 'gap-1.5 px-2'
+        )}
+      >
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={onNewMessage}
           title="Add channel or contact"
           aria-label="Add channel or contact"
-          className="h-8 flex-1 justify-start gap-2 border-primary/20 bg-primary/5 px-3 text-[0.8125rem] text-primary hover:bg-primary/10 hover:text-primary"
+          className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
         >
           <SquarePen className="h-4 w-4" />
-          <span>Add Channel/Contact</span>
         </Button>
         <Button
           variant="ghost"
@@ -1499,7 +1597,7 @@ export function Sidebar({
           title={showSettings ? 'Back to conversations' : 'Customize sidebar'}
           aria-label={showSettings ? 'Back to conversations' : 'Customize sidebar'}
           className={cn(
-            'h-7 w-7 shrink-0 p-0 transition-colors',
+            'h-8 w-8 shrink-0 p-0 transition-colors',
             showSettings
               ? 'text-primary hover:text-primary'
               : 'text-muted-foreground hover:text-foreground'
@@ -1511,101 +1609,143 @@ export function Sidebar({
 
       {showSettings ? (
         /* Settings panel */
-        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-5">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-              Section Order
-            </p>
-            <DragList
-              items={sectionOrder}
-              labels={SECTION_LABELS}
-              onReorder={(next) => {
-                setSectionOrder(next);
-                saveSectionOrder(next);
-              }}
-            />
-          </div>
+        isRailCollapsed ? null : (
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-5">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+                Section Order
+              </p>
+              <DragList
+                items={sectionOrder}
+                labels={SECTION_LABELS}
+                onReorder={(next) => {
+                  setSectionOrder(next);
+                  saveSectionOrder(next);
+                }}
+              />
+            </div>
 
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-              Tool Order
-            </p>
-            <DragList
-              items={toolOrder}
-              labels={TOOL_LABELS}
-              onReorder={(next) => {
-                setToolOrder(next);
-                saveToolOrder(next);
-              }}
-            />
-          </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+                Tool Order
+              </p>
+              <DragList
+                items={toolOrder}
+                labels={TOOL_LABELS}
+                onReorder={(next) => {
+                  setToolOrder(next);
+                  saveToolOrder(next);
+                }}
+              />
+            </div>
 
-          <button
-            onClick={() => {
-              setSectionOrder([...ALL_SECTIONS]);
-              setToolOrder([...ALL_TOOL_KEYS]);
-              localStorage.removeItem(SIDEBAR_SECTION_ORDER_KEY);
-              localStorage.removeItem(SIDEBAR_TOOL_ORDER_KEY);
-            }}
-            className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1"
-          >
-            Reset to defaults
-          </button>
-        </div>
+            <button
+              onClick={() => {
+                setSectionOrder([...ALL_SECTIONS]);
+                setToolOrder([...ALL_TOOL_KEYS]);
+                localStorage.removeItem(SIDEBAR_SECTION_ORDER_KEY);
+                localStorage.removeItem(SIDEBAR_TOOL_ORDER_KEY);
+              }}
+              className="w-full text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1"
+            >
+              Reset to defaults
+            </button>
+          </div>
+        )
       ) : (
         /* Main list */
         <div className="relative flex-1 min-h-0 overflow-hidden flex flex-col">
-          {/* Search */}
-          <div className="px-3 py-2 border-b border-border/60 flex-shrink-0">
-            <div className="relative min-w-0">
-              <Input
-                type="text"
-                placeholder="Search channels/contacts..."
-                aria-label="Search conversations"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className={cn('h-7 text-[13px] bg-background/50', searchQuery ? 'pr-8' : 'pr-3')}
-              />
-              {searchQuery && (
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                  onClick={() => setSearchQuery('')}
-                  title="Clear search"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-          {/* Scroll to top */}
-          <button
-            onClick={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-            title="Scroll to top"
-            aria-label="Scroll to top"
-            className="absolute top-1 left-1/2 -translate-x-1/2 z-10 rounded-full bg-card/80 border border-border p-0.5 text-muted-foreground/40 hover:text-foreground hover:opacity-100 transition opacity-40 backdrop-blur-sm pointer-events-auto"
-          >
-            <ChevronsUp className="h-3.5 w-3.5" />
-          </button>
-          {/* Scroll to bottom */}
-          <button
-            onClick={() =>
-              listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
-            }
-            title="Scroll to bottom"
-            aria-label="Scroll to bottom"
-            className="absolute bottom-1 left-1/2 -translate-x-1/2 z-10 rounded-full bg-card/80 border border-border p-0.5 text-muted-foreground/40 hover:text-foreground hover:opacity-100 transition opacity-40 backdrop-blur-sm pointer-events-auto"
-          >
-            <ChevronsDown className="h-3.5 w-3.5" />
-          </button>
-          <div ref={listRef} className="flex-1 overflow-y-auto [contain:layout_paint]">
-            {sectionOrder.map((section) => renderSection(section))}
-            {isEmpty && (
-              <div className="p-5 text-center text-muted-foreground">
-                {query ? 'No matches found' : 'No conversations yet'}
+          {/* Search — hidden in rail mode */}
+          {!isRailCollapsed && (
+            <div className="px-3 py-2 border-b border-border/60 flex-shrink-0">
+              <div className="relative min-w-0">
+                <Input
+                  type="text"
+                  placeholder="Search channels/contacts..."
+                  aria-label="Search conversations"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={cn(
+                    'h-7 text-[13px] bg-background/50',
+                    searchQuery ? 'pr-8' : 'pr-3'
+                  )}
+                />
+                {searchQuery && (
+                  <button
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
+            </div>
+          )}
+
+          {/* Scroll to top — hidden in rail mode */}
+          {!isRailCollapsed && (
+            <button
+              onClick={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+              title="Scroll to top"
+              aria-label="Scroll to top"
+              className="absolute top-1 left-1/2 -translate-x-1/2 z-10 rounded-full bg-card/80 border border-border p-0.5 text-muted-foreground/40 hover:text-foreground hover:opacity-100 transition opacity-40 backdrop-blur-sm pointer-events-auto"
+            >
+              <ChevronsUp className="h-3.5 w-3.5" />
+            </button>
+          )}
+
+          {/* Scroll to bottom — hidden in rail mode */}
+          {!isRailCollapsed && (
+            <button
+              onClick={() =>
+                listRef.current?.scrollTo({
+                  top: listRef.current.scrollHeight,
+                  behavior: 'smooth',
+                })
+              }
+              title="Scroll to bottom"
+              aria-label="Scroll to bottom"
+              className="absolute bottom-1 left-1/2 -translate-x-1/2 z-10 rounded-full bg-card/80 border border-border p-0.5 text-muted-foreground/40 hover:text-foreground hover:opacity-100 transition opacity-40 backdrop-blur-sm pointer-events-auto"
+            >
+              <ChevronsDown className="h-3.5 w-3.5" />
+            </button>
+          )}
+
+          <div ref={listRef} className="flex-1 overflow-y-auto [contain:layout_paint]">
+            {isRailCollapsed ? (
+              /* Rail mode: tools only, icon-only */
+              toolRows
+            ) : (
+              <>
+                {sectionOrder.map((section) => renderSection(section))}
+                {isEmpty && (
+                  <div className="p-5 text-center text-muted-foreground">
+                    {query ? 'No matches found' : 'No conversations yet'}
+                  </div>
+                )}
+              </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Rail collapse toggle — not shown in forceExpanded (mobile) mode */}
+      {!forceExpanded && (
+        <div className="border-t border-border flex-shrink-0 flex justify-end px-1.5 py-1">
+          <button
+            onClick={toggleRail}
+            title={isRailCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={isRailCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="p-1.5 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {isRailCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </button>
         </div>
       )}
     </nav>
