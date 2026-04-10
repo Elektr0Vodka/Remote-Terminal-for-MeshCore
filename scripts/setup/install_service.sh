@@ -114,8 +114,8 @@ case "$TRANSPORT_CHOICE" in
             echo -e "${RED}TCP host is required.${NC}"
             read -rp "TCP host: " TCP_HOST
         done
-        read -rp "TCP port (default: 4000): " TCP_PORT
-        TCP_PORT="${TCP_PORT:-4000}"
+        read -rp "TCP port (default: 5000): " TCP_PORT
+        TCP_PORT="${TCP_PORT:-5000}"
         echo -e "${GREEN}TCP: ${TCP_HOST}:${TCP_PORT}${NC}"
         ;;
     4)
@@ -241,7 +241,7 @@ if [ "$FRONTEND_MODE" = "build" ]; then
 
     NODE_VERSION="$(node -v)"
     NPM_VERSION="$(npm -v)"
-    require_minimum_version "Node.js" "$NODE_VERSION" 18
+    require_minimum_version "Node.js" "$NODE_VERSION" 20
     require_minimum_version "npm" "$NPM_VERSION" 9
 
     echo -e "${YELLOW}Building frontend locally with Node ${NODE_VERSION} and npm ${NPM_VERSION}...${NC}"

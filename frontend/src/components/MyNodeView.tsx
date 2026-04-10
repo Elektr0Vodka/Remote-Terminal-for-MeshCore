@@ -1087,7 +1087,6 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
       if (statsRes.ok) {
         const statsData: StatisticsResponse = await statsRes.json();
         setStats(statsData);
-        setNoiseFloorSupported(statsData.noise_floor_24h.supported);
         setNoiseFloorSamples(statsData.noise_floor_24h.samples);
       }
       loadedAt.current = Date.now();
@@ -1161,7 +1160,7 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
 
   // Noise floor
   const [noiseFloorSamples, setNoiseFloorSamples] = useState<NoiseFloorSample[]>([]);
-  const [noiseFloorSupported, setNoiseFloorSupported] = useState<boolean | null>(null);
+  const [noiseFloorSupported] = useState<boolean | null>(null);
 
   // Fetch DB historical stats whenever the time window changes (uses nowSec which ticks every 30s)
   useEffect(() => {

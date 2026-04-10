@@ -9,7 +9,8 @@ import type {
   RadioTraceResponse,
 } from '../types';
 import { CONTACT_TYPE_REPEATER } from '../types';
-import { calculateDistance, isValidLocation } from '../utils/pathUtils';
+import { calculateDistance, formatDistance, isValidLocation } from '../utils/pathUtils';
+import { useDistanceUnit } from '../contexts/DistanceUnitContext';
 import { getContactDisplayName } from '../utils/pubkey';
 import { handleKeyboardActivate } from '../utils/a11y';
 import {
@@ -155,6 +156,7 @@ function TraceNodeRow({
 }
 
 export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) {
+  const { distanceUnit } = useDistanceUnit();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<TraceSortMode>('alpha');
   const [loading, setLoading] = useState(false);
@@ -488,7 +490,7 @@ export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) 
                         </div>
                         {sortMode === 'distance' && distanceKm !== null ? (
                           <div className="mt-1 text-[0.6875rem] text-muted-foreground">
-                            {distanceKm.toFixed(1)} km away
+                            {formatDistance(distanceKm, distanceUnit)} away
                           </div>
                         ) : null}
                         {selectedCount > 0 ? (

@@ -47,7 +47,7 @@ For advanced setup and troubleshooting see [README_ADVANCED.md](README_ADVANCED.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - Node.js LTS or current (20, 22, 24, 25) if you're not using a prebuilt release
 - [UV](https://astral.sh/uv) package manager: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - MeshCore radio connected via USB serial, TCP, or BLE
@@ -140,6 +140,8 @@ cp docker-compose.example.yml docker-compose.yml
 bash scripts/setup/install_docker.sh
 ```
 
+> The interactive generator enables a self-signed (snakeoil) TLS certificate by default. If you accept the default, the app will be served over HTTPS and the generated compose file will include certificate mounts and an SSL command override. Decline if you prefer plain HTTP or plan to terminate TLS externally.
+
 Your local `docker-compose.yml` is gitignored so future pulls do not overwrite your Docker settings.
 
 The guided Docker flow can collect BLE settings, but BLE access from Docker still needs manual compose customization such as Bluetooth passthrough and possibly privileged mode or host networking. If you want the simpler path for BLE, use the regular Python launch flow instead.
@@ -158,6 +160,8 @@ To rebuild after pulling updates:
 sudo docker compose pull
 sudo docker compose up -d
 ```
+
+> If you switched to a local build (`build: .` instead of `image:`), use `sudo docker compose up -d --build` instead — `pull` only fetches remote images.
 
 The example file and setup script default to the published Docker Hub image. To build locally from your checkout instead, replace:
 
@@ -184,6 +188,29 @@ To stop:
 ```bash
 sudo docker compose down
 ```
+
+## Install Path 3: Arch Linux (AUR)
+
+A [`remoteterm-meshcore`](https://aur.archlinux.org/packages/remoteterm-meshcore) package is available in the AUR. Install it with an AUR helper or build it manually:
+
+```bash
+# with an AUR helper
+yay -S remoteterm-meshcore
+
+# or manually
+git clone https://aur.archlinux.org/remoteterm-meshcore.git
+cd remoteterm-meshcore
+makepkg -si
+```
+
+Configure your radio connection, then start the service:
+
+```bash
+sudo vi /etc/remoteterm-meshcore/remoteterm.env
+sudo systemctl enable --now remoteterm-meshcore
+```
+
+Access the app at http://localhost:8000.
 
 ## Standard Environment Variables
 

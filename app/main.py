@@ -79,8 +79,8 @@ from app.routers import (
 )
 from app.security import add_optional_basic_auth_middleware
 from app.services.bot_analyzer import start_bot_analyzer, stop_bot_analyzer
-from app.services.radio_noise_floor import start_noise_floor_sampling, stop_noise_floor_sampling
 from app.services.radio_runtime import radio_runtime as radio_manager
+from app.services.radio_stats import start_radio_stats_sampling, stop_radio_stats_sampling
 from app.version_info import get_app_build_info
 
 _auto_delete_task: asyncio.Task | None = None
@@ -140,7 +140,7 @@ async def lifespan(app: FastAPI):
     from app.radio_sync import ensure_default_channels
 
     await ensure_default_channels()
-    await start_noise_floor_sampling()
+    await start_radio_stats_sampling()
 
     # Always start connection monitor (even if initial connection failed)
     await radio_manager.start_connection_monitor()
@@ -174,7 +174,7 @@ async def lifespan(app: FastAPI):
     await radio_manager.stop_connection_monitor()
     await stop_background_contact_reconciliation()
     await stop_message_polling()
-    await stop_noise_floor_sampling()
+    await stop_radio_stats_sampling()
     await stop_periodic_advert()
     await stop_periodic_sync()
     await stop_telemetry_collect()

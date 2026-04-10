@@ -264,38 +264,43 @@ async def send_channel_message_with_effective_scope(
         return send_result
     finally:
         if override_scope and override_scope != baseline_scope:
-            try:
-                restore_result = await mc.commands.set_flood_scope(
-                    baseline_scope if baseline_scope else ""
-                )
-                if restore_result is not None and restore_result.type == EventType.ERROR:
-                    logger.error(
-                        "Failed to restore baseline flood_scope after sending to %s: %s",
+            restored = False
+            for attempt in range(3):
+                try:
+                    restore_result = await mc.commands.set_flood_scope(
+                        baseline_scope if baseline_scope else ""
+                    )
+                    if restore_result is not None and restore_result.type == EventType.ERROR:
+                        logger.warning(
+                            "Attempt %d/3: failed to restore flood_scope after sending to %s: %s",
+                            attempt + 1,
+                            channel.name,
+                            restore_result.payload,
+                        )
+                    else:
+                        logger.debug(
+                            "Restored baseline flood_scope after channel send: %r",
+                            baseline_scope or "(disabled)",
+                        )
+                        restored = True
+                        break
+                except Exception:
+                    logger.exception(
+                        "Attempt %d/3: exception restoring flood_scope after sending to %s",
+                        attempt + 1,
                         channel.name,
-                        restore_result.payload,
                     )
-                    error_broadcast_fn(
-                        "Regional override restore failed",
-                        (
-                            f"Sent to {channel.name}, but restoring flood scope failed. "
-                            "The radio may still be region-scoped. Consider rebooting the radio."
-                        ),
-                    )
-                else:
-                    logger.debug(
-                        "Restored baseline flood_scope after channel send: %r",
-                        baseline_scope or "(disabled)",
-                    )
-            except Exception:
-                logger.exception(
-                    "Failed to restore baseline flood_scope after sending to %s",
+            if not restored:
+                logger.error(
+                    "All 3 attempts to restore flood_scope failed for %s",
                     channel.name,
                 )
                 error_broadcast_fn(
                     "Regional override restore failed",
                     (
-                        f"Sent to {channel.name}, but restoring flood scope failed. "
-                        "The radio may still be region-scoped. Consider rebooting the radio."
+                        f"Sent to {channel.name}, but restoring flood scope failed "
+                        f"after 3 attempts. The radio may still be region-scoped. "
+                        f"Consider rebooting the radio."
                     ),
                 )
 
@@ -421,7 +426,8 @@ async def _retry_direct_message_until_acked(
     message_repository,
 ) -> None:
     next_wait_timeout_ms = wait_timeout_ms
-    for attempt in range(1, DM_SEND_MAX_ATTEMPTS):
+    attempt = 1
+    while attempt < DM_SEND_MAX_ATTEMPTS:
         await sleep_fn((next_wait_timeout_ms / 1000) * DM_RETRY_WAIT_MARGIN)
         if await _is_message_acked(message_id=message_id, message_repository=message_repository):
             return
@@ -463,6 +469,14 @@ async def _retry_direct_message_until_acked(
                     timestamp=sender_timestamp,
                     attempt=attempt,
                 )
+        except RadioOperationBusyError:
+            logger.debug(
+                "Radio busy during DM retry attempt %d/%d for %s, will retry without consuming attempt",
+                attempt + 1,
+                DM_SEND_MAX_ATTEMPTS,
+                contact.public_key[:12],
+            )
+            continue
         except Exception:
             logger.exception(
                 "Background DM retry attempt %d/%d failed for %s",
@@ -470,6 +484,7 @@ async def _retry_direct_message_until_acked(
                 DM_SEND_MAX_ATTEMPTS,
                 contact.public_key[:12],
             )
+            attempt += 1
             continue
 
         if result is None:
@@ -479,6 +494,7 @@ async def _retry_direct_message_until_acked(
                 DM_SEND_MAX_ATTEMPTS,
                 contact.public_key[:12],
             )
+            attempt += 1
             continue
 
         if result.type == EventType.ERROR:
@@ -489,6 +505,7 @@ async def _retry_direct_message_until_acked(
                 contact.public_key[:12],
                 result.payload,
             )
+            attempt += 1
             continue
 
         if await _is_message_acked(message_id=message_id, message_repository=message_repository):
@@ -515,6 +532,8 @@ async def _retry_direct_message_until_acked(
         )
         if ack_count > 0:
             return
+
+        attempt += 1
 
 
 async def send_direct_message_to_contact(

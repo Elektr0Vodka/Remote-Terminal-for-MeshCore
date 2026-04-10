@@ -449,7 +449,7 @@ export function SettingsStatisticsSection({ className }: { className?: string })
           )}
 
           {/* Noise Floor */}
-          {stats.noise_floor_24h.supported !== false && (
+          {stats.noise_floor_24h && (
             <>
               <Separator />
               <div>

@@ -40,7 +40,7 @@ app/
 │   ├── contact_reconciliation.py # Prefix-claim, sender-key backfill, name-history wiring
 │   ├── radio_lifecycle.py       # Post-connect setup and reconnect/setup helpers
 │   ├── radio_commands.py        # Radio config/private-key command workflows
-│   ├── radio_noise_floor.py     # In-memory local radio noise-floor sampling/history
+│   ├── radio_stats.py           # In-memory local radio stats sampling and noise-floor history
 │   ├── radio_runtime.py         # Router/dependency seam over the global RadioManager
 │   └── bot_analyzer.py          # Periodic bot-behaviour scoring (automation + impact scores)
 ├── radio.py             # RadioManager transport/session state + lock management
@@ -173,10 +173,12 @@ app/
 
 - All external integrations (MQTT, bots, webhooks, Apprise, SQS) are managed through the fanout bus (`app/fanout/`).
 - Configs stored in `fanout_configs` table, managed via `GET/POST/PATCH/DELETE /api/fanout`.
-- `broadcast_event()` in `websocket.py` dispatches to the fanout manager for `message` and `raw_packet` events.
-- Each integration is a `FanoutModule` with scope-based filtering.
+- `broadcast_event()` in `websocket.py` dispatches to the fanout manager for `message`, `raw_packet`, and `contact` events.
+- `on_message` and `on_raw` are scope-gated. `on_contact`, `on_telemetry`, and `on_health` are dispatched to all modules unconditionally (modules filter internally).
+- Repeater telemetry broadcasts are emitted after `RepeaterTelemetryRepository.record()` in both `radio_sync.py` (auto-collect) and `routers/repeaters.py` (manual fetch).
+- The 60-second radio stats sampling loop in `radio_stats.py` dispatches an enriched health snapshot (radio identity + full stats) to all fanout modules after each sample.
 - Community MQTT publishes raw packets only, but its derived `path` field for direct packets is emitted as comma-separated hop identifiers, not flat path bytes.
-- See `app/fanout/AGENTS_fanout.md` for full architecture details.
+- See `app/fanout/AGENTS_fanout.md` for full architecture details and event payload shapes.
 
 ## API Surface (all under `/api`)
 
@@ -260,7 +262,7 @@ app/
 - `POST /settings/favorites/toggle`
 - `POST /settings/blocked-keys/toggle`
 - `POST /settings/blocked-names/toggle`
-- `POST /settings/migrate`
+- `POST /settings/tracked-telemetry/toggle`
 
 ### Fanout
 - `GET /fanout` — list all fanout configs
@@ -309,6 +311,8 @@ Main tables:
 - `contact_advert_paths` (recent unique advertisement paths per contact, keyed by contact + path bytes + hop count)
 - `contact_name_history` (tracks name changes over time)
 - `bot_detection_nodes` (per-sender automation/impact scores, manual tags, and scoring detail columns — created by migration 79)
+- `repeater_telemetry_history` (time-series telemetry snapshots for tracked repeaters)
+- `fanout_configs` (MQTT, bot, webhook, Apprise, SQS integration configs)
 - `app_settings`
 
 Contact route state is canonicalized on the backend:
@@ -324,14 +328,14 @@ Repository writes should prefer typed models such as `ContactUpsert` over ad hoc
 
 `app_settings` fields in active model:
 - `max_radio_contacts`
-- `favorites`
 - `auto_decrypt_dm_on_advert`
 - `last_message_times`
-- `preferences_migrated`
 - `advert_interval`
 - `last_advert_time`
 - `flood_scope`
 - `blocked_keys`, `blocked_names`, `discovery_blocked_types`
+- `tracked_telemetry_repeaters`
+- `auto_resend_channel`
 
 Note: MQTT, community MQTT, and bot configs were migrated to the `fanout_configs` table (migrations 36-38).
 

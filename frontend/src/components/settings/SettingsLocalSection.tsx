@@ -30,6 +30,13 @@ import {
   setSavedFontScale,
 } from '../../utils/fontScale';
 import { getAutoFocusInputEnabled, setAutoFocusInputEnabled } from '../../utils/autoFocusInput';
+import {
+  BATTERY_DISPLAY_CHANGE_EVENT,
+  getShowBatteryPercent,
+  setShowBatteryPercent as saveBatteryPercent,
+  getShowBatteryVoltage,
+  setShowBatteryVoltage as saveBatteryVoltage,
+} from '../../utils/batteryDisplay';
 
 export function SettingsLocalSection({
   onLocalLabelChange,
@@ -61,6 +68,8 @@ export function SettingsLocalSection({
   const [showWarningTicker, setShowWarningTicker] = useState(true);
   const [thresholdBusy, setThresholdBusy] = useState(false);
   const [thresholdError, setThresholdError] = useState<string | null>(null);
+  const [batteryPercent, setBatteryPercent] = useState(getShowBatteryPercent);
+  const [batteryVoltage, setBatteryVoltage] = useState(getShowBatteryVoltage);
 
   useEffect(() => {
     if (appSettings) {
@@ -334,6 +343,43 @@ export function SettingsLocalSection({
           />
           <span className="text-sm">Auto-focus input on conversation load (desktop only)</span>
         </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={batteryPercent}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setBatteryPercent(v);
+              saveBatteryPercent(v);
+              window.dispatchEvent(new Event(BATTERY_DISPLAY_CHANGE_EVENT));
+            }}
+            className="w-4 h-4 rounded border-input accent-primary"
+          />
+          <span className="text-sm">Show battery percentage in status bar</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={batteryVoltage}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setBatteryVoltage(v);
+              saveBatteryVoltage(v);
+              window.dispatchEvent(new Event(BATTERY_DISPLAY_CHANGE_EVENT));
+            }}
+            className="w-4 h-4 rounded border-input accent-primary"
+          />
+          <span className="text-sm">Show battery voltage in status bar</span>
+        </label>
+
+        {(batteryPercent || batteryVoltage) && (
+          <p className="text-xs text-muted-foreground ml-7">
+            Battery data updates every 60 seconds and may take up to a minute to appear after
+            connecting.
+          </p>
+        )}
 
       {appSettings && (
         <>
