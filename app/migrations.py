@@ -3880,6 +3880,10 @@ async def _migrate_079_bot_detection_nodes(conn: aiosqlite.Connection) -> None:
             last_analyzed_at    INTEGER
         )
         """
+    )
+    await conn.commit()
+
+
 async def _migrate_056_priv_dedup_include_sender_key(conn: aiosqlite.Connection) -> None:
     """Add sender_key to the incoming PRIV dedup index.
 
