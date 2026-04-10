@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query
 from app.models import StatisticsResponse
 from app.repository import StatisticsRepository
 from app.repository.noise_floor import NoiseFloorRepository
-from app.services.radio_stats import get_noise_floor_history
+from app.services.radio_stats import get_battery_history, get_noise_floor_history
 
 router = APIRouter(prefix="/statistics", tags=["statistics"])
 
@@ -13,6 +13,11 @@ async def get_statistics() -> StatisticsResponse:
     data = await StatisticsRepository.get_all()
     data["noise_floor_24h"] = get_noise_floor_history()
     return StatisticsResponse(**data)
+
+
+@router.get("/battery")
+async def get_battery_history_endpoint() -> dict:
+    return get_battery_history()
 
 
 @router.get("/noise-floor")

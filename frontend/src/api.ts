@@ -40,6 +40,7 @@ import type {
   TrackedTelemetryResponse,
   StatisticsResponse,
   NoiseFloorSample,
+  BatteryHistoryStats,
   TraceResponse,
   UnreadCounts,
   BotDetectionNode,
@@ -431,6 +432,7 @@ export const api = {
   getStatistics: () => fetchJson<StatisticsResponse>('/statistics'),
   getNoiseFloorHistory: (startTs: number, endTs: number) =>
     fetchJson<NoiseFloorSample[]>(`/statistics/noise-floor?start_ts=${startTs}&end_ts=${endTs}`),
+  getBatteryHistory: () => fetchJson<BatteryHistoryStats>('/statistics/battery'),
 
   // Granular repeater endpoints
   repeaterLogin: (publicKey: string, password: string) =>

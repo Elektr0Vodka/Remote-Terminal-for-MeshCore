@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 STATS_SAMPLE_INTERVAL_SECONDS = 60
 NOISE_FLOOR_WINDOW_SECONDS = 24 * 60 * 60
 MAX_NOISE_FLOOR_SAMPLES = 1500  # 24h at 60s intervals = 1440
+MAX_BATTERY_SAMPLES = 1500
 
 _stats_task: asyncio.Task | None = None
 _noise_floor_samples: deque[tuple[int, int]] = deque(maxlen=MAX_NOISE_FLOOR_SAMPLES)
+_battery_samples: deque[tuple[int, int]] = deque(maxlen=MAX_BATTERY_SAMPLES)
 _latest_stats: dict[str, Any] = {}
 
 
@@ -69,6 +71,10 @@ async def _sample_all_stats() -> dict[str, Any]:
         noise_floor = radio_event.payload.get("noise_floor")
         if isinstance(noise_floor, int):
             _noise_floor_samples.append((now, noise_floor))
+
+    battery_mv = snapshot.get("battery_mv")
+    if isinstance(battery_mv, int) and battery_mv > 0:
+        _battery_samples.append((now, battery_mv))
 
     if getattr(packet_event, "type", None) == EventType.STATS_PACKETS:
         snapshot["packets"] = packet_event.payload
@@ -185,6 +191,30 @@ def get_noise_floor_history() -> dict:
         "sample_interval_seconds": STATS_SAMPLE_INTERVAL_SECONDS,
         "coverage_seconds": coverage_seconds,
         "latest_noise_floor_dbm": latest["noise_floor_dbm"] if latest else None,
+        "latest_timestamp": latest["timestamp"] if latest else None,
+        "samples": samples,
+    }
+
+
+def get_battery_history() -> dict:
+    """Return the current 24-hour in-memory battery voltage history snapshot."""
+    now = int(time.time())
+    cutoff = now - NOISE_FLOOR_WINDOW_SECONDS
+
+    samples = [
+        {"timestamp": ts, "battery_mv": mv}
+        for ts, mv in _battery_samples
+        if ts >= cutoff
+    ]
+
+    latest = samples[-1] if samples else None
+    oldest_timestamp = samples[0]["timestamp"] if samples else None
+    coverage_seconds = 0 if oldest_timestamp is None else max(0, now - oldest_timestamp)
+
+    return {
+        "sample_interval_seconds": STATS_SAMPLE_INTERVAL_SECONDS,
+        "coverage_seconds": coverage_seconds,
+        "latest_battery_mv": latest["battery_mv"] if latest else None,
         "latest_timestamp": latest["timestamp"] if latest else None,
         "samples": samples,
     }

@@ -597,6 +597,19 @@ export interface NoiseFloorSample {
   noise_floor_dbm: number;
 }
 
+export interface BatterySample {
+  timestamp: number;
+  battery_mv: number;
+}
+
+export interface BatteryHistoryStats {
+  sample_interval_seconds: number;
+  coverage_seconds: number;
+  latest_battery_mv: number | null;
+  latest_timestamp: number | null;
+  samples: BatterySample[];
+}
+
 export interface NoiseFloorHistoryStats {
   sample_interval_seconds: number;
   coverage_seconds: number;
