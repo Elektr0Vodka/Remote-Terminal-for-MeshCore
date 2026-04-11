@@ -274,6 +274,74 @@ export function seedFromRadioChannels(
  * Update an existing registry entry by merging a patch into it.
  * If the channel is not found the registry is returned unchanged.
  */
+export interface ChannelBulkStats {
+  count: number;
+  first_at: number | null; // Unix seconds
+  last_at: number | null; // Unix seconds
+}
+
+/**
+ * Apply bulk DB stats (count, first_at, last_at) to the registry.
+ * - firstSeen: set from first_at if currently null or if DB is earlier
+ * - added:     set from first_at date if currently null
+ * - lastHeard: set from last_at if DB is newer than stored value
+ * - packets:   replaced with DB count (authoritative)
+ *
+ * keyed by channel hex key, with a nameByKey map to resolve to registry entries.
+ * Returns the updated array and how many entries were changed.
+ */
+export function applyChannelStats(
+  stats: Record<string, ChannelBulkStats>,
+  nameByKey: Map<string, string>, // hex key (uppercase) → channel name (with #)
+  existing: RegistryChannel[]
+): { result: RegistryChannel[]; changed: number } {
+  let changed = 0;
+  const result = existing.map((e) => {
+    // Find the hex key for this registry entry
+    const normalizedName = e.channel.toLowerCase();
+    let hexKey: string | undefined;
+    for (const [k, n] of nameByKey) {
+      if (n.toLowerCase() === normalizedName) {
+        hexKey = k;
+        break;
+      }
+    }
+    if (!hexKey) return e;
+
+    const stat = stats[hexKey] ?? stats[hexKey.toLowerCase()];
+    if (!stat) return e;
+
+    const dbFirstIso = stat.first_at ? new Date(stat.first_at * 1000).toISOString() : null;
+    const dbLastIso = stat.last_at ? new Date(stat.last_at * 1000).toISOString() : null;
+    const dbFirstDate = dbFirstIso ? dbFirstIso.slice(0, 10) : null;
+
+    const updatedFirstSeen =
+      pickNewer(dbFirstIso, null) === dbFirstIso
+        ? pickEarlier(e.firstSeen, dbFirstIso)
+        : e.firstSeen;
+    const updatedAdded = e.added ?? dbFirstDate;
+    const updatedLastHeard = pickNewer(e.lastHeard, dbLastIso);
+    const updatedPackets = stat.count;
+
+    const dirty =
+      updatedFirstSeen !== e.firstSeen ||
+      updatedAdded !== e.added ||
+      updatedLastHeard !== e.lastHeard ||
+      updatedPackets !== e.packets;
+
+    if (!dirty) return e;
+    changed++;
+    return {
+      ...e,
+      firstSeen: updatedFirstSeen,
+      added: updatedAdded,
+      lastHeard: updatedLastHeard,
+      packets: updatedPackets,
+    };
+  });
+  return { result, changed };
+}
+
 export function updateChannel(
   channelName: string,
   patch: Partial<Omit<RegistryChannel, 'channel'>>,
@@ -327,6 +395,12 @@ function pickNewer(a: string | null, b: string | null): string | null {
   if (!a) return b;
   if (!b) return a;
   return a >= b ? a : b;
+}
+
+function pickEarlier(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a <= b ? a : b;
 }
 
 function dedupeArray<T>(arr: T[]): T[] {

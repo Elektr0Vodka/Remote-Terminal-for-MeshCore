@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
     getSettings: vi.fn(),
     getUndecryptedPacketCount: vi.fn(),
     getChannels: vi.fn(),
-    getChannelMessageCounts: vi.fn(),
+    getChannelStats: vi.fn(),
     getContacts: vi.fn(),
     toggleFavorite: vi.fn(),
     updateSettings: vi.fn(),
@@ -215,7 +215,7 @@ describe('App favorite toggle flow', () => {
     mocks.api.getSettings.mockResolvedValue({ ...baseSettings });
     mocks.api.getUndecryptedPacketCount.mockResolvedValue({ count: 0 });
     mocks.api.getChannels.mockResolvedValue([publicChannel]);
-    mocks.api.getChannelMessageCounts.mockResolvedValue({});
+    mocks.api.getChannelStats.mockResolvedValue({});
     mocks.api.getContacts.mockResolvedValue([]);
     mocks.api.toggleFavorite.mockResolvedValue({
       type: 'channel',

@@ -376,6 +376,14 @@ class ChannelMessageCounts(BaseModel):
     all_time: int = 0
 
 
+class ChannelBulkStats(BaseModel):
+    """Lightweight per-channel stats returned by the bulk stats endpoint."""
+
+    count: int
+    first_at: int | None = None  # Unix seconds — earliest received_at for this channel
+    last_at: int | None = None  # Unix seconds — most recent received_at for this channel
+
+
 class ChannelTopSender(BaseModel):
     """A top sender in a channel over the last 24 hours."""
 

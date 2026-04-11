@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     getSettings: vi.fn(),
     getUndecryptedPacketCount: vi.fn(),
     getChannels: vi.fn(),
-    getChannelMessageCounts: vi.fn(),
+    getChannelStats: vi.fn(),
     getContacts: vi.fn(),
   },
   useConversationMessagesCalls: vi.fn(),
@@ -223,7 +223,7 @@ describe('App search jump target handling', () => {
       last_advert_time: 0,
     });
     mocks.api.getUndecryptedPacketCount.mockResolvedValue({ count: 0 });
-    mocks.api.getChannelMessageCounts.mockResolvedValue({});
+    mocks.api.getChannelStats.mockResolvedValue({});
     mocks.api.getChannels.mockResolvedValue([
       {
         key: PUBLIC_CHANNEL_KEY,

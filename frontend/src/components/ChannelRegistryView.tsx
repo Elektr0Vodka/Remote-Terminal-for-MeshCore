@@ -15,6 +15,7 @@ import {
 
 import {
   addManualChannel,
+  applyChannelStats,
   loadRegistry,
   mergeImport,
   recordFinderDiscovery,
@@ -22,6 +23,7 @@ import {
   seedFromRadioChannels,
   toProjectAFormat,
   updateChannel,
+  type ChannelBulkStats,
   type RegistryChannel,
 } from '../lib/channelManager';
 import type { Channel } from '../types';
@@ -517,10 +519,10 @@ const COL_TEMPLATE = '1fr 140px 90px 90px 80px 82px 44px 52px';
 
 export default function ChannelRegistryView({
   channels,
-  channelMessageCounts,
+  channelStats,
 }: {
   channels?: Channel[];
-  channelMessageCounts?: Record<string, number>;
+  channelStats?: Record<string, ChannelBulkStats>;
 }) {
   const [registry, setRegistry] = useState<RegistryChannel[]>(() => {
     const stored = loadRegistry();
@@ -547,6 +549,16 @@ export default function ChannelRegistryView({
     setTimeout(() => setToast(null), 5000);
   }
 
+  // Map: uppercase hex key → channel name with # prefix (used to resolve DB stats)
+  const channelNameByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const ch of channels ?? []) {
+      const name = ch.name.startsWith('#') ? ch.name : `#${ch.name}`;
+      m.set(ch.key.toUpperCase(), name);
+    }
+    return m;
+  }, [channels]);
+
   // ── Seed from radio channels ────────────────────────────────────────────────
   useEffect(() => {
     if (!channels?.length) return;
@@ -556,6 +568,17 @@ export default function ChannelRegistryView({
       return added > 0 ? result : current;
     });
   }, [channels]);
+
+  // ── Apply DB stats (count, first_at, last_at) to registry ───────────────────
+  // Updates firstSeen, added (if unset), lastHeard, and packets from authoritative DB data.
+  useEffect(() => {
+    if (!channelStats || !Object.keys(channelStats).length) return;
+    setRegistry((current) => {
+      const { result, changed } = applyChannelStats(channelStats, channelNameByKey, current);
+      if (changed > 0) saveRegistry(result);
+      return changed > 0 ? result : current;
+    });
+  }, [channelStats, channelNameByKey]);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const categoryOptions = useMemo(
@@ -575,31 +598,8 @@ export default function ChannelRegistryView({
     return m;
   }, [registry]);
 
-  // Map normalised channel name → hex key, built from the radio channel list.
-  // Used to resolve DB message counts (keyed by hex) for registry entries (keyed by name).
-  const channelKeyByName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const ch of channels ?? []) {
-      m.set(ch.name.toLowerCase(), ch.key.toUpperCase());
-    }
-    return m;
-  }, [channels]);
-
-  // Returns the live DB-backed total count for a registry entry, falling back to
-  // the finder-discovery packets field when the channel isn't in the radio DB.
-  const getLiveCount = useCallback(
-    (entry: RegistryChannel): number => {
-      const name = entry.channel.replace(/^#/, '').toLowerCase();
-      const key = channelKeyByName.get(name) ?? channelKeyByName.get(entry.channel.toLowerCase());
-      if (key && channelMessageCounts) {
-        return (
-          channelMessageCounts[key] ?? channelMessageCounts[key.toLowerCase()] ?? entry.packets
-        );
-      }
-      return entry.packets;
-    },
-    [channelKeyByName, channelMessageCounts]
-  );
+  // Live count: use packets field (kept in sync by applyChannelStats + handleChannelMessage)
+  const getLiveCount = useCallback((entry: RegistryChannel): number => entry.packets, []);
 
   const sorted = useMemo(() => {
     let list = registry;

@@ -14,7 +14,13 @@ from app.channel_constants import (
     is_public_channel_name,
 )
 from app.decoder import parse_packet, try_decrypt_packet_with_channel_key
-from app.models import Channel, ChannelDetail, ChannelMessageCounts, ChannelTopSender
+from app.models import (
+    Channel,
+    ChannelBulkStats,
+    ChannelDetail,
+    ChannelMessageCounts,
+    ChannelTopSender,
+)
 from app.packet_processor import create_message_from_decrypted
 from app.region_scope import normalize_region_scope
 from app.repository import ChannelRepository, MessageRepository, RawPacketRepository
@@ -211,10 +217,11 @@ async def list_channels() -> list[Channel]:
     return await ChannelRepository.get_all()
 
 
-@router.get("/message-counts", response_model=dict[str, int])
-async def get_channel_message_counts() -> dict[str, int]:
-    """Return all-time message count per channel key in a single query."""
-    return await MessageRepository.get_all_channel_message_counts()
+@router.get("/stats", response_model=dict[str, ChannelBulkStats])
+async def get_channel_stats() -> dict[str, ChannelBulkStats]:
+    """Return message count, first received_at, and last received_at per channel key."""
+    raw = await MessageRepository.get_all_channel_stats()
+    return {key: ChannelBulkStats(**val) for key, val in raw.items()}
 
 
 @router.get("/{key}/detail", response_model=ChannelDetail)

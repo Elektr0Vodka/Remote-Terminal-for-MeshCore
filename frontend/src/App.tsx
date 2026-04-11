@@ -142,14 +142,24 @@ export function App() {
     handleToggleCracker,
   } = useAppShell();
 
-  // Per-channel all-time message counts fetched from the DB and kept live via WS
-  const [channelMessageCounts, setChannelMessageCounts] = useState<Record<string, number>>({});
+  // Per-channel DB stats (count, first_at, last_at) fetched on mount and kept live
+  const [channelStats, setChannelStats] = useState<
+    Record<string, { count: number; first_at: number | null; last_at: number | null }>
+  >({});
 
   const handleChannelMessage = useCallback((channelKey: string) => {
-    setChannelMessageCounts((prev) => ({
-      ...prev,
-      [channelKey]: (prev[channelKey] ?? 0) + 1,
-    }));
+    const nowSec = Math.floor(Date.now() / 1000);
+    setChannelStats((prev) => {
+      const existing = prev[channelKey];
+      return {
+        ...prev,
+        [channelKey]: {
+          count: (existing?.count ?? 0) + 1,
+          first_at: existing?.first_at ?? nowSec,
+          last_at: nowSec,
+        },
+      };
+    });
   }, []);
 
   // Shared refs between useConversationRouter and useContactsAndChannels
@@ -651,7 +661,7 @@ export function App() {
     onToggleTrackedTelemetry: handleToggleTrackedTelemetry,
     repeaterAutoLoginKey,
     onClearRepeaterAutoLogin: () => setRepeaterAutoLoginKey(null),
-    channelMessageCounts,
+    channelStats,
   };
   const searchProps = {
     contacts,
@@ -761,7 +771,7 @@ export function App() {
 
     // Fetch contacts and channels via REST (parallel, faster than WS serial push)
     takePrefetchOrFetch('channels', api.getChannels).then(setChannels).catch(console.error);
-    api.getChannelMessageCounts().then(setChannelMessageCounts).catch(console.error);
+    api.getChannelStats().then(setChannelStats).catch(console.error);
     fetchAllContacts()
       .then((data) => {
         setContacts(data);
