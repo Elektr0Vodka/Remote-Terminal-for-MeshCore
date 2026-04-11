@@ -1445,7 +1445,6 @@ class TestChannelSendCacheAudit:
     async def test_audit_channel_send_cache_accepts_matching_radio_state(self, test_db):
         chan_key = "ab" * 16
         await ChannelRepository.upsert(key=chan_key, name="#flightless")
-        radio_manager.note_channel_slot_loaded(chan_key, 0)
 
         ok_result = MagicMock()
         ok_result.type = EventType.CHANNEL_INFO
@@ -1457,18 +1456,22 @@ class TestChannelSendCacheAudit:
         mock_mc = MagicMock()
         mock_mc.commands.get_channel = AsyncMock(return_value=ok_result)
 
-        with patch("app.radio_sync.broadcast_error") as mock_broadcast_error:
+        # Patch tcp_host to "" so channel_slot_reuse_enabled() treats this as serial
+        with (
+            patch("app.radio.settings.tcp_host", ""),
+            patch("app.radio_sync.broadcast_error") as mock_broadcast_error,
+        ):
+            radio_manager.note_channel_slot_loaded(chan_key, 0)
             assert await audit_channel_send_cache(mock_mc) is True
+            assert radio_manager.get_cached_channel_slot(chan_key) == 0
 
         mock_mc.commands.get_channel.assert_awaited_once_with(0)
         mock_broadcast_error.assert_not_called()
-        assert radio_manager.get_cached_channel_slot(chan_key) == 0
 
     @pytest.mark.asyncio
     async def test_audit_channel_send_cache_resets_and_toasts_on_mismatch(self, test_db):
         chan_key = "cd" * 16
         await ChannelRepository.upsert(key=chan_key, name="#flightless")
-        radio_manager.note_channel_slot_loaded(chan_key, 0)
 
         mismatch_result = MagicMock()
         mismatch_result.type = EventType.CHANNEL_INFO
@@ -1480,7 +1483,12 @@ class TestChannelSendCacheAudit:
         mock_mc = MagicMock()
         mock_mc.commands.get_channel = AsyncMock(return_value=mismatch_result)
 
-        with patch("app.radio_sync.broadcast_error") as mock_broadcast_error:
+        # Patch tcp_host to "" so channel_slot_reuse_enabled() treats this as serial
+        with (
+            patch("app.radio.settings.tcp_host", ""),
+            patch("app.radio_sync.broadcast_error") as mock_broadcast_error,
+        ):
+            radio_manager.note_channel_slot_loaded(chan_key, 0)
             assert await audit_channel_send_cache(mock_mc) is False
 
         mock_broadcast_error.assert_called_once()

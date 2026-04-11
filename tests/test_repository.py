@@ -627,7 +627,12 @@ class TestAppSettingsRepository:
                 "flood_scope": "",
                 "blocked_keys": "[]",
                 "blocked_names": "[]",
+                "show_warning_ticker": 1,
+                "auto_delete_raw_enabled": 0,
+                "auto_delete_raw_days": 14,
                 "discovery_blocked_types": "[]",
+                "tracked_telemetry_repeaters": None,
+                "auto_resend_channel": 0,
             }
         )
         mock_conn.execute = AsyncMock(return_value=mock_cursor)

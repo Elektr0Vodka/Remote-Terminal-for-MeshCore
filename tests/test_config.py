@@ -19,7 +19,7 @@ class TestTransportExclusivity:
         assert s.connection_type == "serial"
 
     def test_serial_only(self):
-        s = Settings(serial_port="/dev/ttyUSB0")
+        s = Settings(serial_port="/dev/ttyUSB0", tcp_host="")
         assert s.connection_type == "serial"
 
     def test_tcp_only(self):
@@ -36,7 +36,7 @@ class TestTransportExclusivity:
         assert s.tcp_port == 5000
 
     def test_ble_only(self):
-        s = Settings(ble_address="AA:BB:CC:DD:EE:FF", ble_pin="123456")
+        s = Settings(ble_address="AA:BB:CC:DD:EE:FF", ble_pin="123456", tcp_host="")
         assert s.connection_type == "ble"
 
     def test_serial_and_tcp_rejected(self):
@@ -74,10 +74,10 @@ class TestBLEPinRequirement:
 
     def test_ble_address_without_pin_rejected(self):
         with pytest.raises(ValidationError, match="MESHCORE_BLE_PIN is required"):
-            Settings(ble_address="AA:BB:CC:DD:EE:FF", ble_pin="")
+            Settings(ble_address="AA:BB:CC:DD:EE:FF", ble_pin="", tcp_host="")
 
     def test_ble_address_with_pin_accepted(self):
-        s = Settings(ble_address="AA:BB:CC:DD:EE:FF", ble_pin="123456")
+        s = Settings(ble_address="AA:BB:CC:DD:EE:FF", ble_pin="123456", tcp_host="")
         assert s.ble_address == "AA:BB:CC:DD:EE:FF"
         assert s.ble_pin == "123456"
 

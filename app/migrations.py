@@ -564,16 +564,22 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 80)
         applied += 1
 
-    if version < 56:
-        logger.info("Applying migration 56: add sender_key to incoming PRIV dedup index")
-        await _migrate_056_priv_dedup_include_sender_key(conn)
-        await set_version(conn, 56)
-        applied += 1
-
     if version < 81:
         logger.info("Applying migration 81: create battery_history table")
         await _migrate_081_battery_history(conn)
         await set_version(conn, 81)
+        applied += 1
+
+    # Migration 82: retroactive catch-up — add sender_key to incoming PRIV dedup index.
+    # This was previously mis-ordered as "if version < 56" (using the stale starting-version
+    # local variable), which caused it to run out-of-sequence for databases that started
+    # below version 56.  Moving it to a proper slot here makes the version sequence monotonic.
+    if version < 82:
+        logger.info(
+            "Applying migration 82: add sender_key to incoming PRIV dedup index (catch-up)"
+        )
+        await _migrate_056_priv_dedup_include_sender_key(conn)
+        await set_version(conn, 82)
         applied += 1
 
     if applied > 0:
@@ -3115,6 +3121,13 @@ async def _migrate_047_add_raw_packet_signal_columns(conn: aiosqlite.Connection)
 
 async def _migrate_048_add_show_warning_ticker(conn: aiosqlite.Connection) -> None:
     """Add show_warning_ticker column to app_settings (default: enabled)."""
+    # Guard: app_settings may not exist in partial migration-test schemas
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'"
+    )
+    if not await cursor.fetchone():
+        await conn.commit()
+        return
     try:
         await conn.execute(
             "ALTER TABLE app_settings ADD COLUMN show_warning_ticker INTEGER NOT NULL DEFAULT 1"
@@ -3129,6 +3142,13 @@ async def _migrate_048_add_show_warning_ticker(conn: aiosqlite.Connection) -> No
 
 async def _migrate_049_add_contact_notes(conn: aiosqlite.Connection) -> None:
     """Add notes column to contacts for user-editable map node notes."""
+    # Guard: contacts table may not exist in partial migration-test schemas
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contacts'"
+    )
+    if not await cursor.fetchone():
+        await conn.commit()
+        return
     try:
         await conn.execute("ALTER TABLE contacts ADD COLUMN notes TEXT")
     except Exception as e:
@@ -3145,6 +3165,13 @@ async def _migrate_050_add_advert_path_signal(conn: aiosqlite.Connection) -> Non
     These track the strongest signal ever observed on each unique advert path,
     allowing historical signal quality analysis and map display.
     """
+    # Guard: contact_advert_paths may not exist in partial migration-test schemas
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contact_advert_paths'"
+    )
+    if not await cursor.fetchone():
+        await conn.commit()
+        return
     for col, col_type in [("best_rssi", "REAL"), ("best_snr", "REAL")]:
         try:
             await conn.execute(f"ALTER TABLE contact_advert_paths ADD COLUMN {col} {col_type}")
@@ -3158,6 +3185,13 @@ async def _migrate_050_add_advert_path_signal(conn: aiosqlite.Connection) -> Non
 
 async def _migrate_052_add_contact_last_signal(conn: aiosqlite.Connection) -> None:
     """Add last_rssi and last_snr columns to contacts for quick RSSI display."""
+    # Guard: contacts table may not exist in partial migration-test schemas
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contacts'"
+    )
+    if not await cursor.fetchone():
+        await conn.commit()
+        return
     for col, col_type in [("last_rssi", "REAL"), ("last_snr", "REAL")]:
         try:
             await conn.execute(f"ALTER TABLE contacts ADD COLUMN {col} {col_type}")
@@ -3187,6 +3221,13 @@ async def _migrate_055_add_contact_advert_hash_mode(conn: aiosqlite.Connection) 
     the node's most recent advertisement, independently of direct_path_hash_mode
     which is only set when path discovery completes.
     """
+    # Guard: contacts table may not exist in partial migration-test schemas
+    tbl_cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contacts'"
+    )
+    if not await tbl_cursor.fetchone():
+        await conn.commit()
+        return
     try:
         await conn.execute("ALTER TABLE contacts ADD COLUMN advert_hash_mode INTEGER")
     except Exception as e:
@@ -3235,6 +3276,12 @@ async def _migrate_054_add_advert_path_hash_mode(conn: aiosqlite.Connection) -> 
       2 = 3-byte hop identifiers
     NULL means the row pre-dates this migration and the width is unknown.
     """
+    # Guard: contact_advert_paths may not exist in partial migration-test schemas
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contact_advert_paths'"
+    )
+    if not await cursor.fetchone():
+        return
     try:
         await conn.execute("ALTER TABLE contact_advert_paths ADD COLUMN hash_mode INTEGER")
     except Exception:
@@ -3283,6 +3330,13 @@ async def _migrate_057_add_contact_observed_hash_mode(conn: aiosqlite.Connection
       2 = 3-byte hop identifiers observed
     NULL means no packet evidence yet collected.
     """
+    # Guard: contacts table may not exist in partial migration-test schemas
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contacts'"
+    )
+    if not await cursor.fetchone():
+        await conn.commit()
+        return
     try:
         await conn.execute("ALTER TABLE contacts ADD COLUMN observed_hash_mode INTEGER")
     except Exception as e:
@@ -3300,6 +3354,13 @@ async def _migrate_051_add_contact_owner_id(conn: aiosqlite.Connection) -> None:
     Stores the public key of the node that owns this contact (e.g. a companion
     app paired with a radio).  Used by the map to auto-resolve companion names.
     """
+    # Guard: contacts table may not exist in partial migration-test schemas
+    cursor = await conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contacts'"
+    )
+    if not await cursor.fetchone():
+        await conn.commit()
+        return
     try:
         await conn.execute("ALTER TABLE contacts ADD COLUMN owner_id TEXT")
     except Exception as e:
@@ -3374,6 +3435,13 @@ async def _migrate_060_backfill_hop_hash_modes(conn: aiosqlite.Connection) -> No
     4. Apply all updates in a single batch commit.
     """
     from app.decoder import parse_packet as _parse_packet
+
+    # Guard: contacts/raw_packets tables may not exist in partial migration-test schemas
+    tbl_cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    existing = {row[0] for row in await tbl_cursor.fetchall()}
+    if "contacts" not in existing or "raw_packets" not in existing:
+        await conn.commit()
+        return
 
     # ── Step 1: build in-memory prefix index ─────────────────────────────────
     # For each contact, index it under its 2-, 4-, and 6-char key prefixes so
