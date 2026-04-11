@@ -53,11 +53,36 @@ _MIN_TEMPLATE_LEN = 12
 # Matching any of these as the sole dominant template cancels the pattern score.
 _HUMAN_NOISE_WORDS: frozenset[str] = frozenset(
     {
-        "test", "test2", "test3", "testing", "test 1", "test 2",
-        "hello", "hi", "hoi", "hey", "hallo",
-        "ok", "oke", "okay", "roger", "copy", "check", "received",
-        "gm", "gn", "73", "cq", "tnx", "thx", "ack", "ping",
-        "welterusten", "goedemorgen", "goedemiddag", "goedenavond",
+        "test",
+        "test2",
+        "test3",
+        "testing",
+        "test 1",
+        "test 2",
+        "hello",
+        "hi",
+        "hoi",
+        "hey",
+        "hallo",
+        "ok",
+        "oke",
+        "okay",
+        "roger",
+        "copy",
+        "check",
+        "received",
+        "gm",
+        "gn",
+        "73",
+        "cq",
+        "tnx",
+        "thx",
+        "ack",
+        "ping",
+        "welterusten",
+        "goedemorgen",
+        "goedemiddag",
+        "goedenavond",
     }
 )
 
@@ -75,13 +100,13 @@ _MIN_STRUCTURED_RATIO = 0.30
 
 # ── structured-content patterns ────────────────────────────────────────────────
 _STRUCTURED_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"@\[", re.IGNORECASE),                        # @[node] addressing
-    re.compile(r"\brssi\s*:\s*-?\d+", re.IGNORECASE),         # RSSI: -80
-    re.compile(r"\bsnr\s*:\s*-?\d+", re.IGNORECASE),          # SNR: 5
-    re.compile(r"\bp\(\d+\)", re.IGNORECASE),                  # P(3) path notation
-    re.compile(r"^ack\s*@", re.IGNORECASE),                    # ack @ prefix
-    re.compile(r"\|.*\|", re.IGNORECASE),                      # pipe-delimited fields
-    re.compile(r"\b\w+\s*:\s*\S+(?:\s+\w+\s*:\s*\S+){2,}"),   # 3+ key:value pairs
+    re.compile(r"@\[", re.IGNORECASE),  # @[node] addressing
+    re.compile(r"\brssi\s*:\s*-?\d+", re.IGNORECASE),  # RSSI: -80
+    re.compile(r"\bsnr\s*:\s*-?\d+", re.IGNORECASE),  # SNR: 5
+    re.compile(r"\bp\(\d+\)", re.IGNORECASE),  # P(3) path notation
+    re.compile(r"^ack\s*@", re.IGNORECASE),  # ack @ prefix
+    re.compile(r"\|.*\|", re.IGNORECASE),  # pipe-delimited fields
+    re.compile(r"\b\w+\s*:\s*\S+(?:\s+\w+\s*:\s*\S+){2,}"),  # 3+ key:value pairs
 ]
 
 # ── template normalisation (for pattern-repetition scoring) ───────────────────
@@ -91,9 +116,7 @@ _HEX_BYTE_PATH_RE = re.compile(r"(?:[0-9a-fA-F]{1,2}>)+[0-9a-fA-F]{1,2}", re.IGN
 # MeshCore ack hop paths joined by ',': e.g. "b8,59,dc,fc,63" or "752d,9879,1e0d,db25"
 # Require ≥3 segments (two comma-terminated groups + final) to avoid matching
 # ordinary comma-separated words or short values.
-_HEX_COMMA_PATH_RE = re.compile(
-    r"(?:[0-9a-fA-F]{2,4},){2,}[0-9a-fA-F]{2,4}", re.IGNORECASE
-)
+_HEX_COMMA_PATH_RE = re.compile(r"(?:[0-9a-fA-F]{2,4},){2,}[0-9a-fA-F]{2,4}", re.IGNORECASE)
 _NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
 _NODE_REF_RE = re.compile(r"@\[[^\]]*\]")
 
@@ -102,8 +125,8 @@ def _normalise_template(text: str) -> str:
     """Strip variable parts to expose the structural template of a message."""
     t = _NODE_REF_RE.sub("@[X]", text)
     t = _HEX_RE.sub("<KEY>", t)
-    t = _HEX_BYTE_PATH_RE.sub("<PATH>", t)    # strip NN>NN>NN>... payload sequences
-    t = _HEX_COMMA_PATH_RE.sub("<PATH>", t)   # strip NN,NN,NN,... ack hop paths
+    t = _HEX_BYTE_PATH_RE.sub("<PATH>", t)  # strip NN>NN>NN>... payload sequences
+    t = _HEX_COMMA_PATH_RE.sub("<PATH>", t)  # strip NN,NN,NN,... ack hop paths
     t = _NUM_RE.sub("<N>", t)
     return t.lower().strip()
 
@@ -122,6 +145,7 @@ def _is_noise_message(text: str) -> bool:
 
 
 # ── scoring helpers ────────────────────────────────────────────────────────────
+
 
 def _timing_score(intervals: list[float]) -> tuple[float, float | None]:
     """Return (score 0-35, coefficient_of_variation or None).
@@ -184,11 +208,7 @@ def _structured_score(messages: list[str]) -> tuple[float, float]:
     """
     if not messages:
         return 0.0, 0.0
-    hits = sum(
-        1
-        for msg in messages
-        if any(p.search(msg) for p in _STRUCTURED_PATTERNS)
-    )
+    hits = sum(1 for msg in messages if any(p.search(msg) for p in _STRUCTURED_PATTERNS))
     ratio = hits / len(messages)
     if ratio < _MIN_STRUCTURED_RATIO:
         return 0.0, round(ratio, 4)
@@ -234,6 +254,7 @@ def _keyword_score(display_name: str) -> float:
 
 
 # ── main analysis function ─────────────────────────────────────────────────────
+
 
 async def analyze_node(public_key: str) -> None:
     """Fetch messages for a sender and compute / persist scores."""

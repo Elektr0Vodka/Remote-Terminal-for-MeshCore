@@ -205,11 +205,7 @@ def get_battery_history() -> dict:
     now = int(time.time())
     cutoff = now - NOISE_FLOOR_WINDOW_SECONDS
 
-    samples = [
-        {"timestamp": ts, "battery_mv": mv}
-        for ts, mv in _battery_samples
-        if ts >= cutoff
-    ]
+    samples = [{"timestamp": ts, "battery_mv": mv} for ts, mv in _battery_samples if ts >= cutoff]
 
     latest = samples[-1] if samples else None
     oldest_timestamp = samples[0]["timestamp"] if samples else None

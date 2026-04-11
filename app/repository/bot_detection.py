@@ -180,9 +180,7 @@ class BotDetectionRepository:
         return [row[0] for row in rows]
 
     @staticmethod
-    async def get_messages_for_analysis(
-        public_key: str, limit: int = 300
-    ) -> list[dict[str, Any]]:
+    async def get_messages_for_analysis(public_key: str, limit: int = 300) -> list[dict[str, Any]]:
         """Return recent incoming messages for a sender key, for scoring."""
         cursor = await db.conn.execute(
             """

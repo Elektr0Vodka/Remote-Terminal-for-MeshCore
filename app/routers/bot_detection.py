@@ -88,5 +88,3 @@ async def trigger_analysis() -> dict[str, int]:
     """Trigger an immediate full re-analysis of all nodes."""
     count = await analyze_all_nodes()
     return {"nodes_analyzed": count}
-
-
