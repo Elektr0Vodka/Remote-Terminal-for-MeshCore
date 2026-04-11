@@ -575,9 +575,7 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
     # local variable), which caused it to run out-of-sequence for databases that started
     # below version 56.  Moving it to a proper slot here makes the version sequence monotonic.
     if version < 82:
-        logger.info(
-            "Applying migration 82: add sender_key to incoming PRIV dedup index (catch-up)"
-        )
+        logger.info("Applying migration 82: add sender_key to incoming PRIV dedup index (catch-up)")
         await _migrate_056_priv_dedup_include_sender_key(conn)
         await set_version(conn, 82)
         applied += 1
