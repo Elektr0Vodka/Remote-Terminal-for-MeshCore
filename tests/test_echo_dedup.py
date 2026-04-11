@@ -786,6 +786,7 @@ class TestDirectMessageDirectionDetection:
         packet_info.payload = bytes([0xFA, 0xA1, 0x00, 0x00]) + b"\x00" * 20
         packet_info.path = b""
         packet_info.path_length = 0
+        packet_info.path_hash_size = 0
 
         # Create the contact so decryption can find a candidate
         await ContactRepository.upsert(
@@ -838,6 +839,7 @@ class TestDirectMessageDirectionDetection:
         packet_info.payload = bytes([0xFA, 0xA1, 0x00, 0x00]) + b"\x00" * 20
         packet_info.path = b""
         packet_info.path_length = 0
+        packet_info.path_hash_size = 0
 
         await ContactRepository.upsert(
             {
@@ -896,6 +898,7 @@ class TestDirectMessageDirectionDetection:
         packet_info.payload = bytes([0xA1, 0xFA, 0x00, 0x00]) + b"\x00" * 20
         packet_info.path = b""
         packet_info.path_length = 0
+        packet_info.path_hash_size = 0
 
         await ContactRepository.upsert(
             {
@@ -946,6 +949,7 @@ class TestDirectMessageDirectionDetection:
         packet_info.payload = bytes([0xFA, 0xFA, 0x00, 0x00]) + b"\x00" * 20
         packet_info.path = b""
         packet_info.path_length = 0
+        packet_info.path_hash_size = 0
 
         # Contact whose first byte also starts with "fa"
         await ContactRepository.upsert(
@@ -1020,6 +1024,7 @@ class TestDirectMessageDirectionDetection:
         packet_info.payload = bytes([0xAA, 0xAA, 0x00, 0x00]) + b"\x00" * 20
         packet_info.path = b"\xbb"
         packet_info.path_length = 1
+        packet_info.path_hash_size = 0
 
         decrypted = DecryptedDirectMessage(
             timestamp=SENDER_TIMESTAMP,
@@ -1080,6 +1085,7 @@ class TestDirectMessageDirectionDetection:
         packet_info.payload = bytes([0xAA, 0xAA, 0x00, 0x00]) + b"\x00" * 20
         packet_info.path = b""
         packet_info.path_length = 0
+        packet_info.path_hash_size = 0
 
         decrypted = DecryptedDirectMessage(
             timestamp=SENDER_TIMESTAMP,
@@ -1121,6 +1127,7 @@ class TestDirectMessageDirectionDetection:
         packet_info.payload = bytes([0x11, 0x22, 0x00, 0x00]) + b"\x00" * 20
         packet_info.path = b""
         packet_info.path_length = 0
+        packet_info.path_hash_size = 0
 
         pkt_id, _ = await RawPacketRepository.create(b"dir_test_none", SENDER_TIMESTAMP)
 
