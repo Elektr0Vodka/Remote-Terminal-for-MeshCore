@@ -570,6 +570,12 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 56)
         applied += 1
 
+    if version < 81:
+        logger.info("Applying migration 81: create battery_history table")
+        await _migrate_081_battery_history(conn)
+        await set_version(conn, 81)
+        applied += 1
+
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -3918,5 +3924,21 @@ async def _migrate_056_priv_dedup_include_sender_key(conn: aiosqlite.Connection)
            ON messages(type, conversation_key, text, COALESCE(sender_timestamp, 0),
                        COALESCE(sender_key, ''))
            WHERE type = 'PRIV' AND outgoing = 0"""
+    )
+    await conn.commit()
+
+
+async def _migrate_081_battery_history(conn: aiosqlite.Connection) -> None:
+    """Create the battery_history table for persisted battery voltage samples."""
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS battery_history (
+            timestamp   INTEGER NOT NULL,
+            battery_mv  INTEGER NOT NULL
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_battery_history_timestamp ON battery_history(timestamp)"
     )
     await conn.commit()

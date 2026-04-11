@@ -1399,7 +1399,7 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
       });
   }, [selectedWindow.label, nowSec]);
 
-  // Battery: filter live samples for the selected window; re-fetch from API for historical
+  // Battery: filter live samples for the selected window; fetch from DB for historical windows
   useEffect(() => {
     if (selectedWindow.useLive) {
       const cutoff = nowSec - (selectedWindow.seconds ?? 20 * 60);
@@ -1407,12 +1407,10 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
       return;
     }
     if (selectedWindow.key === 'custom') return;
-    api.getBatteryHistory().then(
-      (data) => {
-        const endTs = nowSec;
-        const startTs = selectedWindow.seconds !== null ? endTs - selectedWindow.seconds : 0;
-        setBatterySamples(data.samples.filter((s) => s.timestamp >= startTs));
-      },
+    const endTs = nowSec;
+    const startTs = selectedWindow.seconds !== null ? endTs - selectedWindow.seconds : 0;
+    api.getBatteryRange(startTs, endTs).then(
+      (samples) => setBatterySamples(samples),
       () => {}
     );
   }, [selectedWindow.key, selectedWindow.useLive, selectedWindow.seconds, nowSec]);

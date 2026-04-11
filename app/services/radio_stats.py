@@ -25,6 +25,8 @@ from typing import Any
 from meshcore import EventType
 
 from app.radio import RadioDisconnectedError, RadioOperationBusyError
+from app.repository.battery_history import BatteryHistoryRepository
+from app.repository.noise_floor import NoiseFloorRepository
 from app.services.radio_runtime import radio_runtime as radio_manager
 
 logger = logging.getLogger(__name__)
@@ -71,10 +73,12 @@ async def _sample_all_stats() -> dict[str, Any]:
         noise_floor = radio_event.payload.get("noise_floor")
         if isinstance(noise_floor, int):
             _noise_floor_samples.append((now, noise_floor))
+            asyncio.ensure_future(NoiseFloorRepository.insert(now, noise_floor))
 
     battery_mv = snapshot.get("battery_mv")
     if isinstance(battery_mv, int) and battery_mv > 0:
         _battery_samples.append((now, battery_mv))
+        asyncio.ensure_future(BatteryHistoryRepository.insert(now, battery_mv))
 
     if getattr(packet_event, "type", None) == EventType.STATS_PACKETS:
         snapshot["packets"] = packet_event.payload

@@ -1,3 +1,4 @@
+from app.repository.battery_history import BatteryHistoryRepository
 from app.repository.channels import ChannelRepository
 from app.repository.contacts import (
     AmbiguousPublicKeyPrefixError,
@@ -15,6 +16,7 @@ from app.repository.settings import AppSettingsRepository, StatisticsRepository
 
 __all__ = [
     "AmbiguousPublicKeyPrefixError",
+    "BatteryHistoryRepository",
     "AppSettingsRepository",
     "KmsRepository",
     "ChannelRepository",
