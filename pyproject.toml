@@ -54,6 +54,9 @@ ignore = [
     "SIM117", # nested with statements - can be clearer in tests
 ]
 
+[tool.ruff.format]
+line-ending = "lf"
+
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 
