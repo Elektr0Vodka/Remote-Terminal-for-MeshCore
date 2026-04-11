@@ -515,7 +515,13 @@ const COL_TEMPLATE = '1fr 140px 90px 90px 80px 82px 44px 52px';
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ChannelRegistryView({ channels }: { channels?: Channel[] }) {
+export default function ChannelRegistryView({
+  channels,
+  channelMessageCounts,
+}: {
+  channels?: Channel[];
+  channelMessageCounts?: Record<string, number>;
+}) {
   const [registry, setRegistry] = useState<RegistryChannel[]>(() => {
     const stored = loadRegistry();
     if (!channels?.length) return stored;
@@ -568,6 +574,32 @@ export default function ChannelRegistryView({ channels }: { channels?: Channel[]
     }
     return m;
   }, [registry]);
+
+  // Map normalised channel name → hex key, built from the radio channel list.
+  // Used to resolve DB message counts (keyed by hex) for registry entries (keyed by name).
+  const channelKeyByName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const ch of channels ?? []) {
+      m.set(ch.name.toLowerCase(), ch.key.toUpperCase());
+    }
+    return m;
+  }, [channels]);
+
+  // Returns the live DB-backed total count for a registry entry, falling back to
+  // the finder-discovery packets field when the channel isn't in the radio DB.
+  const getLiveCount = useCallback(
+    (entry: RegistryChannel): number => {
+      const name = entry.channel.replace(/^#/, '').toLowerCase();
+      const key = channelKeyByName.get(name) ?? channelKeyByName.get(entry.channel.toLowerCase());
+      if (key && channelMessageCounts) {
+        return (
+          channelMessageCounts[key] ?? channelMessageCounts[key.toLowerCase()] ?? entry.packets
+        );
+      }
+      return entry.packets;
+    },
+    [channelKeyByName, channelMessageCounts]
+  );
 
   const sorted = useMemo(() => {
     let list = registry;
@@ -917,6 +949,7 @@ export default function ChannelRegistryView({ channels }: { channels?: Channel[]
               <ChannelRow
                 key={entry.channel}
                 entry={entry}
+                liveCount={getLiveCount(entry)}
                 onEdit={setEditingChannel}
                 onDelete={handleDelete}
               />
@@ -1083,10 +1116,12 @@ export default function ChannelRegistryView({ channels }: { channels?: Channel[]
 
 function ChannelRow({
   entry,
+  liveCount,
   onEdit,
   onDelete,
 }: {
   entry: RegistryChannel;
+  liveCount: number;
   onEdit: (e: RegistryChannel) => void;
   onDelete: (name: string) => void;
 }) {
@@ -1114,7 +1149,7 @@ function ChannelRow({
         {fmtDatetime(entry.lastHeard)}
       </span>
       <span className="text-xs text-muted-foreground tabular-nums text-right">
-        {entry.packets > 0 ? entry.packets : '—'}
+        {liveCount > 0 ? liveCount : '—'}
       </span>
       <span className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button

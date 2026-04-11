@@ -92,6 +92,7 @@ interface ConversationPaneProps {
   onToggleTrackedTelemetry: (publicKey: string) => Promise<void>;
   repeaterAutoLoginKey: string | null;
   onClearRepeaterAutoLogin: () => void;
+  channelMessageCounts?: Record<string, number>;
 }
 
 function LoadingPane({ label }: { label: string }) {
@@ -165,6 +166,7 @@ export function ConversationPane({
   onToggleTrackedTelemetry,
   repeaterAutoLoginKey,
   onClearRepeaterAutoLogin,
+  channelMessageCounts,
 }: ConversationPaneProps) {
   const [roomAuthenticated, setRoomAuthenticated] = useState(false);
   const activeContactIsRepeater = useMemo(() => {
@@ -310,7 +312,7 @@ export function ConversationPane({
   if (activeConversation.type === 'channel-registry') {
     return (
       <Suspense fallback={<LoadingPane label="Loading channel registry..." />}>
-        <ChannelRegistryView channels={channels} />
+        <ChannelRegistryView channels={channels} channelMessageCounts={channelMessageCounts} />
       </Suspense>
     );
   }

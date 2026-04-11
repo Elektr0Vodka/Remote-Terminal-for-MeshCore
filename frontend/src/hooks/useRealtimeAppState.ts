@@ -56,6 +56,7 @@ interface UseRealtimeAppStateArgs {
     packetId?: number | null
   ) => void;
   notifyIncomingMessage?: (msg: Message) => void;
+  onChannelMessage?: (channelKey: string) => void;
   recordRawPacketObservation?: (packet: RawPacket) => void;
   maxRawPackets?: number;
 }
@@ -105,6 +106,7 @@ export function useRealtimeAppState({
   removeConversationMessages,
   receiveMessageAck,
   notifyIncomingMessage,
+  onChannelMessage,
   recordRawPacketObservation,
   maxRawPackets = 500,
 }: UseRealtimeAppStateArgs): UseWebSocketOptions {
@@ -212,6 +214,10 @@ export function useRealtimeAppState({
         if (!msg.outgoing && isNewMessage) {
           notifyIncomingMessage?.(msg);
         }
+
+        if (msg.type === 'CHAN') {
+          onChannelMessage?.(msg.conversation_key);
+        }
       },
       onContact: (contact: Contact) => {
         setContacts((prev) => mergeContactIntoList(prev, contact));
@@ -301,6 +307,7 @@ export function useRealtimeAppState({
       setHealth,
       setRawPackets,
       notifyIncomingMessage,
+      onChannelMessage,
     ]
   );
 }

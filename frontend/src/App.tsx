@@ -142,6 +142,16 @@ export function App() {
     handleToggleCracker,
   } = useAppShell();
 
+  // Per-channel all-time message counts fetched from the DB and kept live via WS
+  const [channelMessageCounts, setChannelMessageCounts] = useState<Record<string, number>>({});
+
+  const handleChannelMessage = useCallback((channelKey: string) => {
+    setChannelMessageCounts((prev) => ({
+      ...prev,
+      [channelKey]: (prev[channelKey] ?? 0) + 1,
+    }));
+  }, []);
+
   // Shared refs between useConversationRouter and useContactsAndChannels
   const pendingDeleteFallbackRef = useRef(false);
   const hasSetDefaultConversation = useRef(false);
@@ -439,6 +449,7 @@ export function App() {
     removeConversationMessages,
     receiveMessageAck,
     notifyIncomingMessage,
+    onChannelMessage: handleChannelMessage,
     recordRawPacketObservation,
   });
   const handleVisibilityPolicyChanged = useCallback(() => {
@@ -640,6 +651,7 @@ export function App() {
     onToggleTrackedTelemetry: handleToggleTrackedTelemetry,
     repeaterAutoLoginKey,
     onClearRepeaterAutoLogin: () => setRepeaterAutoLoginKey(null),
+    channelMessageCounts,
   };
   const searchProps = {
     contacts,
@@ -749,6 +761,7 @@ export function App() {
 
     // Fetch contacts and channels via REST (parallel, faster than WS serial push)
     takePrefetchOrFetch('channels', api.getChannels).then(setChannels).catch(console.error);
+    api.getChannelMessageCounts().then(setChannelMessageCounts).catch(console.error);
     fetchAllContacts()
       .then((data) => {
         setContacts(data);

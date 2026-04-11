@@ -211,6 +211,12 @@ async def list_channels() -> list[Channel]:
     return await ChannelRepository.get_all()
 
 
+@router.get("/message-counts", response_model=dict[str, int])
+async def get_channel_message_counts() -> dict[str, int]:
+    """Return all-time message count per channel key in a single query."""
+    return await MessageRepository.get_all_channel_message_counts()
+
+
 @router.get("/{key}/detail", response_model=ChannelDetail)
 async def get_channel_detail(key: str) -> ChannelDetail:
     """Get comprehensive channel profile data with message statistics."""

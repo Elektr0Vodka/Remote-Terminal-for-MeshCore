@@ -892,6 +892,20 @@ class MessageRepository:
         return int(row["cnt"]) if row and row["cnt"] is not None else 0
 
     @staticmethod
+    async def get_all_channel_message_counts() -> dict[str, int]:
+        """Return all-time message count per channel key in a single GROUP BY query."""
+        cursor = await db.conn.execute(
+            """
+            SELECT conversation_key, COUNT(*) AS cnt
+            FROM messages
+            WHERE type = 'CHAN'
+            GROUP BY conversation_key
+            """
+        )
+        rows = await cursor.fetchall()
+        return {row["conversation_key"]: int(row["cnt"]) for row in rows}
+
+    @staticmethod
     async def get_most_active_rooms(sender_key: str, limit: int = 5) -> list[tuple[str, str, int]]:
         """Get channels where a contact has sent the most messages.
 

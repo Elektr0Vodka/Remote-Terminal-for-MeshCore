@@ -236,6 +236,7 @@ export const api = {
     }
     return res.json() as Promise<ChannelImportResult>;
   },
+  getChannelMessageCounts: () => fetchJson<Record<string, number>>('/channels/message-counts'),
   getChannelDetail: (key: string) => fetchJson<ChannelDetail>(`/channels/${key}/detail`),
   markChannelRead: (key: string) =>
     fetchJson<{ status: string; key: string }>(`/channels/${key}/mark-read`, {

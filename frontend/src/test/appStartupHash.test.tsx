@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     getSettings: vi.fn(),
     getUndecryptedPacketCount: vi.fn(),
     getChannels: vi.fn(),
+    getChannelMessageCounts: vi.fn(),
     getContacts: vi.fn(),
   },
 }));
@@ -175,6 +176,7 @@ describe('App startup hash resolution', () => {
     });
     mocks.api.getUndecryptedPacketCount.mockResolvedValue({ count: 0 });
     mocks.api.getChannels.mockResolvedValue([publicChannel]);
+    mocks.api.getChannelMessageCounts.mockResolvedValue({});
     mocks.api.getContacts.mockResolvedValue([]);
   });
 
