@@ -220,6 +220,7 @@ export function mergeImport(
 export interface RadioChannelSeed {
   name: string;
   key: string;
+  is_hashtag?: boolean; // When false (e.g. the default "Public" channel), skip registry seeding
   created_at?: number; // Unix timestamp (seconds) — optional, falls back to today
 }
 
@@ -237,7 +238,9 @@ export function seedFromRadioChannels(
   let added = 0;
 
   for (const rc of radioChannels) {
-    const name = normalizeChannelName(rc.name);
+    // Hashtag channels get the # prefix normalised in; non-hashtag channels
+    // (e.g. the default "Public" channel) keep their original name as-is.
+    const name = rc.is_hashtag === false ? rc.name.trim() : normalizeChannelName(rc.name);
     const key = name.toLowerCase();
     if (byName.has(key)) continue;
 

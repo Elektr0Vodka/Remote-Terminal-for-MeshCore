@@ -554,11 +554,13 @@ export default function ChannelRegistryView({
     setTimeout(() => setToast(null), 5000);
   }
 
-  // Map: uppercase hex key → channel name with # prefix (used to resolve DB stats)
+  // Map: uppercase hex key → registry channel name (used to resolve DB stats).
+  // Hashtag channels get a # prefix if missing; non-hashtag channels (e.g. "Public")
+  // keep their original name so applyChannelStats can match the registry entry.
   const channelNameByKey = useMemo(() => {
     const m = new Map<string, string>();
     for (const ch of channels ?? []) {
-      const name = ch.name.startsWith('#') ? ch.name : `#${ch.name}`;
+      const name = ch.is_hashtag ? (ch.name.startsWith('#') ? ch.name : `#${ch.name}`) : ch.name;
       m.set(ch.key.toUpperCase(), name);
     }
     return m;
