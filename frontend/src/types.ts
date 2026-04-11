@@ -699,7 +699,12 @@ export interface BotDetectionNode {
   display_name: string;
   automation_score: number;
   impact_score: number;
-  classification: 'likely_human' | 'automated_utility' | 'automated_high_impact' | 'insufficient_data' | 'unknown';
+  classification:
+    | 'likely_human'
+    | 'automated_utility'
+    | 'automated_high_impact'
+    | 'insufficient_data'
+    | 'unknown';
   manual_tag: ManualTag | null;
   message_count: number;
   last_seen: number | null;

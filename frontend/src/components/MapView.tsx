@@ -1822,9 +1822,7 @@ export function MapView({
       if (existing) existing.count++;
       else counts.set(info.code, { info, count: 1 });
     }
-    return Array.from(counts.values()).sort((a, b) =>
-      a.info.name.localeCompare(b.info.name)
-    );
+    return Array.from(counts.values()).sort((a, b) => a.info.name.localeCompare(b.info.name));
   }, [baseFilteredContacts, contactCountryMap]);
 
   // Drop selected countries that have left the current timeframe window

@@ -301,7 +301,9 @@ export function TracePane({ contacts, config, onRunTracePath }: TracePaneProps) 
       const traceResult = await onRunTracePath(
         hopHashBytes,
         trace.hops.map((hop) =>
-          hop.kind === 'repeater' ? { public_key: hop.publicKey ?? '' } : { hop_hex: hop.hopHex ?? '' }
+          hop.kind === 'repeater'
+            ? { public_key: hop.publicKey ?? '' }
+            : { hop_hex: hop.hopHex ?? '' }
         )
       );
       if (activeRunTokenRef.current !== runToken) return;

@@ -142,7 +142,7 @@ export function VisualizerView({ packets, contacts, config }: VisualizerViewProp
   const toolbar = (
     <div className="flex flex-wrap items-center gap-1 px-3 py-1.5 border-b border-border bg-muted/30">
       {TIME_PRESETS.map((preset) => {
-        const key = (preset.label.toLowerCase() as WindowKey);
+        const key = preset.label.toLowerCase() as WindowKey;
         const active = windowKey === key;
         return (
           <button

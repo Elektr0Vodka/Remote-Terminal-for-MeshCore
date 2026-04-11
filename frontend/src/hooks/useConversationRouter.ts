@@ -121,7 +121,11 @@ export function useConversationRouter({
       return;
     }
     if (hashConv?.type === 'bot-detector') {
-      setActiveConversationState({ type: 'bot-detector', id: 'bot-detector', name: 'Bot Detector' });
+      setActiveConversationState({
+        type: 'bot-detector',
+        id: 'bot-detector',
+        name: 'Bot Detector',
+      });
       hasSetDefaultConversation.current = true;
       return;
     }

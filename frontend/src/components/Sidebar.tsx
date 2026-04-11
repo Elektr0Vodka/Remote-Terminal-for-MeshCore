@@ -347,7 +347,7 @@ function SectionHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const effectiveCollapsed = isSearching ? false : collapsed;
-  const hasMenuItems = !!(sortSection || (onMarkRead && unreadCount > 0));
+  const hasMenuItems = !!(onMarkRead && unreadCount > 0);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -400,6 +400,25 @@ function SectionHeader({
 
       {extraButton}
 
+      {sortSection && sectionSortOrder && onSortToggle && (
+        <button
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-0.5 rounded text-muted-foreground/60 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-[0.5625rem]"
+          onClick={() => onSortToggle(sortSection)}
+          aria-label={
+            sectionSortOrder === 'alpha'
+              ? `Sort ${title} by recent`
+              : `Sort ${title} alphabetically`
+          }
+          title={
+            sectionSortOrder === 'alpha'
+              ? `Sort ${title} by recent`
+              : `Sort ${title} alphabetically`
+          }
+        >
+          {sectionSortOrder === 'alpha' ? 'A-Z' : '⏱'}
+        </button>
+      )}
+
       {hasMenuItems && (
         <div ref={menuRef} className="relative flex-shrink-0">
           <button
@@ -412,21 +431,6 @@ function SectionHeader({
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-full mt-0.5 z-50 min-w-[168px] rounded-md border border-border bg-popover shadow-md py-1 text-[0.8125rem]">
-              {sortSection && sectionSortOrder && onSortToggle && (
-                <button
-                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-accent transition-colors text-left"
-                  onClick={() => {
-                    onSortToggle(sortSection);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <ArrowDownUp className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
-                  <span>
-                    Sort:{' '}
-                    {sectionSortOrder === 'alpha' ? 'A–Z → Recent' : '⏱ Recent → A–Z'}
-                  </span>
-                </button>
-              )}
               {onMarkRead && unreadCount > 0 && (
                 <button
                   className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-accent transition-colors text-left"
@@ -1099,9 +1103,7 @@ export function Sidebar({
       <span className="sidebar-tool-icon flex-shrink-0" aria-hidden="true">
         {icon}
       </span>
-      {!isRailCollapsed && (
-        <span className="sidebar-tool-label flex-1 truncate">{label}</span>
-      )}
+      {!isRailCollapsed && <span className="sidebar-tool-label flex-1 truncate">{label}</span>}
     </div>
   );
 
@@ -1163,6 +1165,10 @@ export function Sidebar({
   ]);
   const favoritesHasMention = sectionHasMention(favoriteRows);
   const channelsHasMention = sectionHasMention(channelRows);
+  // For direct-message contacts, any unread highlights red (mirrors renderConversationRow logic)
+  const contactsHasMention = contactRows.some((row) => row.isMention || row.unreadCount > 0);
+  const roomsHasMention = sectionHasMention(roomRows);
+  const repeatersHasMention = sectionHasMention(repeaterRows);
 
   const toolRows = !query
     ? [
@@ -1288,13 +1294,17 @@ export function Sidebar({
     collapsed: boolean,
     onToggle: () => void,
     sortKey?: SidebarSortableSection,
-    extraAction?: React.ReactNode
+    extraAction?: React.ReactNode,
+    unreadCount = 0,
+    hasMention = false,
+    canonical = false
   ) => (
     <div className="group flex items-center w-full">
       <button
         className="flex-1 flex items-center gap-1 px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold hover:text-muted-foreground transition-colors focus-visible:outline-none"
         onClick={onToggle}
         aria-expanded={!collapsed}
+        title={canonical ? (collapsed ? `Expand ${label}` : `Collapse ${label}`) : undefined}
       >
         {collapsed ? (
           <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
@@ -1302,6 +1312,17 @@ export function Sidebar({
           <ChevronDown className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
         )}
         {label}
+        {unreadCount > 0 && (
+          <span
+            className={`ml-1 rounded-full px-1 py-0.5 text-[0.5625rem] font-semibold leading-none ${
+              hasMention
+                ? 'bg-badge-mention text-badge-mention-foreground'
+                : 'bg-badge-unread/90 text-badge-unread-foreground'
+            }`}
+          >
+            {unreadCount}
+          </span>
+        )}
       </button>
       <div className="flex items-center gap-0.5 pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
         {sortKey && (
@@ -1309,10 +1330,14 @@ export function Sidebar({
             onClick={() => handleSortToggle(sortKey)}
             className="p-0.5 text-muted-foreground/60 hover:text-foreground text-[0.5625rem] rounded transition-colors focus-visible:outline-none"
             title={
-              sectionSortOrders[sortKey] === 'alpha' ? 'Sort by recent' : 'Sort alphabetically'
+              sectionSortOrders[sortKey] === 'alpha'
+                ? `Sort ${label} by recent`
+                : `Sort ${label} alphabetically`
             }
             aria-label={
-              sectionSortOrders[sortKey] === 'alpha' ? 'Sort by recent' : 'Sort alphabetically'
+              sectionSortOrders[sortKey] === 'alpha'
+                ? `Sort ${label} by recent`
+                : `Sort ${label} alphabetically`
             }
           >
             {sectionSortOrders[sortKey] === 'alpha' ? 'A-Z' : '⏱'}
@@ -1359,10 +1384,8 @@ export function Sidebar({
               <>
                 {favChannelRows.length > 0 && (
                   <>
-                    {renderSubSectionHeader(
-                      'Channels',
-                      favChannelsCollapsed,
-                      () => setFavChannelsCollapsed((p) => !p)
+                    {renderSubSectionHeader('Channels', favChannelsCollapsed, () =>
+                      setFavChannelsCollapsed((p) => !p)
                     )}
                     {(isSearching || !favChannelsCollapsed) &&
                       favChannelRows.map((row) => renderConversationRow(row))}
@@ -1370,10 +1393,8 @@ export function Sidebar({
                 )}
                 {favContactRows.length > 0 && (
                   <>
-                    {renderSubSectionHeader(
-                      'Contacts',
-                      favContactsCollapsed,
-                      () => setFavContactsCollapsed((p) => !p)
+                    {renderSubSectionHeader('Contacts', favContactsCollapsed, () =>
+                      setFavContactsCollapsed((p) => !p)
                     )}
                     {(isSearching || !favContactsCollapsed) &&
                       favContactRows.map((row) => renderConversationRow(row))}
@@ -1381,10 +1402,8 @@ export function Sidebar({
                 )}
                 {favRoomRows.length > 0 && (
                   <>
-                    {renderSubSectionHeader(
-                      'Room Servers',
-                      favRoomsCollapsed,
-                      () => setFavRoomsCollapsed((p) => !p)
+                    {renderSubSectionHeader('Room Servers', favRoomsCollapsed, () =>
+                      setFavRoomsCollapsed((p) => !p)
                     )}
                     {(isSearching || !favRoomsCollapsed) &&
                       favRoomRows.map((row) => renderConversationRow(row))}
@@ -1392,10 +1411,8 @@ export function Sidebar({
                 )}
                 {favRepeaterRows.length > 0 && (
                   <>
-                    {renderSubSectionHeader(
-                      'Repeaters',
-                      favRepeatersCollapsed,
-                      () => setFavRepeatersCollapsed((p) => !p)
+                    {renderSubSectionHeader('Repeaters', favRepeatersCollapsed, () =>
+                      setFavRepeatersCollapsed((p) => !p)
                     )}
                     {(isSearching || !favRepeatersCollapsed) &&
                       favRepeaterRows.map((row) => renderConversationRow(row))}
@@ -1422,10 +1439,8 @@ export function Sidebar({
               <>
                 {ownedRepeaterRows.length > 0 && (
                   <>
-                    {renderSubSectionHeader(
-                      'Repeaters',
-                      ownedRepeatersCollapsed,
-                      () => setOwnedRepeatersCollapsed((p) => !p)
+                    {renderSubSectionHeader('Repeaters', ownedRepeatersCollapsed, () =>
+                      setOwnedRepeatersCollapsed((p) => !p)
                     )}
                     {(isSearching || !ownedRepeatersCollapsed) &&
                       ownedRepeaterRows.map((row) => renderConversationRow(row))}
@@ -1433,10 +1448,8 @@ export function Sidebar({
                 )}
                 {ownedRoomRows.length > 0 && (
                   <>
-                    {renderSubSectionHeader(
-                      'Room Servers',
-                      ownedRoomsCollapsed,
-                      () => setOwnedRoomsCollapsed((p) => !p)
+                    {renderSubSectionHeader('Room Servers', ownedRoomsCollapsed, () =>
+                      setOwnedRoomsCollapsed((p) => !p)
                     )}
                     {(isSearching || !ownedRoomsCollapsed) &&
                       ownedRoomRows.map((row) => renderConversationRow(row))}
@@ -1444,10 +1457,8 @@ export function Sidebar({
                 )}
                 {ownedSensorRows.length > 0 && (
                   <>
-                    {renderSubSectionHeader(
-                      'Sensors',
-                      ownedSensorsCollapsed,
-                      () => setOwnedSensorsCollapsed((p) => !p)
+                    {renderSubSectionHeader('Sensors', ownedSensorsCollapsed, () =>
+                      setOwnedSensorsCollapsed((p) => !p)
                     )}
                     {(isSearching || !ownedSensorsCollapsed) &&
                       ownedSensorRows.map((row) => renderConversationRow(row))}
@@ -1500,7 +1511,10 @@ export function Sidebar({
                         >
                           <ArrowDownUp className="h-3 w-3" />
                         </button>
-                      ) : undefined
+                      ) : undefined,
+                      channelsUnreadCount,
+                      channelsHasMention,
+                      true
                     )}
                     {(isSearching || !channelsCollapsed) &&
                       channelRows.map((row) => renderConversationRow(row))}
@@ -1512,7 +1526,11 @@ export function Sidebar({
                       'Contacts',
                       contactsCollapsed,
                       () => setContactsCollapsed((p) => !p),
-                      'contacts'
+                      'contacts',
+                      undefined,
+                      contactsUnreadCount,
+                      contactsHasMention,
+                      true
                     )}
                     {(isSearching || !contactsCollapsed) &&
                       contactRows.map((row) => renderConversationRow(row))}
@@ -1524,7 +1542,11 @@ export function Sidebar({
                       'Room Servers',
                       roomsCollapsed,
                       () => setRoomsCollapsed((p) => !p),
-                      'rooms'
+                      'rooms',
+                      undefined,
+                      roomsUnreadCount,
+                      roomsHasMention,
+                      true
                     )}
                     {(isSearching || !roomsCollapsed) &&
                       roomRows.map((row) => renderConversationRow(row))}
@@ -1536,7 +1558,11 @@ export function Sidebar({
                       'Repeaters',
                       repeatersCollapsed,
                       () => setRepeatersCollapsed((p) => !p),
-                      'repeaters'
+                      'repeaters',
+                      undefined,
+                      repeatersUnreadCount,
+                      repeatersHasMention,
+                      true
                     )}
                     {(isSearching || !repeatersCollapsed) &&
                       repeaterRows.map((row) => renderConversationRow(row))}
@@ -1586,9 +1612,13 @@ export function Sidebar({
           onClick={onNewMessage}
           title="Add channel or contact"
           aria-label="Add channel or contact"
-          className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+          className={cn(
+            'shrink-0 text-muted-foreground hover:text-foreground',
+            isRailCollapsed ? 'h-8 w-8 p-0' : 'h-8 px-2 gap-1.5'
+          )}
         >
-          <SquarePen className="h-4 w-4" />
+          <SquarePen className="h-4 w-4 shrink-0" />
+          {!isRailCollapsed && <span className="text-xs font-medium">Add Channel/Contact</span>}
         </Button>
         <Button
           variant="ghost"
@@ -1665,10 +1695,7 @@ export function Sidebar({
                   aria-label="Search conversations"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className={cn(
-                    'h-7 text-[13px] bg-background/50',
-                    searchQuery ? 'pr-8' : 'pr-3'
-                  )}
+                  className={cn('h-7 text-[13px] bg-background/50', searchQuery ? 'pr-8' : 'pr-3')}
                 />
                 {searchQuery && (
                   <button

@@ -207,7 +207,11 @@ export function AppShell({
   const mobileSidebarContent = showSettings ? (
     settingsSidebarContent
   ) : (
-    <Sidebar {...sidebarProps} onOpenChannelImportExport={onOpenChannelImportExport} forceExpanded />
+    <Sidebar
+      {...sidebarProps}
+      onOpenChannelImportExport={onOpenChannelImportExport}
+      forceExpanded
+    />
   );
 
   return (

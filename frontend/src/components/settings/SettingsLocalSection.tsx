@@ -381,78 +381,78 @@ export function SettingsLocalSection({
           </p>
         )}
 
-      {appSettings && (
-        <>
-          <Separator />
+        {appSettings && (
+          <>
+            <Separator />
 
-          {/* Mesh Health Alert Thresholds */}
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-sm font-medium mb-2">Mesh Health Alert Thresholds</h4>
-              <p className="text-xs text-muted-foreground mb-4">
-                Configure advert count thresholds for mesh health alerts. Customize these to match
-                region-specific advert guidelines (e.g., 1 advert per 24h vs 1 advert per 50h).
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="high-threshold">HIGH Alert Threshold</Label>
-                <Input
-                  id="high-threshold"
-                  type="number"
-                  min="1"
-                  value={highAdvertThreshold}
-                  onChange={(e) => setHighAdvertThreshold(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Contacts exceeding this many adverts are flagged as HIGH alerts.
+            {/* Mesh Health Alert Thresholds */}
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-medium mb-2">Mesh Health Alert Thresholds</h4>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Configure advert count thresholds for mesh health alerts. Customize these to match
+                  region-specific advert guidelines (e.g., 1 advert per 24h vs 1 advert per 50h).
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="medium-threshold">MEDIUM Alert Threshold</Label>
-                <Input
-                  id="medium-threshold"
-                  type="number"
-                  min="1"
-                  value={mediumAdvertThreshold}
-                  onChange={(e) => setMediumAdvertThreshold(e.target.value)}
-                />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="high-threshold">HIGH Alert Threshold</Label>
+                  <Input
+                    id="high-threshold"
+                    type="number"
+                    min="1"
+                    value={highAdvertThreshold}
+                    onChange={(e) => setHighAdvertThreshold(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Contacts exceeding this many adverts are flagged as HIGH alerts.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="medium-threshold">MEDIUM Alert Threshold</Label>
+                  <Input
+                    id="medium-threshold"
+                    type="number"
+                    min="1"
+                    value={mediumAdvertThreshold}
+                    onChange={(e) => setMediumAdvertThreshold(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Contacts exceeding this many adverts are flagged as MEDIUM alerts.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showWarningTicker}
+                    onChange={(e) => setShowWarningTicker(e.target.checked)}
+                    className="w-4 h-4 rounded border-input accent-primary"
+                  />
+                  <span className="text-sm">Show warning ticker in the top bar</span>
+                </label>
                 <p className="text-xs text-muted-foreground">
-                  Contacts exceeding this many adverts are flagged as MEDIUM alerts.
+                  Displays a scrolling alert strip when nodes are advertising too frequently (HIGH
+                  or MEDIUM severity). Updates every 60 seconds. Can be dismissed temporarily with
+                  the X button.
                 </p>
               </div>
+
+              {thresholdError && (
+                <div className="text-sm text-destructive" role="alert">
+                  {thresholdError}
+                </div>
+              )}
+
+              <Button onClick={handleSaveThresholds} disabled={thresholdBusy} className="w-full">
+                {thresholdBusy ? 'Saving...' : 'Save Mesh Health Settings'}
+              </Button>
             </div>
-
-            <div className="space-y-3">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showWarningTicker}
-                  onChange={(e) => setShowWarningTicker(e.target.checked)}
-                  className="w-4 h-4 rounded border-input accent-primary"
-                />
-                <span className="text-sm">Show warning ticker in the top bar</span>
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Displays a scrolling alert strip when nodes are advertising too frequently (HIGH or
-                MEDIUM severity). Updates every 60 seconds. Can be dismissed temporarily with the X
-                button.
-              </p>
-            </div>
-
-            {thresholdError && (
-              <div className="text-sm text-destructive" role="alert">
-                {thresholdError}
-              </div>
-            )}
-
-            <Button onClick={handleSaveThresholds} disabled={thresholdBusy} className="w-full">
-              {thresholdBusy ? 'Saving...' : 'Save Mesh Health Settings'}
-            </Button>
-          </div>
-        </>
-      )}
+          </>
+        )}
       </div>
     </div>
   );
