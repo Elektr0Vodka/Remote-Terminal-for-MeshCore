@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Annotated
 
@@ -408,7 +408,7 @@ async def export_channels(
         selected = {k.strip().upper() for k in keys.split(",") if k.strip()}
         channels = [c for c in channels if c.key.upper() in selected]
 
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     lines: list[str] = [
         f"# MeshCore Channel Export - {date_str}",
         "# Format: #channel-name - 32-char-hex-key",

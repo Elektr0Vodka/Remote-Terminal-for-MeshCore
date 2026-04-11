@@ -520,7 +520,7 @@ async def request_trace(public_key: str) -> TraceResponse:
         )
         try:
             event = await asyncio.wait_for(response_task, timeout=timeout_seconds)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise HTTPException(status_code=504, detail="No trace response heard") from exc
         finally:
             if not response_task.done():

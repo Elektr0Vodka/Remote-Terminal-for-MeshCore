@@ -1362,7 +1362,7 @@ export default function MyNodeView({ rawPackets, rawPacketStatsSession, contacts
     const endTs = nowSec;
     const startTs = selectedWindow.seconds !== null ? endTs - selectedWindow.seconds : 0;
     void fetchHistorical(startTs, endTs);
-  }, [selectedWindow.key, selectedWindow.useLive, nowSec, fetchHistorical]);
+  }, [selectedWindow.key, selectedWindow.useLive, selectedWindow.seconds, nowSec, fetchHistorical]);
 
   const [historicalStats, setHistoricalStats] = useState<HistoricalStatsResponse | null>(null);
   const [historicalStatsLoading, setHistoricalStatsLoading] = useState(false);

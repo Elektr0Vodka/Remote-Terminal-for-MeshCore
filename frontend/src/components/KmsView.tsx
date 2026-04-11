@@ -406,8 +406,9 @@ export function KmsView() {
 
   // Cleanup on unmount
   useEffect(() => {
+    const workers = workersRef.current;
     return () => {
-      workersRef.current.forEach((w) => w.terminate());
+      workers.forEach((w) => w.terminate());
       gpuRunningRef.current = false;
       gpuGenRef.current?.destroy();
     };
