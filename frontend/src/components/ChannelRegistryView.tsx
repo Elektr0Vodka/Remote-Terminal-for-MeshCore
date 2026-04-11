@@ -604,9 +604,7 @@ export default function ChannelRegistryView({
     [registry]
   );
   const subcategoryOptions = useMemo(() => {
-    const base = filterCategory
-      ? registry.filter((e) => e.category === filterCategory)
-      : registry;
+    const base = filterCategory ? registry.filter((e) => e.category === filterCategory) : registry;
     return [...new Set(base.map((e) => e.subcategory).filter(Boolean))].sort();
   }, [registry, filterCategory]);
 
@@ -649,11 +647,30 @@ export default function ChannelRegistryView({
     if (filterScope) list = list.filter((e) => e.scopes.includes(filterScope));
     if (filterCountry) list = list.filter((e) => e.country === filterCountry);
     return sortRegistry(list, sortField, sortDir);
-  }, [registry, query, filterStatus, filterSource, filterCategory, filterSubcategory, filterRegion, filterScope, filterCountry, sortField, sortDir]);
+  }, [
+    registry,
+    query,
+    filterStatus,
+    filterSource,
+    filterCategory,
+    filterSubcategory,
+    filterRegion,
+    filterScope,
+    filterCountry,
+    sortField,
+    sortDir,
+  ]);
 
   const activeFilters =
-    [filterStatus, filterSource, filterCategory, filterSubcategory, filterRegion, filterScope, filterCountry].filter(Boolean).length +
-    (query ? 1 : 0);
+    [
+      filterStatus,
+      filterSource,
+      filterCategory,
+      filterSubcategory,
+      filterRegion,
+      filterScope,
+      filterCountry,
+    ].filter(Boolean).length + (query ? 1 : 0);
 
   // ── Sort handler ─────────────────────────────────────────────────────────────
   function handleSort(field: SortField) {
@@ -675,8 +692,7 @@ export default function ChannelRegistryView({
     });
   }
 
-  const allSortedSelected =
-    sorted.length > 0 && sorted.every((e) => selection.has(e.channel));
+  const allSortedSelected = sorted.length > 0 && sorted.every((e) => selection.has(e.channel));
   const someSortedSelected = sorted.some((e) => selection.has(e.channel));
 
   function toggleSelectAll() {
@@ -706,10 +722,7 @@ export default function ChannelRegistryView({
   function handleExportSelected() {
     const selected = registry.filter((e) => selection.has(e.channel));
     const date = new Date().toISOString().slice(0, 10);
-    triggerDownload(
-      JSON.stringify(selected, null, 2),
-      `meshcore_registry_selected_${date}.json`
-    );
+    triggerDownload(JSON.stringify(selected, null, 2), `meshcore_registry_selected_${date}.json`);
   }
 
   function handleExportSelectedProjectA() {
