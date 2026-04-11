@@ -353,10 +353,22 @@ export function updateChannel(
 
 /**
  * Convert registry entries to the Project A channels.json schema.
- * Maps lastHeard → last_seen and drops Project B-only fields (firstSeen, packets, source).
+ * Includes all registry fields plus:
+ *   - channel_hash: the hex key from the radio channel list (if keyByName is provided)
+ *   - message_amount: the packet/message count from the registry
+ *   - first_seen: mapped from firstSeen
+ *   - last_seen: mapped from lastHeard (or firstSeen as fallback)
+ *
+ * @param entries  The registry entries to export.
+ * @param keyByName  Optional map from lowercase channel name (with #) → hex key.
+ *                   When provided, channel_hash is populated from this map.
  */
-export function toProjectAFormat(entries: RegistryChannel[]): Array<{
+export function toProjectAFormat(
+  entries: RegistryChannel[],
+  keyByName?: Map<string, string>
+): Array<{
   channel: string;
+  channel_hash: string | null;
   category: string;
   subcategory: string;
   region: string;
@@ -369,11 +381,15 @@ export function toProjectAFormat(entries: RegistryChannel[]): Array<{
   tags: string[];
   scopes: string[];
   country: string;
+  first_seen: string | null;
   last_seen: string | null;
   added: string | null;
+  message_amount: number;
+  source: string;
 }> {
   return entries.map((e) => ({
     channel: e.channel,
+    channel_hash: keyByName?.get(e.channel.toLowerCase()) ?? null,
     category: e.category,
     subcategory: e.subcategory,
     region: e.region,
@@ -386,8 +402,11 @@ export function toProjectAFormat(entries: RegistryChannel[]): Array<{
     tags: e.tags,
     scopes: e.scopes,
     country: e.country,
+    first_seen: e.firstSeen ?? null,
     last_seen: e.lastHeard ?? e.firstSeen ?? null,
     added: e.added,
+    message_amount: e.packets,
+    source: e.source,
   }));
 }
 

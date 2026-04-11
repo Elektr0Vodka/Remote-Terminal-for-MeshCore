@@ -683,7 +683,15 @@ export default function ChannelRegistryView({
 
   function handleExportProjectA() {
     const date = new Date().toISOString().slice(0, 10);
-    triggerDownload(JSON.stringify(toProjectAFormat(registry), null, 2), `channels_${date}.json`);
+    // Build lowercase name → hex key map so channel_hash is included in the export
+    const keyByName = new Map<string, string>();
+    for (const [hexKey, name] of channelNameByKey) {
+      keyByName.set(name.toLowerCase(), hexKey);
+    }
+    triggerDownload(
+      JSON.stringify(toProjectAFormat(registry, keyByName), null, 2),
+      `channels_${date}.json`
+    );
   }
 
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
