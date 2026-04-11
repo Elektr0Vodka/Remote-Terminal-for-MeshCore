@@ -513,7 +513,7 @@ const EMPTY_ADD_FORM: AddFormState = {
 
 // ── Grid columns (shared between header and rows) ─────────────────────────────
 
-const COL_TEMPLATE = '1fr 140px 90px 90px 80px 82px 44px 52px';
+const COL_TEMPLATE = '28px 1fr 140px 90px 90px 80px 82px 44px 52px';
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -535,6 +535,11 @@ export default function ChannelRegistryView({
   const [filterStatus, setFilterStatus] = useState<'' | RegistryChannel['status']>('');
   const [filterSource, setFilterSource] = useState<'' | RegistryChannel['source']>('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterSubcategory, setFilterSubcategory] = useState('');
+  const [filterRegion, setFilterRegion] = useState('');
+  const [filterScope, setFilterScope] = useState('');
+  const [filterCountry, setFilterCountry] = useState('');
+  const [selection, setSelection] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [editingChannel, setEditingChannel] = useState<RegistryChannel | null>(null);
@@ -586,6 +591,25 @@ export default function ChannelRegistryView({
     [registry]
   );
 
+  const regionOptions = useMemo(
+    () => [...new Set(registry.map((e) => e.region).filter(Boolean))].sort(),
+    [registry]
+  );
+  const countryOptions = useMemo(
+    () => [...new Set(registry.map((e) => e.country).filter(Boolean))].sort(),
+    [registry]
+  );
+  const scopeOptions = useMemo(
+    () => [...new Set(registry.flatMap((e) => e.scopes))].sort(),
+    [registry]
+  );
+  const subcategoryOptions = useMemo(() => {
+    const base = filterCategory
+      ? registry.filter((e) => e.category === filterCategory)
+      : registry;
+    return [...new Set(base.map((e) => e.subcategory).filter(Boolean))].sort();
+  }, [registry, filterCategory]);
+
   // categoryMap: lowercase-category → Set<subcategory> — for datalist autocomplete
   const categoryMap = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -620,11 +644,16 @@ export default function ChannelRegistryView({
     if (filterStatus) list = list.filter((e) => e.status === filterStatus);
     if (filterSource) list = list.filter((e) => e.source === filterSource);
     if (filterCategory) list = list.filter((e) => e.category === filterCategory);
+    if (filterSubcategory) list = list.filter((e) => e.subcategory === filterSubcategory);
+    if (filterRegion) list = list.filter((e) => e.region === filterRegion);
+    if (filterScope) list = list.filter((e) => e.scopes.includes(filterScope));
+    if (filterCountry) list = list.filter((e) => e.country === filterCountry);
     return sortRegistry(list, sortField, sortDir);
-  }, [registry, query, filterStatus, filterSource, filterCategory, sortField, sortDir]);
+  }, [registry, query, filterStatus, filterSource, filterCategory, filterSubcategory, filterRegion, filterScope, filterCountry, sortField, sortDir]);
 
   const activeFilters =
-    [filterStatus, filterSource, filterCategory].filter(Boolean).length + (query ? 1 : 0);
+    [filterStatus, filterSource, filterCategory, filterSubcategory, filterRegion, filterScope, filterCountry].filter(Boolean).length +
+    (query ? 1 : 0);
 
   // ── Sort handler ─────────────────────────────────────────────────────────────
   function handleSort(field: SortField) {
@@ -634,6 +663,62 @@ export default function ChannelRegistryView({
       setSortField(field);
       setSortDir('asc');
     }
+  }
+
+  // ── Selection ────────────────────────────────────────────────────────────────
+  function toggleSelect(name: string) {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  const allSortedSelected =
+    sorted.length > 0 && sorted.every((e) => selection.has(e.channel));
+  const someSortedSelected = sorted.some((e) => selection.has(e.channel));
+
+  function toggleSelectAll() {
+    if (allSortedSelected) {
+      setSelection((prev) => {
+        const next = new Set(prev);
+        sorted.forEach((e) => next.delete(e.channel));
+        return next;
+      });
+    } else {
+      setSelection((prev) => {
+        const next = new Set(prev);
+        sorted.forEach((e) => next.add(e.channel));
+        return next;
+      });
+    }
+  }
+
+  function buildKeyByName() {
+    const m = new Map<string, string>();
+    for (const [hexKey, name] of channelNameByKey) {
+      m.set(name.toLowerCase(), hexKey);
+    }
+    return m;
+  }
+
+  function handleExportSelected() {
+    const selected = registry.filter((e) => selection.has(e.channel));
+    const date = new Date().toISOString().slice(0, 10);
+    triggerDownload(
+      JSON.stringify(selected, null, 2),
+      `meshcore_registry_selected_${date}.json`
+    );
+  }
+
+  function handleExportSelectedProjectA() {
+    const selected = registry.filter((e) => selection.has(e.channel));
+    const date = new Date().toISOString().slice(0, 10);
+    triggerDownload(
+      JSON.stringify(toProjectAFormat(selected, buildKeyByName()), null, 2),
+      `channels_selected_${date}.json`
+    );
   }
 
   // ── Mutations ───────────────────────────────────────────────────────────────
@@ -683,13 +768,8 @@ export default function ChannelRegistryView({
 
   function handleExportProjectA() {
     const date = new Date().toISOString().slice(0, 10);
-    // Build lowercase name → hex key map so channel_hash is included in the export
-    const keyByName = new Map<string, string>();
-    for (const [hexKey, name] of channelNameByKey) {
-      keyByName.set(name.toLowerCase(), hexKey);
-    }
     triggerDownload(
-      JSON.stringify(toProjectAFormat(registry, keyByName), null, 2),
+      JSON.stringify(toProjectAFormat(registry, buildKeyByName()), null, 2),
       `channels_${date}.json`
     );
   }
@@ -842,10 +922,69 @@ export default function ChannelRegistryView({
           <select
             className="h-8 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground"
             value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
+            onChange={(e) => {
+              setFilterCategory(e.target.value);
+              setFilterSubcategory('');
+            }}
           >
             <option value="">All categories</option>
             {categoryOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        )}
+        {subcategoryOptions.length > 0 && (
+          <select
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground"
+            value={filterSubcategory}
+            onChange={(e) => setFilterSubcategory(e.target.value)}
+          >
+            <option value="">All subcategories</option>
+            {subcategoryOptions.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        )}
+        {regionOptions.length > 0 && (
+          <select
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground"
+            value={filterRegion}
+            onChange={(e) => setFilterRegion(e.target.value)}
+          >
+            <option value="">All regions</option>
+            {regionOptions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        )}
+        {scopeOptions.length > 0 && (
+          <select
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground"
+            value={filterScope}
+            onChange={(e) => setFilterScope(e.target.value)}
+          >
+            <option value="">All scopes</option>
+            {scopeOptions.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        )}
+        {countryOptions.length > 0 && (
+          <select
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground"
+            value={filterCountry}
+            onChange={(e) => setFilterCountry(e.target.value)}
+          >
+            <option value="">All countries</option>
+            {countryOptions.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
@@ -862,6 +1001,10 @@ export default function ChannelRegistryView({
               setFilterStatus('');
               setFilterSource('');
               setFilterCategory('');
+              setFilterSubcategory('');
+              setFilterRegion('');
+              setFilterScope('');
+              setFilterCountry('');
             }}
           >
             <X className="h-3.5 w-3.5 mr-1" />
@@ -869,6 +1012,42 @@ export default function ChannelRegistryView({
           </Button>
         )}
       </div>
+
+      {/* ── Selection bar ────────────────────────────────────────────────────── */}
+      {selection.size > 0 && (
+        <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-md border border-border/70 bg-muted/40 px-3 py-1.5 text-xs">
+          <span className="text-muted-foreground flex-1">
+            {selection.size} {selection.size === 1 ? 'channel' : 'channels'} selected
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 text-xs px-2"
+            onClick={handleExportSelected}
+            title="Export selected as full registry JSON"
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Export
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 text-xs px-2"
+            onClick={handleExportSelectedProjectA}
+            title="Export selected as Project A channels.json"
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Export (A)
+          </Button>
+          <button
+            className="text-muted-foreground hover:text-foreground ml-1"
+            onClick={() => setSelection(new Set())}
+            title="Clear selection"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* ── Empty state ──────────────────────────────────────────────────────── */}
       {registry.length === 0 && (
@@ -897,6 +1076,16 @@ export default function ChannelRegistryView({
             className="sticky top-0 bg-background z-10 grid gap-x-2 items-center px-3 py-1.5 border-b border-border/50"
             style={{ gridTemplateColumns: COL_TEMPLATE }}
           >
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 rounded border-border cursor-pointer"
+              checked={allSortedSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = someSortedSelected && !allSortedSelected;
+              }}
+              onChange={toggleSelectAll}
+              title={allSortedSelected ? 'Deselect all' : 'Select all visible'}
+            />
             <SortHeader
               label="Channel"
               field="channel"
@@ -958,6 +1147,8 @@ export default function ChannelRegistryView({
                 key={entry.channel}
                 entry={entry}
                 liveCount={getLiveCount(entry)}
+                selected={selection.has(entry.channel)}
+                onToggleSelect={toggleSelect}
                 onEdit={setEditingChannel}
                 onDelete={handleDelete}
               />
@@ -1125,19 +1316,33 @@ export default function ChannelRegistryView({
 function ChannelRow({
   entry,
   liveCount,
+  selected,
+  onToggleSelect,
   onEdit,
   onDelete,
 }: {
   entry: RegistryChannel;
   liveCount: number;
+  selected: boolean;
+  onToggleSelect: (name: string) => void;
   onEdit: (e: RegistryChannel) => void;
   onDelete: (name: string) => void;
 }) {
   return (
     <div
-      className="grid gap-x-2 items-center px-3 py-2 hover:bg-accent/30 transition-colors group"
+      className={cn(
+        'grid gap-x-2 items-center px-3 py-2 hover:bg-accent/30 transition-colors group',
+        selected && 'bg-accent/20'
+      )}
       style={{ gridTemplateColumns: COL_TEMPLATE }}
     >
+      <input
+        type="checkbox"
+        className="h-3.5 w-3.5 rounded border-border cursor-pointer"
+        checked={selected}
+        onChange={() => onToggleSelect(entry.channel)}
+        onClick={(e) => e.stopPropagation()}
+      />
       <span className="font-medium text-sm truncate" title={entry.channel}>
         {entry.channel}
       </span>
