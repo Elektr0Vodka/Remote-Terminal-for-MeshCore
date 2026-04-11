@@ -38,6 +38,7 @@ const KmsView = lazy(() => import('./KmsView').then((m) => ({ default: m.KmsView
 const ContactAnalyticsView = lazy(() =>
   import('./ContactAnalyticsView').then((m) => ({ default: m.ContactAnalyticsView }))
 );
+const ChannelRegistryView = lazy(() => import('./ChannelRegistryView'));
 
 interface ConversationPaneProps {
   activeConversation: Conversation | null;
@@ -304,6 +305,14 @@ export function ConversationPane({
 
   if (activeConversation.type === 'bot-detector') {
     return <BotDetectorPane />;
+  }
+
+  if (activeConversation.type === 'channel-registry') {
+    return (
+      <Suspense fallback={<LoadingPane label="Loading channel registry..." />}>
+        <ChannelRegistryView channels={channels} />
+      </Suspense>
+    );
   }
 
   if (activeContactIsRepeater) {

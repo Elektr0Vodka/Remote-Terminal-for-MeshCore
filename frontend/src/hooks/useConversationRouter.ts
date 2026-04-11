@@ -129,6 +129,15 @@ export function useConversationRouter({
       hasSetDefaultConversation.current = true;
       return;
     }
+    if (hashConv?.type === 'channel-registry') {
+      setActiveConversationState({
+        type: 'channel-registry',
+        id: 'channel-registry',
+        name: 'Channel Registry',
+      });
+      hasSetDefaultConversation.current = true;
+      return;
+    }
 
     // No hash: optionally restore last-viewed non-data conversation if enabled on this device.
     if (!hashConv && getReopenLastConversationEnabled()) {

@@ -17,6 +17,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   GripVertical,
+  Hash,
   KeyRound,
   LockOpen,
   Logs,
@@ -149,7 +150,8 @@ type ToolKey =
   | 'room-finder'
   | 'mc-kms'
   | 'trace'
-  | 'bot-detector';
+  | 'bot-detector'
+  | 'channel-registry';
 
 const TOOL_LABELS: Record<ToolKey, string> = {
   'packet-feed': 'Packet Feed',
@@ -162,6 +164,7 @@ const TOOL_LABELS: Record<ToolKey, string> = {
   'mc-kms': 'MC-KMS',
   trace: 'Trace',
   'bot-detector': 'Bot Detector',
+  'channel-registry': 'Channel Registry',
 };
 
 const ALL_TOOL_KEYS: ToolKey[] = [
@@ -175,6 +178,7 @@ const ALL_TOOL_KEYS: ToolKey[] = [
   'mc-kms',
   'trace',
   'bot-detector',
+  'channel-registry',
 ];
 
 const SIDEBAR_TOOL_ORDER_KEY = 'remoteterm-sidebar-tool-order';
@@ -606,7 +610,8 @@ export function Sidebar({
       | 'mesh-health'
       | 'kms'
       | 'trace'
-      | 'bot-detector',
+      | 'bot-detector'
+      | 'channel-registry',
     id: string
   ) => activeConversation?.type === type && activeConversation?.id === id;
 
@@ -1282,6 +1287,18 @@ export function Sidebar({
               type: 'bot-detector',
               id: 'bot-detector',
               name: 'Bot Detector',
+            }),
+        }),
+        renderSidebarActionRow({
+          key: 'tool-channel-registry',
+          active: isActive('channel-registry', 'channel-registry'),
+          icon: <Hash className="h-4 w-4" />,
+          label: 'Channel Registry',
+          onClick: () =>
+            handleSelectConversation({
+              type: 'channel-registry',
+              id: 'channel-registry',
+              name: 'Channel Registry',
             }),
         }),
       ]

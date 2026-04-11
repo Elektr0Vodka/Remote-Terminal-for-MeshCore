@@ -6,6 +6,7 @@ import { api } from '../api';
 import { toast } from './ui/sonner';
 import { cn } from '@/lib/utils';
 import { extractPacketPayloadHex } from '../utils/pathUtils';
+import { notifyChannelFound } from './ChannelRegistryView';
 
 interface CrackedChannel {
   channelName: string;
@@ -346,6 +347,9 @@ export function CrackerPanel({
           crackedAt: Date.now(),
         };
         setCrackedChannels((prev) => [...prev, newCracked]);
+
+        // Record discovery in the Channel Registry (updates localStorage metadata)
+        notifyChannelFound('#' + result.roomName);
 
         // Auto-add channel if not already exists
         const keyUpper = result.key.toUpperCase();

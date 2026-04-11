@@ -333,7 +333,7 @@ export interface ResendChannelMessageResponse {
   message?: Message;
 }
 
-// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page, 'kms' for MC-KMS, 'contact-analytics' for per-contact analytics, 'trace' for Trace tool
+// Added 'node' for the My Node analytics view, 'mesh-health' for Mesh Health page, 'kms' for MC-KMS, 'contact-analytics' for per-contact analytics, 'trace' for Trace tool, 'channel-registry' for Channel Registry
 type ConversationType =
   | 'contact'
   | 'channel'
@@ -346,7 +346,8 @@ type ConversationType =
   | 'kms'
   | 'contact-analytics'
   | 'trace'
-  | 'bot-detector';
+  | 'bot-detector'
+  | 'channel-registry';
 
 export interface Conversation {
   type: ConversationType;

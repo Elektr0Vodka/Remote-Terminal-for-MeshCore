@@ -1,3 +1,43 @@
+# Channel Registry (11-4-2026)
+
+Adds a **Channel Registry** page that maintains enriched metadata for known MeshCore channels — compatible with the [meshcore-nl-discovered-channels](https://github.com/Elektr0Vodka/meshcore-nl-discovered-channels) JSON schema and extended with per-channel activity tracking.
+
+## What's new
+
+### Channel Registry page (`frontend/src/components/ChannelRegistryView.tsx`)
+- Accessible via the sidebar Tools section (hash `#` icon) or directly at `#channel-registry`.
+- Filterable, sortable table showing channel name, category, status, source, last heard time, and packet count.
+- Click any row to expand full metadata: subcategory, region, country, language, verified/recommended flags, first seen, alias, tags, scopes, and notes.
+- **Add Channel** inline form with fields for name, category, subcategory, country, language codes, status, region, and notes.
+- **Import JSON** — accepts any `channels.json` exported by either this tool or the meshcore-nl-discovered-channels project. Merge rules:
+  - Never overwrites existing `firstSeen`.
+  - Uses the newest `lastHeard` between existing and incoming.
+  - Accumulates packet counts (sums them).
+  - Fills in missing metadata fields without clobbering existing data.
+  - Accepts both the extended Project B schema (`lastHeard`) and the base Project A schema (`last_seen`).
+- **Export JSON** — exports the full registry as a `meshcore_channel_registry_YYYY-MM-DD.json` file compatible with meshcore-nl-discovered-channels.
+- **Auto-seed from DB channels** — on mount the registry is seeded with all radio channels already stored in the database (`source: 'radio'`), so the page is never empty for existing users.
+
+### Channel Finder integration (`frontend/src/components/CrackerPanel.tsx`)
+- Every time the Channel Finder cracks a new channel name, `notifyChannelFound` is called automatically.
+- New channels get `firstSeen = lastHeard = now`, `packets = 1`, `source = 'finder'`.
+- Subsequent cracks of the same channel increment `packets` and update `lastHeard`.
+
+### Channel metadata module (`frontend/src/lib/channelManager.ts`)
+- `loadRegistry()` / `saveRegistry()` — localStorage persistence under key `meshcore-channel-registry`.
+- `recordFinderDiscovery(name, existing)` — idempotent upsert for finder hits.
+- `addManualChannel(name, meta, existing)` — manual add with `source: 'manual'`.
+- `mergeImport(incoming, existing)` — safe merge with the rules described above.
+- `seedFromRadioChannels(radioChannels, existing)` — one-way seed from existing DB channels; never overwrites.
+- `source` field values: `'finder'` | `'manual'` | `'imported'` | `'radio'`.
+
+### Routing / navigation
+- `frontend/src/types.ts` — `'channel-registry'` added to `ConversationType`.
+- `frontend/src/utils/urlHash.ts` — `#channel-registry` hash parsed and serialised.
+- `frontend/src/components/Sidebar.tsx` — "Channel Registry" tool entry with `Hash` icon; added to `ToolKey`, `TOOL_LABELS`, `ALL_TOOL_KEYS`, and the draggable tool order list.
+
+---
+
 # Country Flag Emoji Fix for Windows/Chromium (07-4-2026)
 
 Country flag emoji (🇳🇱, 🇬🇧, etc.) were rendering as two-letter ISO codes on Windows/Chromium because `Segoe UI Emoji` does not support regional indicator pairs. Fixed using `country-flag-emoji-polyfill`, which detects the missing support at runtime and injects a `@font-face` rule using the bundled `TwemojiCountryFlags.woff2` COLR subset font (77 kB). The font is served locally from `public/fonts/` — no CDN dependency, fully offline.
