@@ -26,13 +26,7 @@ import {
 } from '../lib/channelManager';
 import type { Channel } from '../types';
 import { Button } from './ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { cn } from '@/lib/utils';
@@ -133,7 +127,9 @@ function sortRegistry(arr: RegistryChannel[], field: SortField, dir: SortDir): R
         cmp = a.channel.localeCompare(b.channel, undefined, { sensitivity: 'base' });
         break;
       case 'category':
-        cmp = (a.category || '').localeCompare(b.category || '', undefined, { sensitivity: 'base' });
+        cmp = (a.category || '').localeCompare(b.category || '', undefined, {
+          sensitivity: 'base',
+        });
         break;
       case 'status':
         cmp = a.status.localeCompare(b.status);
@@ -285,8 +281,7 @@ function EditChannelModal({
   }
 
   const inputCls = 'h-7 text-sm';
-  const labelCls =
-    'text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium';
+  const labelCls = 'text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium';
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -656,10 +651,7 @@ export default function ChannelRegistryView({ channels }: { channels?: Channel[]
 
   function handleExportProjectA() {
     const date = new Date().toISOString().slice(0, 10);
-    triggerDownload(
-      JSON.stringify(toProjectAFormat(registry), null, 2),
-      `channels_${date}.json`
-    );
+    triggerDownload(JSON.stringify(toProjectAFormat(registry), null, 2), `channels_${date}.json`);
   }
 
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1108,18 +1100,14 @@ function ChannelRow({
       </span>
       <span
         className="text-xs text-muted-foreground truncate"
-        title={
-          entry.subcategory ? `${entry.category} / ${entry.subcategory}` : entry.category
-        }
+        title={entry.subcategory ? `${entry.category} / ${entry.subcategory}` : entry.category}
       >
         {entry.category || '—'}
         {entry.subcategory && (
           <span className="text-muted-foreground/60"> / {entry.subcategory}</span>
         )}
       </span>
-      <span className="text-xs text-muted-foreground truncate">
-        {entry.country || '—'}
-      </span>
+      <span className="text-xs text-muted-foreground truncate">{entry.country || '—'}</span>
       <span>{statusBadge(entry.status)}</span>
       <span>{sourceBadge(entry.source)}</span>
       <span className="text-xs text-muted-foreground tabular-nums">

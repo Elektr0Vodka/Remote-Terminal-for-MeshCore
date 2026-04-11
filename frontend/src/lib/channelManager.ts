@@ -33,11 +33,7 @@ function normalizeChannelName(name: string): string {
   return n.startsWith('#') ? n : `#${n}`;
 }
 
-function emptyEntry(
-  name: string,
-  source: RegistryChannel['source'],
-  now: string
-): RegistryChannel {
+function emptyEntry(name: string, source: RegistryChannel['source'], now: string): RegistryChannel {
   const isLive = source === 'finder';
   return {
     channel: name,
@@ -291,9 +287,7 @@ export function updateChannel(
  * Convert registry entries to the Project A channels.json schema.
  * Maps lastHeard → last_seen and drops Project B-only fields (firstSeen, packets, source).
  */
-export function toProjectAFormat(
-  entries: RegistryChannel[]
-): Array<{
+export function toProjectAFormat(entries: RegistryChannel[]): Array<{
   channel: string;
   category: string;
   subcategory: string;
