@@ -376,10 +376,10 @@ function EditChannelModal({
                   setForm((f) => ({ ...f, status: e.target.value as RegistryChannel['status'] }))
                 }
               >
-                <option value="active">active</option>
-                <option value="inactive">inactive</option>
-                <option value="dormant">dormant</option>
-                <option value="experimental">experimental</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="dormant">Dormant</option>
+                <option value="experimental">Experimental</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -391,10 +391,10 @@ function EditChannelModal({
                   setForm((f) => ({ ...f, source: e.target.value as RegistryChannel['source'] }))
                 }
               >
-                <option value="manual">manual</option>
-                <option value="imported">imported</option>
-                <option value="radio">radio</option>
-                <option value="finder">finder</option>
+                <option value="manual">User</option>
+                <option value="imported">Imported</option>
+                <option value="radio">Radio</option>
+                <option value="finder">Finder</option>
               </select>
             </div>
           </div>
