@@ -406,7 +406,7 @@ function SectionHeader({
 
       {sortSection && sectionSortOrder && onSortToggle && (
         <button
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-0.5 rounded text-muted-foreground/60 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-[0.5625rem]"
+          className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground active:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-[0.5625rem] flex-shrink-0"
           onClick={() => onSortToggle(sortSection)}
           aria-label={
             sectionSortOrder === 'alpha'
@@ -1341,11 +1341,11 @@ export function Sidebar({
           </span>
         )}
       </button>
-      <div className="flex items-center gap-0.5 pr-3 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-0.5 pr-3">
         {sortKey && (
           <button
             onClick={() => handleSortToggle(sortKey)}
-            className="p-0.5 text-muted-foreground/60 hover:text-foreground text-[0.5625rem] rounded transition-colors focus-visible:outline-none"
+            className="p-0.5 text-muted-foreground/40 hover:text-foreground active:text-foreground text-[0.5625rem] rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex-shrink-0"
             title={
               sectionSortOrders[sortKey] === 'alpha'
                 ? `Sort ${label} by recent`
