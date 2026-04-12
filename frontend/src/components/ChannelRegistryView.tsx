@@ -721,7 +721,6 @@ export default function ChannelRegistryView({
     return m;
   }
 
-
   // ── Mutations ───────────────────────────────────────────────────────────────
   const persist = useCallback((next: RegistryChannel[]) => {
     setRegistry(next);
@@ -1032,7 +1031,8 @@ export default function ChannelRegistryView({
       {selection.size > 0 && (
         <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-md border border-border/70 bg-muted/40 px-3 py-1.5 text-xs">
           <span className="text-muted-foreground flex-1 text-xs">
-            {selection.size} {selection.size === 1 ? 'channel' : 'channels'} selected — use Export buttons above
+            {selection.size} {selection.size === 1 ? 'channel' : 'channels'} selected — use Export
+            buttons above
           </span>
           <button
             className="text-muted-foreground hover:text-foreground ml-1"

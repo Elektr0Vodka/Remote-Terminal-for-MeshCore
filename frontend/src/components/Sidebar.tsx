@@ -1181,8 +1181,7 @@ export function Sidebar({
       active: isActive('raw', 'raw'),
       icon: <Logs className="h-4 w-4" />,
       label: 'Packet Feed',
-      onClick: () =>
-        handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
+      onClick: () => handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
     }),
     'node-map': renderSidebarActionRow({
       key: 'tool-map',
