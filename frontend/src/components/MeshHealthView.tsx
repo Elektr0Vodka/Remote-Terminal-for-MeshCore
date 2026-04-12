@@ -600,7 +600,7 @@ export function MeshHealthView({ config, onNavigateToMap, focusKey }: Props) {
     'px-2 py-1.5 font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors';
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden mesh-health">
       {/* Page header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-2">

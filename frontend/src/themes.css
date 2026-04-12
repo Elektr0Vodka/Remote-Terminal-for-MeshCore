@@ -352,6 +352,88 @@
   color: hsl(0 0% 0%) !important;
 }
 
+/* ── Windows 95 — Mesh Health ────────────────────────────── */
+
+/* Stat tiles + chart panels: silver panel instead of teal bg-background */
+[data-theme='windows-95'] .mesh-health .bg-background {
+  background: hsl(0 0% 84%) !important;
+  box-shadow:
+    inset 1px 1px 0 hsl(0 0% 100%),
+    inset -1px -1px 0 hsl(0 0% 34%);
+}
+
+/* Table header row: silver background, not teal */
+[data-theme='windows-95'] .mesh-health thead tr {
+  background: hsl(0 0% 84%);
+}
+
+/* Table sort-header TH buttons: transparent text, no raised bevel */
+[data-theme='windows-95'] .mesh-health thead button {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0;
+  color: inherit;
+}
+[data-theme='windows-95'] .mesh-health thead button:active {
+  box-shadow: none !important;
+}
+
+/* Alert row Map button: transparent, no raised bevel */
+[data-theme='windows-95'] .mesh-health .divide-y button {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+[data-theme='windows-95'] .mesh-health .divide-y button:active {
+  box-shadow: none !important;
+}
+
+/* Progress bar fills (DistBars, RelayPairBars): square corners */
+[data-theme='windows-95'] .mesh-health .rounded-full {
+  border-radius: 0 !important;
+}
+
+/* All rounded-* corners in the component: square */
+[data-theme='windows-95'] .mesh-health .rounded,
+[data-theme='windows-95'] .mesh-health .rounded-sm,
+[data-theme='windows-95'] .mesh-health .rounded-md,
+[data-theme='windows-95'] .mesh-health .rounded-lg {
+  border-radius: 0 !important;
+}
+
+/* MEDIUM alert panel: Win95 amber instead of hardcoded yellow */
+[data-theme='windows-95'] .mesh-health .border-yellow-500\/40 {
+  border-color: hsl(45 60% 42%) !important;
+}
+[data-theme='windows-95'] .mesh-health .border-yellow-500\/30 {
+  border-color: hsl(45 60% 42%) !important;
+}
+[data-theme='windows-95'] .mesh-health .bg-yellow-500\/10 {
+  background: hsl(45 60% 84%) !important;
+}
+[data-theme='windows-95'] .mesh-health .bg-yellow-500\/15 {
+  background: hsl(45 60% 84%) !important;
+}
+[data-theme='windows-95'] .mesh-health .text-yellow-600,
+[data-theme='windows-95'] .mesh-health .text-yellow-700 {
+  color: hsl(45 80% 20%) !important;
+}
+[data-theme='windows-95'] .mesh-health .text-yellow-600\/70 {
+  color: hsl(45 80% 30%) !important;
+}
+
+/* ACTIVE status badge: Win95 muted green */
+[data-theme='windows-95'] .mesh-health .bg-green-500\/15 {
+  background: hsl(142 40% 82%) !important;
+}
+[data-theme='windows-95'] .mesh-health .text-green-600 {
+  color: hsl(142 75% 22%) !important;
+}
+
+/* Medium advert-count warning text in table */
+[data-theme='windows-95'] .mesh-health .text-yellow-600.font-semibold {
+  color: hsl(45 80% 20%) !important;
+}
+
 /* ── iPhone / iOS ─────────────────────────────────────────── */
 :root[data-theme='ios'] {
   --background: 240 18% 96%;
