@@ -206,6 +206,7 @@ interface EditFormState {
   tags: string;
   notes: string;
   status: RegistryChannel['status'];
+  source: RegistryChannel['source'];
   alias_of: string;
   verified: boolean;
   recommended: boolean;
@@ -224,6 +225,7 @@ function channelToEditForm(e: RegistryChannel): EditFormState {
     tags: e.tags.join(', '),
     notes: e.notes,
     status: e.status,
+    source: e.source,
     alias_of: e.alias_of ?? '',
     verified: e.verified,
     recommended: e.recommended,
@@ -264,6 +266,7 @@ function EditChannelModal({
       tags: parseCSV(form.tags),
       notes: form.notes.trim(),
       status: form.status,
+      source: form.source,
       alias_of: form.alias_of.trim() || null,
       verified: form.verified,
       recommended: form.recommended,
@@ -352,8 +355,8 @@ function EditChannelModal({
             </div>
           </div>
 
-          {/* Language + Status */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Language + Status + Source */}
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label className={labelCls}>Language</Label>
               <Input
@@ -377,6 +380,21 @@ function EditChannelModal({
                 <option value="inactive">inactive</option>
                 <option value="dormant">dormant</option>
                 <option value="experimental">experimental</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className={labelCls}>Source</Label>
+              <select
+                className="h-7 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={form.source}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, source: e.target.value as RegistryChannel['source'] }))
+                }
+              >
+                <option value="manual">manual</option>
+                <option value="imported">imported</option>
+                <option value="radio">radio</option>
+                <option value="finder">finder</option>
               </select>
             </div>
           </div>
