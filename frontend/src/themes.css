@@ -259,6 +259,99 @@
   }
 }
 
+/* ── Windows 95 — Channel Registry ───────────────────────── */
+
+/* Column header: silver panel instead of teal page-background */
+[data-theme='windows-95'] .channel-registry .sticky.bg-background {
+  background: hsl(0 0% 84%) !important;
+  box-shadow: 0 1px 0 hsl(0 0% 47%);
+}
+
+/* Sort header buttons: transparent text buttons, no raised Win95 bevel */
+[data-theme='windows-95'] .channel-registry .sticky button {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0;
+  color: inherit;
+}
+[data-theme='windows-95'] .channel-registry .sticky button:active {
+  box-shadow: none !important;
+}
+
+/* Row icon buttons (edit / delete): transparent ghost, no raised bevel */
+[data-theme='windows-95'] .channel-registry .group button {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0;
+}
+[data-theme='windows-95'] .channel-registry .group button:active {
+  box-shadow: none !important;
+}
+
+/* Inline clear button inside the search input */
+[data-theme='windows-95'] .channel-registry .relative > button {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0;
+}
+[data-theme='windows-95'] .channel-registry .relative > button:active {
+  box-shadow: none !important;
+}
+
+/* Selection bar clear (×) button */
+[data-theme='windows-95'] .channel-registry .registry-sel-bar button {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0;
+}
+
+/* Selection bar panel: silver instead of semi-transparent muted */
+[data-theme='windows-95'] .channel-registry .registry-sel-bar {
+  background: hsl(0 0% 84%);
+  box-shadow:
+    inset 1px 1px 0 hsl(0 0% 100%),
+    inset -1px -1px 0 hsl(0 0% 34%);
+}
+
+/* Status badges: Win95 muted palette instead of hardcoded Tailwind colors */
+[data-theme='windows-95'] [data-status='active'] {
+  background: hsl(142 40% 82%);
+  color: hsl(142 75% 22%);
+  border-radius: 0 !important;
+}
+[data-theme='windows-95'] [data-status='dormant'] {
+  background: hsl(45 60% 82%);
+  color: hsl(45 80% 22%);
+  border-radius: 0 !important;
+}
+[data-theme='windows-95'] [data-status='experimental'] {
+  background: hsl(210 60% 82%);
+  color: hsl(210 80% 28%);
+  border-radius: 0 !important;
+}
+[data-theme='windows-95'] [data-status='inactive'] {
+  border-radius: 0 !important;
+}
+
+/* Source badges */
+[data-theme='windows-95'] [data-source='radio'] {
+  background: hsl(210 60% 82%);
+  color: hsl(210 80% 28%);
+  border-radius: 0 !important;
+}
+[data-theme='windows-95'] [data-source='finder'],
+[data-theme='windows-95'] [data-source='manual'],
+[data-theme='windows-95'] [data-source='imported'] {
+  border-radius: 0 !important;
+}
+
+/* Toast success: Win95 neutral instead of hardcoded green */
+[data-theme='windows-95'] .channel-registry .registry-toast-ok {
+  background: hsl(0 0% 84%) !important;
+  border-color: hsl(0 0% 47%) !important;
+  color: hsl(0 0% 0%) !important;
+}
+
 /* ── iPhone / iOS ─────────────────────────────────────────── */
 :root[data-theme='ios'] {
   --background: 240 18% 96%;

@@ -76,6 +76,7 @@ function sourceBadge(source: RegistryChannel['source']) {
         'text-[0.625rem] uppercase tracking-wider px-1.5 py-0.5 rounded',
         styles[source]
       )}
+      data-source={source}
     >
       {source}
     </span>
@@ -95,6 +96,7 @@ function statusBadge(status: RegistryChannel['status']) {
         'text-[0.625rem] uppercase tracking-wider px-1.5 py-0.5 rounded',
         styles[status]
       )}
+      data-status={status}
     >
       {status}
     </span>
@@ -815,7 +817,7 @@ export default function ChannelRegistryView({
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full channel-registry">
       {/* ── Header ───────────────────────────────────────────────────────────── */}
       <h2 className="flex justify-between items-center px-4 py-2.5 border-b border-border font-semibold text-base shrink-0">
         <span className="flex items-center gap-2">
@@ -897,9 +899,9 @@ export default function ChannelRegistryView({
       {toast && (
         <div
           className={cn(
-            'mx-4 mt-3 rounded-md border px-3 py-2 text-sm shrink-0',
+            'mx-4 mt-3 rounded-md border px-3 py-2 text-sm shrink-0 registry-toast',
             toast.variant === 'ok'
-              ? 'border-green-500/30 bg-green-500/10 text-green-600'
+              ? 'border-green-500/30 bg-green-500/10 text-green-600 registry-toast-ok'
               : toast.variant === 'err'
                 ? 'border-destructive/30 bg-destructive/10 text-destructive'
                 : 'border-border/70 bg-muted/30 text-muted-foreground'
@@ -1047,7 +1049,7 @@ export default function ChannelRegistryView({
 
       {/* ── Selection bar ────────────────────────────────────────────────────── */}
       {selection.size > 0 && (
-        <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-md border border-border/70 bg-muted/40 px-3 py-1.5 text-xs">
+        <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-md border border-border/70 bg-muted/40 px-3 py-1.5 text-xs registry-sel-bar">
           <span className="text-muted-foreground flex-1 text-xs">
             {selection.size} {selection.size === 1 ? 'channel' : 'channels'} selected — use Export
             buttons above
