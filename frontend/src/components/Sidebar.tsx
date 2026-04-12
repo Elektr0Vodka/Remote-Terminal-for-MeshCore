@@ -1175,134 +1175,134 @@ export function Sidebar({
   const roomsHasMention = sectionHasMention(roomRows);
   const repeatersHasMention = sectionHasMention(repeaterRows);
 
-  const toolRows = !query
-    ? [
-        renderSidebarActionRow({
-          key: 'tool-raw',
-          active: isActive('raw', 'raw'),
-          icon: <Logs className="h-4 w-4" />,
-          label: 'Packet Feed',
-          onClick: () =>
-            handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
+  const toolRowMap: Record<ToolKey, React.ReactNode> = {
+    'packet-feed': renderSidebarActionRow({
+      key: 'tool-raw',
+      active: isActive('raw', 'raw'),
+      icon: <Logs className="h-4 w-4" />,
+      label: 'Packet Feed',
+      onClick: () =>
+        handleSelectConversation({ type: 'raw', id: 'raw', name: 'Raw Packet Feed' }),
+    }),
+    'node-map': renderSidebarActionRow({
+      key: 'tool-map',
+      active: isActive('map', 'map'),
+      icon: <Map className="h-4 w-4" />,
+      label: 'Node Map',
+      onClick: () => handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
+    }),
+    'mesh-visualizer': renderSidebarActionRow({
+      key: 'tool-visualizer',
+      active: isActive('visualizer', 'visualizer'),
+      icon: <ChartNetwork className="h-4 w-4" />,
+      label: 'Mesh Visualizer',
+      onClick: () =>
+        handleSelectConversation({
+          type: 'visualizer',
+          id: 'visualizer',
+          name: 'Mesh Visualizer',
         }),
-        renderSidebarActionRow({
-          key: 'tool-map',
-          active: isActive('map', 'map'),
-          icon: <Map className="h-4 w-4" />,
-          label: 'Node Map',
-          onClick: () => handleSelectConversation({ type: 'map', id: 'map', name: 'Node Map' }),
+    }),
+    trace: renderSidebarActionRow({
+      key: 'tool-trace',
+      active: isActive('trace', 'trace'),
+      icon: <Cable className="h-4 w-4" />,
+      label: 'Trace',
+      onClick: () => handleSelectConversation({ type: 'trace', id: 'trace', name: 'Trace' }),
+    }),
+    'message-search': renderSidebarActionRow({
+      key: 'tool-search',
+      active: isActive('search', 'search'),
+      icon: <SearchIcon className="h-4 w-4" />,
+      label: 'Message Search',
+      onClick: () =>
+        handleSelectConversation({ type: 'search', id: 'search', name: 'Message Search' }),
+    }),
+    'my-node': renderSidebarActionRow({
+      key: 'tool-node',
+      active: isActive('node', 'node'),
+      icon: <BarChart2 className="h-4 w-4" />,
+      label: 'My Node',
+      onClick: () => handleSelectConversation({ type: 'node', id: 'node', name: 'My Node' }),
+    }),
+    'mesh-health': renderSidebarActionRow({
+      key: 'tool-mesh-health',
+      active: isActive('mesh-health', 'mesh-health'),
+      icon: <Activity className="h-4 w-4" />,
+      label: (
+        <span className="flex items-center justify-between w-full">
+          <span>Mesh Health</span>
+          {meshHealthStatus === 'ok' && (
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+          )}
+          {meshHealthStatus === 'medium' && (
+            <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
+          )}
+          {meshHealthStatus === 'high' && (
+            <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+          )}
+        </span>
+      ),
+      onClick: () =>
+        handleSelectConversation({
+          type: 'mesh-health',
+          id: 'mesh-health',
+          name: 'Mesh Health',
         }),
-        renderSidebarActionRow({
-          key: 'tool-visualizer',
-          active: isActive('visualizer', 'visualizer'),
-          icon: <ChartNetwork className="h-4 w-4" />,
-          label: 'Mesh Visualizer',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'visualizer',
-              id: 'visualizer',
-              name: 'Mesh Visualizer',
-            }),
+    }),
+    'room-finder': renderSidebarActionRow({
+      key: 'tool-cracker',
+      active: showCracker,
+      icon: <LockOpen className="h-4 w-4" />,
+      label: (
+        <>
+          {showCracker ? 'Hide' : 'Show'} Channel Finder
+          <span
+            className={cn(
+              'ml-1 text-[0.6875rem]',
+              crackerRunning ? 'text-primary' : 'text-muted-foreground'
+            )}
+          >
+            ({crackerRunning ? 'running' : 'idle'})
+          </span>
+        </>
+      ),
+      onClick: onToggleCracker,
+    }),
+    'mc-kms': renderSidebarActionRow({
+      key: 'tool-mc-kms',
+      active: isActive('kms', 'kms'),
+      icon: <KeyRound className="h-4 w-4" />,
+      label: 'MC-KMS',
+      onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
+    }),
+    'bot-detector': renderSidebarActionRow({
+      key: 'tool-bot-detector',
+      active: isActive('bot-detector', 'bot-detector'),
+      icon: <Bot className="h-4 w-4" />,
+      label: 'Bot Detector',
+      onClick: () =>
+        handleSelectConversation({
+          type: 'bot-detector',
+          id: 'bot-detector',
+          name: 'Bot Detector',
         }),
-        renderSidebarActionRow({
-          key: 'tool-trace',
-          active: isActive('trace', 'trace'),
-          icon: <Cable className="h-4 w-4" />,
-          label: 'Trace',
-          onClick: () => handleSelectConversation({ type: 'trace', id: 'trace', name: 'Trace' }),
+    }),
+    'channel-registry': renderSidebarActionRow({
+      key: 'tool-channel-registry',
+      active: isActive('channel-registry', 'channel-registry'),
+      icon: <Hash className="h-4 w-4" />,
+      label: 'Channel Registry',
+      onClick: () =>
+        handleSelectConversation({
+          type: 'channel-registry',
+          id: 'channel-registry',
+          name: 'Channel Registry',
         }),
-        renderSidebarActionRow({
-          key: 'tool-search',
-          active: isActive('search', 'search'),
-          icon: <SearchIcon className="h-4 w-4" />,
-          label: 'Message Search',
-          onClick: () =>
-            handleSelectConversation({ type: 'search', id: 'search', name: 'Message Search' }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-node',
-          active: isActive('node', 'node'),
-          icon: <BarChart2 className="h-4 w-4" />,
-          label: 'My Node',
-          onClick: () => handleSelectConversation({ type: 'node', id: 'node', name: 'My Node' }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-mesh-health',
-          active: isActive('mesh-health', 'mesh-health'),
-          icon: <Activity className="h-4 w-4" />,
-          label: (
-            <span className="flex items-center justify-between w-full">
-              <span>Mesh Health</span>
-              {meshHealthStatus === 'ok' && (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-              )}
-              {meshHealthStatus === 'medium' && (
-                <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
-              )}
-              {meshHealthStatus === 'high' && (
-                <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-              )}
-            </span>
-          ),
-          onClick: () =>
-            handleSelectConversation({
-              type: 'mesh-health',
-              id: 'mesh-health',
-              name: 'Mesh Health',
-            }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-cracker',
-          active: showCracker,
-          icon: <LockOpen className="h-4 w-4" />,
-          label: (
-            <>
-              {showCracker ? 'Hide' : 'Show'} Channel Finder
-              <span
-                className={cn(
-                  'ml-1 text-[0.6875rem]',
-                  crackerRunning ? 'text-primary' : 'text-muted-foreground'
-                )}
-              >
-                ({crackerRunning ? 'running' : 'idle'})
-              </span>
-            </>
-          ),
-          onClick: onToggleCracker,
-        }),
-        renderSidebarActionRow({
-          key: 'tool-mc-kms',
-          active: isActive('kms', 'kms'),
-          icon: <KeyRound className="h-4 w-4" />,
-          label: 'MC-KMS',
-          onClick: () => handleSelectConversation({ type: 'kms', id: 'kms', name: 'MC-KMS' }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-bot-detector',
-          active: isActive('bot-detector', 'bot-detector'),
-          icon: <Bot className="h-4 w-4" />,
-          label: 'Bot Detector',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'bot-detector',
-              id: 'bot-detector',
-              name: 'Bot Detector',
-            }),
-        }),
-        renderSidebarActionRow({
-          key: 'tool-channel-registry',
-          active: isActive('channel-registry', 'channel-registry'),
-          icon: <Hash className="h-4 w-4" />,
-          label: 'Channel Registry',
-          onClick: () =>
-            handleSelectConversation({
-              type: 'channel-registry',
-              id: 'channel-registry',
-              name: 'Channel Registry',
-            }),
-        }),
-      ]
-    : [];
+    }),
+  };
+
+  const toolRows = !query ? toolOrder.map((k) => toolRowMap[k]) : [];
 
   // ── Sub-section header helper ───────────────────────────────────────────────
 
