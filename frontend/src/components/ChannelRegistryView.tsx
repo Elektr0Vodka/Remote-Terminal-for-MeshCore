@@ -721,20 +721,6 @@ export default function ChannelRegistryView({
     return m;
   }
 
-  function handleExportSelected() {
-    const selected = registry.filter((e) => selection.has(e.channel));
-    const date = new Date().toISOString().slice(0, 10);
-    triggerDownload(JSON.stringify(selected, null, 2), `meshcore_registry_selected_${date}.json`);
-  }
-
-  function handleExportSelectedProjectA() {
-    const selected = registry.filter((e) => selection.has(e.channel));
-    const date = new Date().toISOString().slice(0, 10);
-    triggerDownload(
-      JSON.stringify(toProjectAFormat(selected, buildKeyByName()), null, 2),
-      `channels_selected_${date}.json`
-    );
-  }
 
   // ── Mutations ───────────────────────────────────────────────────────────────
   const persist = useCallback((next: RegistryChannel[]) => {
@@ -777,14 +763,16 @@ export default function ChannelRegistryView({
   }
 
   function handleExport() {
+    const rows = selection.size > 0 ? registry.filter((e) => selection.has(e.channel)) : sorted;
     const date = new Date().toISOString().slice(0, 10);
-    triggerDownload(JSON.stringify(registry, null, 2), `meshcore_registry_${date}.json`);
+    triggerDownload(JSON.stringify(rows, null, 2), `meshcore_registry_${date}.json`);
   }
 
   function handleExportProjectA() {
+    const rows = selection.size > 0 ? registry.filter((e) => selection.has(e.channel)) : sorted;
     const date = new Date().toISOString().slice(0, 10);
     triggerDownload(
-      JSON.stringify(toProjectAFormat(registry, buildKeyByName()), null, 2),
+      JSON.stringify(toProjectAFormat(rows, buildKeyByName()), null, 2),
       `channels_${date}.json`
     );
   }
@@ -837,10 +825,16 @@ export default function ChannelRegistryView({
             className="h-7 text-xs px-2"
             onClick={handleExport}
             disabled={registry.length === 0}
-            title="Export full registry (Project B format)"
+            title={
+              selection.size > 0
+                ? `Export ${selection.size} selected channels (Project B format)`
+                : sorted.length < registry.length
+                  ? `Export ${sorted.length} filtered channels (Project B format)`
+                  : 'Export all channels (Project B format)'
+            }
           >
             <Download className="h-3.5 w-3.5 mr-1" />
-            Export
+            {selection.size > 0 ? `Export (${selection.size})` : 'Export'}
           </Button>
           <Button
             variant="outline"
@@ -848,10 +842,16 @@ export default function ChannelRegistryView({
             className="h-7 text-xs px-2"
             onClick={handleExportProjectA}
             disabled={registry.length === 0}
-            title="Export as channels.json (Project A compatible format)"
+            title={
+              selection.size > 0
+                ? `Export ${selection.size} selected channels (Project A format)`
+                : sorted.length < registry.length
+                  ? `Export ${sorted.length} filtered channels (Project A format)`
+                  : 'Export all channels (Project A format)'
+            }
           >
             <Download className="h-3.5 w-3.5 mr-1" />
-            Export (A)
+            {selection.size > 0 ? `Export (${selection.size}) (A)` : 'Export (A)'}
           </Button>
           <Button
             size="sm"
@@ -1031,29 +1031,9 @@ export default function ChannelRegistryView({
       {/* ── Selection bar ────────────────────────────────────────────────────── */}
       {selection.size > 0 && (
         <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-md border border-border/70 bg-muted/40 px-3 py-1.5 text-xs">
-          <span className="text-muted-foreground flex-1">
-            {selection.size} {selection.size === 1 ? 'channel' : 'channels'} selected
+          <span className="text-muted-foreground flex-1 text-xs">
+            {selection.size} {selection.size === 1 ? 'channel' : 'channels'} selected — use Export buttons above
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 text-xs px-2"
-            onClick={handleExportSelected}
-            title="Export selected as full registry JSON"
-          >
-            <Download className="h-3 w-3 mr-1" />
-            Export
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 text-xs px-2"
-            onClick={handleExportSelectedProjectA}
-            title="Export selected as Project A channels.json"
-          >
-            <Download className="h-3 w-3 mr-1" />
-            Export (A)
-          </Button>
           <button
             className="text-muted-foreground hover:text-foreground ml-1"
             onClick={() => setSelection(new Set())}
