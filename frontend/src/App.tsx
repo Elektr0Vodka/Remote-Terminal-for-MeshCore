@@ -853,7 +853,7 @@ export function App() {
           crackerFoundChannels,
           onChannelsImported: handleChannelsImported,
         }}
-        onOpenChannelImportExport={undefined}
+        onOpenChannelImportExport={() => setShowChannelImportExport(true)}
         showWarningTicker={appSettings?.show_warning_ticker ?? true}
         showMentionTicker={appSettings?.show_mention_ticker ?? true}
         mentionTickerEvents={pendingMentions}
