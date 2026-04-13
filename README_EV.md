@@ -7,7 +7,6 @@ This document covers features added in the [Elektr0Vodka fork](https://github.co
 ## Table of Contents
 
 - [Channel Registry](#channel-registry)
-- [Channel Import / Export](#channel-import--export)
 - [Mention Ticker](#mention-ticker)
 - [Bot Detection](#bot-detection)
 - [My Node Page](#my-node-page)
@@ -67,25 +66,6 @@ Merge rules:
 ### Export
 
 Click **Export JSON** to download a `meshcore_channel_registry_YYYY-MM-DD.json` file. Private channels (marked with 🔒) are excluded. The file is compatible with meshcore-nl-discovered-channels.
-
----
-
-## Channel Import / Export
-
-**Location:** Sidebar → Channels section header → import/export icon
-
-Bulk import and export of channels using a plain-text `#name - key` format.
-
-### Export
-
-Three scope buttons on the Export tab:
-- **All channels** — every channel in the database
-- **Named channels only** — channels that have a name set
-- **Channels with keys only** — channels that have a key
-
-### Import
-
-Paste or upload a `.txt` file in `#name - key` format. The import preview shows which channels will be added and which already exist. An optional **Decrypt historical packets** checkbox re-runs the historical decrypt pass over stored `GROUP_TEXT` packets using any newly added keys, recovering messages that couldn't be decrypted before.
 
 ---
 
