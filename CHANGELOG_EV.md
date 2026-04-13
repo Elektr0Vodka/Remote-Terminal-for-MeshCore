@@ -31,12 +31,12 @@ Additional metadata columns and Dutch-network tooling for the Channel Registry.
 ### Dutch geo auto-fill (`frontend/src/lib/dutchGeo.ts`)
 - Offline dataset of Dutch municipalities, provinces, and veiligheidsregio regions (~1400 entries).
 - When editing a channel, `matchDutchChannel(name)` checks if the name matches a known Dutch location.
-- If a match is found, an auto-fill banner appears in the edit modal offering to populate Country (`Netherlands`), Region (province), Language (`nl`), Category, and Scopes — including the veiligheidsregio scope prefixed `VR `.
-- `buildAutoFillFromGeo(entry)` builds the full `ChannelAutoFill` struct. `isVeiligheidsregio(scope)` returns `true` for any scope starting with `VR `.
+- If a match is found, an auto-fill banner appears in the edit modal offering to populate Country (`Netherlands`), Region (province), Language (`nl`), Category, and Scopes — including the veiligheidsregio scope as its slug code (e.g. `vr-gelderland-zuid`).
+- `buildAutoFillFromGeo(entry)` builds the full `ChannelAutoFill` struct. `isVeiligheidsregio(scope)` returns `true` for any scope starting with `vr-`.
 
 ### Scope pills preview
 - The edit modal shows a live preview of all configured scopes as coloured pills.
-- Veiligheidsregio scopes (`VR *`) render with a distinct orange badge.
+- Veiligheidsregio scopes (`vr-*`) render with a distinct orange badge.
 - A MeshWiki region guide link appears in the scopes hint text.
 
 ### Private channel flag

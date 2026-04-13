@@ -1412,7 +1412,7 @@ export interface ChannelAutoFill {
  * styled distinctly (see isVeiligheidsregio below).
  */
 export function buildAutoFillFromGeo(entry: DutchGeoEntry): ChannelAutoFill {
-  const vrScope = `VR ${entry.veiligheidsregio}`;
+  const vrScope = entry.veiligheidsregio_code;
   const scopes = entry.scopes.includes(vrScope) ? entry.scopes : [...entry.scopes, vrScope];
   return {
     country: 'Netherlands',
@@ -1426,9 +1426,9 @@ export function buildAutoFillFromGeo(entry: DutchGeoEntry): ChannelAutoFill {
 
 /**
  * Returns true if the given scope string is a Dutch veiligheidsregio.
- * These are stored as "VR <name>" in the scopes array (e.g. "VR Amsterdam-Amstelland").
+ * These are stored as "vr-<slug>" in the scopes array (e.g. "vr-gelderland-zuid").
  * Used to render VR scopes with a distinct red/orange badge in the UI.
  */
 export function isVeiligheidsregio(scope: string): boolean {
-  return scope.startsWith('VR ');
+  return scope.startsWith('vr-');
 }

@@ -48,7 +48,7 @@ Check **Private (exclude from export)** in the edit modal to prevent a channel f
 
 ### Scope pills
 
-The edit modal shows a live preview of all configured scopes as coloured pills. Veiligheidsregio scopes (prefixed `VR `) render in orange.
+The edit modal shows a live preview of all configured scopes as coloured pills. Veiligheidsregio scopes (prefixed `vr-`, e.g. `vr-gelderland-zuid`) render in orange.
 
 ### Import
 
