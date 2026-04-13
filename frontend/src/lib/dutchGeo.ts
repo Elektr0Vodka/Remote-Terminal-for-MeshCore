@@ -451,7 +451,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'nh',
     veiligheidsregio: 'Amsterdam-Amstelland',
     veiligheidsregio_code: 'vr-vraa',
-    scopes: ['nl', 'nl-nh', 'nl-nh-amsterdam'],
+    scopes: ['nl', 'nl-nh', 'nl-nh-ams'],
     country: 'Netherlands',
   },
   {
@@ -462,7 +462,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'nh',
     veiligheidsregio: 'Kennemerland',
     veiligheidsregio_code: 'vr-vrk',
-    scopes: ['nl', 'nl-nh', 'nl-nh-haarlem'],
+    scopes: ['nl', 'nl-nh', 'nl-nh-hrl'],
     country: 'Netherlands',
   },
   {
@@ -473,7 +473,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'nh',
     veiligheidsregio: 'Noord-Holland Noord',
     veiligheidsregio_code: 'vr-vrnhn',
-    scopes: ['nl', 'nl-nh', 'nl-nh-alkmaar'],
+    scopes: ['nl', 'nl-nh', 'nl-nh-alk'],
     country: 'Netherlands',
   },
   {
@@ -484,7 +484,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'nh',
     veiligheidsregio: 'Zaanstreek-Waterland',
     veiligheidsregio_code: 'vr-vrzw',
-    scopes: ['nl', 'nl-nh', 'nl-nh-zaandam'],
+    scopes: ['nl', 'nl-nh', 'nl-nh-zdm'],
     country: 'Netherlands',
   },
   {
@@ -528,7 +528,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'nh',
     veiligheidsregio: 'Gooi en Vechtstreek',
     veiligheidsregio_code: 'vr-vrgv',
-    scopes: ['nl', 'nl-nh', 'nl-nh-hilversum'],
+    scopes: ['nl', 'nl-nh', 'nl-nh-hlv'],
     country: 'Netherlands',
   },
   // --- Zuid-Holland ---
@@ -540,7 +540,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Rotterdam-Rijnmond',
     veiligheidsregio_code: 'vr-vrr',
-    scopes: ['nl', 'nl-zh', 'nl-zh-rotterdam'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-rtm'],
     country: 'Netherlands',
   },
   {
@@ -551,7 +551,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Haaglanden',
     veiligheidsregio_code: 'vr-vrh',
-    scopes: ['nl', 'nl-zh', 'nl-zh-denhaag'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-dhh'],
     country: 'Netherlands',
     notes: "Officially 's-Gravenhage",
   },
@@ -563,7 +563,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Hollands Midden',
     veiligheidsregio_code: 'vr-vrhm',
-    scopes: ['nl', 'nl-zh', 'nl-zh-leiden'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-ldn'],
     country: 'Netherlands',
   },
   {
@@ -574,7 +574,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Zuid-Holland Zuid',
     veiligheidsregio_code: 'vr-vrzhz',
-    scopes: ['nl', 'nl-zh', 'nl-zh-dordrecht'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-ddr'],
     country: 'Netherlands',
   },
   {
@@ -596,7 +596,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Haaglanden',
     veiligheidsregio_code: 'vr-vrh',
-    scopes: ['nl', 'nl-zh', 'nl-zh-delft'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-dlf'],
     country: 'Netherlands',
   },
   {
@@ -618,7 +618,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Hollands Midden',
     veiligheidsregio_code: 'vr-vrhm',
-    scopes: ['nl', 'nl-zh', 'nl-zh-gouda'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-gda'],
     country: 'Netherlands',
   },
   {
@@ -640,7 +640,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Rotterdam-Rijnmond',
     veiligheidsregio_code: 'vr-vrr',
-    scopes: ['nl', 'nl-zh', 'nl-zh-vlaardingen'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-vld'],
     country: 'Netherlands',
   },
   {
@@ -662,7 +662,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'zh',
     veiligheidsregio: 'Rotterdam-Rijnmond',
     veiligheidsregio_code: 'vr-vrr',
-    scopes: ['nl', 'nl-zh', 'nl-zh-capelle'],
+    scopes: ['nl', 'nl-zh', 'nl-zh-cap'],
     country: 'Netherlands',
   },
   {
@@ -830,7 +830,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ut',
     veiligheidsregio: 'Utrecht',
     veiligheidsregio_code: 'vr-vru',
-    scopes: ['nl', 'nl-ut', 'nl-ut-amersfoort'],
+    scopes: ['nl', 'nl-ut', 'nl-ut-ame'],
     country: 'Netherlands',
   },
   {
@@ -852,7 +852,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ut',
     veiligheidsregio: 'Utrecht',
     veiligheidsregio_code: 'vr-vru',
-    scopes: ['nl', 'nl-ut', 'nl-ut-ijsselstein'],
+    scopes: ['nl', 'nl-ut', 'nl-ut-ijs'],
     country: 'Netherlands',
   },
   {
@@ -885,7 +885,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ut',
     veiligheidsregio: 'Utrecht',
     veiligheidsregio_code: 'vr-vru',
-    scopes: ['nl', 'nl-ut', 'nl-ut-houten'],
+    scopes: ['nl', 'nl-ut', 'nl-ut-htn'],
     country: 'Netherlands',
   },
   {
@@ -896,7 +896,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ut',
     veiligheidsregio: 'Utrecht',
     veiligheidsregio_code: 'vr-vru',
-    scopes: ['nl', 'nl-ut', 'nl-ut-zeist'],
+    scopes: ['nl', 'nl-ut', 'nl-ut-zst'],
     country: 'Netherlands',
   },
   {
@@ -919,7 +919,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'nb',
     veiligheidsregio: 'Brabant-Zuidoost',
     veiligheidsregio_code: 'vr-vrbzo',
-    scopes: ['nl', 'nl-nb', 'nl-nb-eindhoven'],
+    scopes: ['nl', 'nl-nb', 'nl-nb-ehv'],
     country: 'Netherlands',
   },
   {
@@ -930,7 +930,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'nb',
     veiligheidsregio: 'Midden- en West-Brabant',
     veiligheidsregio_code: 'vr-vrmwb',
-    scopes: ['nl', 'nl-nb', 'nl-nb-tilburg'],
+    scopes: ['nl', 'nl-nb', 'nl-nb-til'],
     country: 'Netherlands',
   },
   {
@@ -1021,7 +1021,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ge',
     veiligheidsregio: 'Gelderland-Zuid',
     veiligheidsregio_code: 'vr-vrgz',
-    scopes: ['nl', 'nl-ge', 'nl-ge-nijmegen'],
+    scopes: ['nl', 'nl-ge', 'nl-ge-nij'],
     country: 'Netherlands',
   },
   {
@@ -1032,7 +1032,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ge',
     veiligheidsregio: 'Gelderland-Midden',
     veiligheidsregio_code: 'vr-vggm',
-    scopes: ['nl', 'nl-ge', 'nl-ge-arnhem'],
+    scopes: ['nl', 'nl-ge', 'nl-ge-arn'],
     country: 'Netherlands',
   },
   {
@@ -1043,7 +1043,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ge',
     veiligheidsregio: 'Noord-Oost Gelderland',
     veiligheidsregio_code: 'vr-vnog',
-    scopes: ['nl', 'nl-ge', 'nl-ge-apeldoorn'],
+    scopes: ['nl', 'nl-ge', 'nl-ge-apd'],
     country: 'Netherlands',
   },
   {
@@ -1132,7 +1132,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ov',
     veiligheidsregio: 'Twente',
     veiligheidsregio_code: 'vr-vrt',
-    scopes: ['nl', 'nl-ov', 'nl-ov-enschede'],
+    scopes: ['nl', 'nl-ov', 'nl-ov-ens'],
     country: 'Netherlands',
   },
   {
@@ -1143,7 +1143,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ov',
     veiligheidsregio: 'IJsselland',
     veiligheidsregio_code: 'vr-vrij',
-    scopes: ['nl', 'nl-ov', 'nl-ov-zwolle'],
+    scopes: ['nl', 'nl-ov', 'nl-ov-zwl'],
     country: 'Netherlands',
   },
   {
@@ -1154,7 +1154,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ov',
     veiligheidsregio: 'IJsselland',
     veiligheidsregio_code: 'vr-vrij',
-    scopes: ['nl', 'nl-ov', 'nl-ov-deventer'],
+    scopes: ['nl', 'nl-ov', 'nl-ov-dev'],
     country: 'Netherlands',
   },
   {
@@ -1165,7 +1165,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ov',
     veiligheidsregio: 'Twente',
     veiligheidsregio_code: 'vr-vrt',
-    scopes: ['nl', 'nl-ov', 'nl-ov-almelo'],
+    scopes: ['nl', 'nl-ov', 'nl-ov-alm'],
     country: 'Netherlands',
   },
   {
@@ -1176,7 +1176,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ov',
     veiligheidsregio: 'Twente',
     veiligheidsregio_code: 'vr-vrt',
-    scopes: ['nl', 'nl-ov', 'nl-ov-hengelo'],
+    scopes: ['nl', 'nl-ov', 'nl-ov-hgl'],
     country: 'Netherlands',
   },
   // --- Groningen ---
@@ -1188,7 +1188,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'gr',
     veiligheidsregio: 'Groningen',
     veiligheidsregio_code: 'vr-hvdg',
-    scopes: ['nl', 'nl-gr', 'nl-gr-groningen'],
+    scopes: ['nl', 'nl-gr', 'nl-gr-grq'],
     country: 'Netherlands',
   },
   // --- Friesland ---
@@ -1200,7 +1200,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'fr',
     veiligheidsregio: 'Friesland',
     veiligheidsregio_code: 'vr-vrf',
-    scopes: ['nl', 'nl-fr', 'nl-fr-leeuwarden'],
+    scopes: ['nl', 'nl-fr', 'nl-fr-lwr'],
     country: 'Netherlands',
   },
   // --- Drenthe ---
@@ -1212,7 +1212,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'dr',
     veiligheidsregio: 'Drenthe',
     veiligheidsregio_code: 'vr-vrd',
-    scopes: ['nl', 'nl-dr', 'nl-dr-emmen'],
+    scopes: ['nl', 'nl-dr', 'nl-dr-emm'],
     country: 'Netherlands',
   },
   // --- Flevoland ---
@@ -1224,7 +1224,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'fl',
     veiligheidsregio: 'Flevoland',
     veiligheidsregio_code: 'vr-vrfl',
-    scopes: ['nl', 'nl-fl', 'nl-fl-almere'],
+    scopes: ['nl', 'nl-fl', 'nl-fl-alm'],
     country: 'Netherlands',
   },
   {
@@ -1247,7 +1247,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ze',
     veiligheidsregio: 'Zeeland',
     veiligheidsregio_code: 'vr-vrz',
-    scopes: ['nl', 'nl-ze', 'nl-ze-middelburg'],
+    scopes: ['nl', 'nl-ze', 'nl-ze-mid'],
     country: 'Netherlands',
   },
   {
@@ -1258,7 +1258,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'ze',
     veiligheidsregio: 'Zeeland',
     veiligheidsregio_code: 'vr-vrz',
-    scopes: ['nl', 'nl-ze', 'nl-ze-vlissingen'],
+    scopes: ['nl', 'nl-ze', 'nl-ze-vls'],
     country: 'Netherlands',
   },
   {
@@ -1281,7 +1281,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'li',
     veiligheidsregio: 'Zuid-Limburg',
     veiligheidsregio_code: 'vr-vrzl',
-    scopes: ['nl', 'nl-li', 'nl-li-maastricht'],
+    scopes: ['nl', 'nl-li', 'nl-li-maa'],
     country: 'Netherlands',
   },
   {
@@ -1292,7 +1292,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     provinceCode: 'li',
     veiligheidsregio: 'Limburg-Noord',
     veiligheidsregio_code: 'vr-vrln',
-    scopes: ['nl', 'nl-li', 'nl-li-venlo'],
+    scopes: ['nl', 'nl-li', 'nl-li-vnl'],
     country: 'Netherlands',
   },
   {
