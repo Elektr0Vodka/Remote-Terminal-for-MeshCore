@@ -85,6 +85,8 @@ export function getUnreadBoundaryBackfillKey({
   return `${activeConversation.id}:${unreadMarker.lastReadAt}:${oldestLoadedMessage.id}`;
 }
 
+const MENTION_EXPIRE_MS = 10 * 60 * 1_000;
+
 export function App() {
   const quoteSearchOperatorValue = useCallback((value: string) => {
     return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
@@ -164,7 +166,6 @@ export function App() {
   }, []);
 
   // ── Mention ticker ─────────────────────────────────────────────────────────
-  const MENTION_EXPIRE_MS = 10 * 60 * 1_000;
   const [pendingMentions, setPendingMentions] = useState<MentionEvent[]>([]);
   // Keep channels ref stable for use in the WS callback
   const channelsRef = useRef<Channel[]>([]);

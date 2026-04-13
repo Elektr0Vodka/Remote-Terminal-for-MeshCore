@@ -628,6 +628,7 @@ class TestAppSettingsRepository:
                 "blocked_keys": "[]",
                 "blocked_names": "[]",
                 "show_warning_ticker": 1,
+                "show_mention_ticker": 1,
                 "auto_delete_raw_enabled": 0,
                 "auto_delete_raw_days": 14,
                 "discovery_blocked_types": "[]",
