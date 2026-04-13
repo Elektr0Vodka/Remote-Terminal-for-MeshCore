@@ -861,6 +861,10 @@ class AppSettings(BaseModel):
         default=True,
         description="Show the scrolling advert-health warning ticker in the top bar",
     )
+    show_mention_ticker: bool = Field(
+        default=True,
+        description="Show the scrolling mention ticker in the top bar when the user is @mentioned in a channel",
+    )
     auto_delete_raw_enabled: bool = Field(
         default=False,
         description="Whether to automatically prune old undecrypted raw packets on a daily schedule",

@@ -3,6 +3,7 @@ import { useSwipeable } from 'react-swipeable';
 
 import { StatusBar } from './StatusBar';
 import { WarningTicker } from './WarningTicker';
+import { MentionTicker } from './MentionTicker';
 import { Sidebar } from './Sidebar';
 import { ConversationPane } from './ConversationPane';
 import { NewMessageModal } from './NewMessageModal';
@@ -76,9 +77,13 @@ interface AppShellProps {
   contactInfoPaneProps: ContactInfoPaneProps;
   channelInfoPaneProps: ChannelInfoPaneProps;
   channelImportExportProps: ChannelImportExportModalProps;
-  onOpenChannelImportExport: () => void;
+  onOpenChannelImportExport?: () => void;
   showWarningTicker?: boolean;
+  showMentionTicker?: boolean;
+  mentionTickerEvents?: import('./MentionTicker').MentionEvent[];
   onNavigateToHealth?: (publicKey: string) => void;
+  onNavigateMentionToMessage?: (channelKey: string, messageId: number) => void;
+  onDismissMention?: (key: number) => void;
   onRepeaterAutoLogin: (publicKey: string, displayName: string) => void;
 }
 
@@ -112,7 +117,11 @@ export function AppShell({
   channelImportExportProps,
   onOpenChannelImportExport,
   showWarningTicker = true,
+  showMentionTicker = true,
+  mentionTickerEvents = [],
   onNavigateToHealth,
+  onNavigateMentionToMessage,
+  onDismissMention,
   onRepeaterAutoLogin,
 }: AppShellProps) {
   const swipeHandlers = useSwipeable({
@@ -243,6 +252,12 @@ export function AppShell({
       />
 
       <WarningTicker enabled={showWarningTicker} onNavigateToHealth={onNavigateToHealth} />
+      <MentionTicker
+        enabled={showMentionTicker}
+        mentions={mentionTickerEvents}
+        onNavigateToMessage={onNavigateMentionToMessage ?? (() => {})}
+        onDismiss={onDismissMention ?? (() => {})}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         <div className="hidden md:block shrink-0 min-h-0 overflow-hidden">

@@ -580,6 +580,12 @@ async def run_migrations(conn: aiosqlite.Connection) -> int:
         await set_version(conn, 82)
         applied += 1
 
+    if version < 83:
+        logger.info("Applying migration 83: add show_mention_ticker to app_settings")
+        await _migrate_083_add_show_mention_ticker(conn)
+        await set_version(conn, 83)
+        applied += 1
+
     if applied > 0:
         logger.info(
             "Applied %d migration(s), schema now at version %d", applied, await get_version(conn)
@@ -4008,3 +4014,14 @@ async def _migrate_081_battery_history(conn: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_battery_history_timestamp ON battery_history(timestamp)"
     )
     await conn.commit()
+
+
+async def _migrate_083_add_show_mention_ticker(conn: aiosqlite.Connection) -> None:
+    """Add show_mention_ticker column to app_settings (default: enabled)."""
+    try:
+        await conn.execute(
+            "ALTER TABLE app_settings ADD COLUMN show_mention_ticker INTEGER NOT NULL DEFAULT 1"
+        )
+        await conn.commit()
+    except Exception:
+        logger.debug("app_settings.show_mention_ticker already exists, skipping")

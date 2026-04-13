@@ -6,6 +6,7 @@ import {
   Download,
   Edit2,
   Hash,
+  Lock,
   Plus,
   Search,
   Trash2,
@@ -26,6 +27,11 @@ import {
   type ChannelBulkStats,
   type RegistryChannel,
 } from '../lib/channelManager';
+import {
+  buildAutoFillFromGeo,
+  isVeiligheidsregio,
+  matchDutchChannel,
+} from '../lib/dutchGeo';
 import type { Channel } from '../types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -43,7 +49,8 @@ type SortField =
   | 'lastHeard'
   | 'packets'
   | 'added'
-  | 'country';
+  | 'country'
+  | 'region';
 type SortDir = 'asc' | 'desc';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,6 +127,17 @@ function parseCSV(s: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Merge geo scopes into an existing comma-separated scopes string.
+ * Existing scopes are preserved; only geo scopes not already present are appended.
+ */
+function mergeScopes(existingCsv: string, geoScopes: string[]): string {
+  const existing = parseCSV(existingCsv);
+  const existingLower = new Set(existing.map((s) => s.toLowerCase()));
+  const toAdd = geoScopes.filter((s) => !existingLower.has(s.toLowerCase()));
+  return [...existing, ...toAdd].join(', ');
+}
+
 // ── Sort logic ────────────────────────────────────────────────────────────────
 
 function sortRegistry(arr: RegistryChannel[], field: SortField, dir: SortDir): RegistryChannel[] {
@@ -152,6 +170,9 @@ function sortRegistry(arr: RegistryChannel[], field: SortField, dir: SortDir): R
         break;
       case 'country':
         cmp = (a.country || '').localeCompare(b.country || '', undefined, { sensitivity: 'base' });
+        break;
+      case 'region':
+        cmp = (a.region || '').localeCompare(b.region || '', undefined, { sensitivity: 'base' });
         break;
     }
     return cmp !== 0 ? d * cmp : a.channel.localeCompare(b.channel);
@@ -212,6 +233,7 @@ interface EditFormState {
   alias_of: string;
   verified: boolean;
   recommended: boolean;
+  private: boolean;
   lastHeard: string;
   added: string;
 }
@@ -231,6 +253,7 @@ function channelToEditForm(e: RegistryChannel): EditFormState {
     alias_of: e.alias_of ?? '',
     verified: e.verified,
     recommended: e.recommended,
+    private: e.private ?? false,
     lastHeard: e.lastHeard ? e.lastHeard.slice(0, 10) : '',
     added: e.added ?? '',
   };
@@ -250,6 +273,24 @@ function EditChannelModal({
   const catListId = useId();
   const subListId = useId();
   const [form, setForm] = useState<EditFormState>(() => channelToEditForm(channel));
+
+  // Dutch geo auto-fill: detect if channel name maps to a known Dutch location
+  const geoMatch = useMemo(() => matchDutchChannel(channel.channel), [channel.channel]);
+  const geoFill = useMemo(() => (geoMatch ? buildAutoFillFromGeo(geoMatch) : null), [geoMatch]);
+
+  function applyGeoFill() {
+    if (!geoFill) return;
+    setForm((f) => ({
+      ...f,
+      country: geoFill.country,
+      region: geoFill.region,
+      language: f.language || 'NL',
+      category: f.category || geoFill.category,
+      subcategory: f.subcategory || geoFill.subcategory,
+      // Merge scopes: keep existing ones, add new geo scopes that aren't already present
+      scopes: mergeScopes(f.scopes, geoFill.scopes),
+    }));
+  }
 
   const subOptions = useMemo(() => {
     const key = form.category.trim().toLowerCase();
@@ -272,6 +313,7 @@ function EditChannelModal({
       alias_of: form.alias_of.trim() || null,
       verified: form.verified,
       recommended: form.recommended,
+      private: form.private,
       added: form.added || null,
     };
     if (form.lastHeard) {
@@ -301,6 +343,33 @@ function EditChannelModal({
         </DialogHeader>
 
         <div className="space-y-3 py-1">
+          {/* Dutch geo auto-fill banner */}
+          {geoFill && (
+            <div className="flex items-center justify-between gap-2 rounded border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-lg leading-none">🇳🇱</span>
+                <span className="text-muted-foreground">
+                  Detected{' '}
+                  <span className="font-medium text-foreground">{geoMatch?.name}</span>
+                  {' — '}
+                  <span className="font-medium text-foreground">{geoFill.region}</span>
+                  {', '}
+                  <span className="text-orange-600 dark:text-orange-400 font-medium">
+                    VR {geoMatch?.veiligheidsregio}
+                  </span>
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] px-2 shrink-0"
+                onClick={applyGeoFill}
+              >
+                Auto-fill
+              </Button>
+            </div>
+          )}
+
           {/* Category + Subcategory */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -411,8 +480,34 @@ function EditChannelModal({
               placeholder="e.g. nl, nl-nh, nl-nh-dhr"
             />
             <p className="text-[0.625rem] text-muted-foreground">
-              Comma-separated — follow the MeshWiki region guideline
+              Comma-separated —{' '}
+              <a
+                href="https://meshwiki.nl/wiki/Lijst_van_regio%27s"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                MeshWiki region guide
+              </a>
             </p>
+            {/* Scope pills preview */}
+            {parseCSV(form.scopes).length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-0.5">
+                {parseCSV(form.scopes).map((s) => (
+                  <span
+                    key={s}
+                    className={cn(
+                      'inline-flex items-center rounded px-1.5 py-0.5 text-[0.625rem] font-medium',
+                      isVeiligheidsregio(s)
+                        ? 'bg-orange-500/15 text-orange-700 dark:text-orange-400 ring-1 ring-orange-500/30'
+                        : 'bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Tags */}
@@ -471,7 +566,7 @@ function EditChannelModal({
             </div>
           </div>
 
-          {/* Verified + Recommended */}
+          {/* Verified + Recommended + Private */}
           <div className="flex gap-6 pt-1">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
@@ -490,6 +585,20 @@ function EditChannelModal({
                 className="rounded"
               />
               Recommended
+            </label>
+            <label
+              className="flex items-center gap-2 text-sm cursor-pointer"
+              title="Private channels are never included in any export"
+            >
+              <input
+                type="checkbox"
+                checked={form.private}
+                onChange={(e) => setForm((f) => ({ ...f, private: e.target.checked }))}
+                className="rounded accent-destructive"
+              />
+              <span className={form.private ? 'text-destructive font-medium' : ''}>
+                Private (exclude from export)
+              </span>
             </label>
           </div>
         </div>
@@ -533,7 +642,7 @@ const EMPTY_ADD_FORM: AddFormState = {
 
 // ── Grid columns (shared between header and rows) ─────────────────────────────
 
-const COL_TEMPLATE = '28px 1fr 140px 90px 90px 80px 82px 44px 52px';
+const COL_TEMPLATE = '28px 1fr 130px 90px 80px 90px 80px 80px 60px 44px 52px';
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -782,13 +891,16 @@ export default function ChannelRegistryView({
   }
 
   function handleExport() {
-    const rows = selection.size > 0 ? registry.filter((e) => selection.has(e.channel)) : sorted;
+    const base = selection.size > 0 ? registry.filter((e) => selection.has(e.channel)) : sorted;
+    // Never export private-flagged channels
+    const rows = base.filter((e) => !e.private);
     const date = new Date().toISOString().slice(0, 10);
     triggerDownload(JSON.stringify(rows, null, 2), `meshcore_registry_${date}.json`);
   }
 
   function handleExportProjectA() {
-    const rows = selection.size > 0 ? registry.filter((e) => selection.has(e.channel)) : sorted;
+    const base = selection.size > 0 ? registry.filter((e) => selection.has(e.channel)) : sorted;
+    const rows = base.filter((e) => !e.private);
     const date = new Date().toISOString().slice(0, 10);
     triggerDownload(
       JSON.stringify(toProjectAFormat(rows, buildKeyByName()), null, 2),
@@ -1123,6 +1235,16 @@ export default function ChannelRegistryView({
               onSort={handleSort}
             />
             <SortHeader
+              label="Region"
+              field="region"
+              sortField={sortField}
+              sortDir={sortDir}
+              onSort={handleSort}
+            />
+            <span className="text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium">
+              Lang
+            </span>
+            <SortHeader
               label="Status"
               field="status"
               sortField={sortField}
@@ -1358,7 +1480,10 @@ function ChannelRow({
         onChange={() => onToggleSelect(entry.channel)}
         onClick={(e) => e.stopPropagation()}
       />
-      <span className="font-medium text-sm truncate" title={entry.channel}>
+      <span className="font-medium text-sm truncate flex items-center gap-1" title={entry.channel}>
+        {entry.private && (
+          <Lock className="h-3 w-3 text-destructive flex-shrink-0" aria-label="Private — excluded from export" />
+        )}
         {entry.channel}
       </span>
       <span
@@ -1371,6 +1496,10 @@ function ChannelRow({
         )}
       </span>
       <span className="text-xs text-muted-foreground truncate">{entry.country || '—'}</span>
+      <span className="text-xs text-muted-foreground truncate">{entry.region || '—'}</span>
+      <span className="text-xs text-muted-foreground truncate">
+        {entry.language.length > 0 ? entry.language.join(', ') : '—'}
+      </span>
       <span>{statusBadge(entry.status)}</span>
       <span>{sourceBadge(entry.source)}</span>
       <span className="text-xs text-muted-foreground tabular-nums">

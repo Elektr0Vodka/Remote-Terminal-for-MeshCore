@@ -66,6 +66,7 @@ export function SettingsLocalSection({
   const [highAdvertThreshold, setHighAdvertThreshold] = useState('');
   const [mediumAdvertThreshold, setMediumAdvertThreshold] = useState('');
   const [showWarningTicker, setShowWarningTicker] = useState(true);
+  const [showMentionTicker, setShowMentionTicker] = useState(true);
   const [thresholdBusy, setThresholdBusy] = useState(false);
   const [thresholdError, setThresholdError] = useState<string | null>(null);
   const [batteryPercent, setBatteryPercent] = useState(getShowBatteryPercent);
@@ -76,6 +77,7 @@ export function SettingsLocalSection({
       setHighAdvertThreshold(String(appSettings.high_advert_threshold ?? 8));
       setMediumAdvertThreshold(String(appSettings.medium_advert_threshold ?? 2));
       setShowWarningTicker(appSettings.show_warning_ticker ?? true);
+      setShowMentionTicker(appSettings.show_mention_ticker ?? true);
     }
   }, [appSettings]);
 
@@ -134,6 +136,9 @@ export function SettingsLocalSection({
       }
       if (showWarningTicker !== (appSettings.show_warning_ticker ?? true)) {
         update.show_warning_ticker = showWarningTicker;
+      }
+      if (showMentionTicker !== (appSettings.show_mention_ticker ?? true)) {
+        update.show_mention_ticker = showMentionTicker;
       }
       if (Object.keys(update).length > 0) {
         await onSaveAppSettings(update);
@@ -438,6 +443,22 @@ export function SettingsLocalSection({
                   Displays a scrolling alert strip when nodes are advertising too frequently (HIGH
                   or MEDIUM severity). Updates every 60 seconds. Can be dismissed temporarily with
                   the X button.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showMentionTicker}
+                    onChange={(e) => setShowMentionTicker(e.target.checked)}
+                    className="w-4 h-4 rounded border-input accent-primary"
+                  />
+                  <span className="text-sm">Show mention ticker in the top bar</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Displays a scrolling strip when your username is mentioned in a channel. Clicking
+                  jumps to that message without marking the channel as read.
                 </p>
               </div>
 

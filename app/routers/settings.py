@@ -50,6 +50,10 @@ class AppSettingsUpdate(BaseModel):
         default=None,
         description="Show the scrolling advert-health warning ticker in the top bar",
     )
+    show_mention_ticker: bool | None = Field(
+        default=None,
+        description="Show the scrolling mention ticker in the top bar",
+    )
     auto_delete_raw_enabled: bool | None = Field(
         default=None,
         description="Whether to automatically prune old undecrypted raw packets on a daily schedule",
@@ -141,6 +145,8 @@ async def update_settings(update: AppSettingsUpdate) -> AppSettings:
         kwargs["blocked_names"] = update.blocked_names
     if update.show_warning_ticker is not None:
         kwargs["show_warning_ticker"] = update.show_warning_ticker
+    if update.show_mention_ticker is not None:
+        kwargs["show_mention_ticker"] = update.show_mention_ticker
     if update.auto_delete_raw_enabled is not None:
         kwargs["auto_delete_raw_enabled"] = update.auto_delete_raw_enabled
     if update.auto_delete_raw_days is not None:

@@ -48,6 +48,9 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const fetchedRef = useRef(false);
+  // Track the set of warning keys seen when user last dismissed, so we only
+  // un-dismiss when genuinely new (previously-unseen) warnings arrive.
+  const dismissedKeysRef = useRef<Set<string>>(new Set());
 
   // Close dismiss menu on outside click
   useEffect(() => {
@@ -68,10 +71,16 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
       fetch('/api/packets/advert-warnings')
         .then((r) => r.json() as Promise<{ warnings: AdvertWarning[] }>)
         .then((d) => {
-          setWarnings(d.warnings ?? []);
-          // Only reset temporary dismiss when NEW warnings arrive after first fetch
-          if ((d.warnings ?? []).length > 0 && fetchedRef.current) {
-            setDismissed(false);
+          const incoming = d.warnings ?? [];
+          setWarnings(incoming);
+          // Only un-dismiss when there are genuinely NEW warning keys that
+          // weren't present when the user last clicked dismiss.
+          if (fetchedRef.current && incoming.length > 0) {
+            const hasNew = incoming.some((w) => !dismissedKeysRef.current.has(w.public_key));
+            if (hasNew) {
+              setDismissed(false);
+              dismissedKeysRef.current = new Set();
+            }
           }
           fetchedRef.current = true;
         })
@@ -177,6 +186,8 @@ export function WarningTicker({ enabled, onNavigateToHealth }: Props) {
             <button
               className="w-full text-left px-3 py-1.5 hover:bg-accent text-foreground"
               onClick={() => {
+                // Record which keys were visible so we only re-show for truly new ones
+                dismissedKeysRef.current = new Set(visibleWarnings.map((w) => w.public_key));
                 setDismissed(true);
                 setShowMenu(false);
               }}

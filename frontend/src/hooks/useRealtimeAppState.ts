@@ -57,6 +57,7 @@ interface UseRealtimeAppStateArgs {
   ) => void;
   notifyIncomingMessage?: (msg: Message) => void;
   onChannelMessage?: (channelKey: string) => void;
+  onChannelMention?: (msg: Message) => void;
   recordRawPacketObservation?: (packet: RawPacket) => void;
   maxRawPackets?: number;
 }
@@ -107,6 +108,7 @@ export function useRealtimeAppState({
   receiveMessageAck,
   notifyIncomingMessage,
   onChannelMessage,
+  onChannelMention,
   recordRawPacketObservation,
   maxRawPackets = 500,
 }: UseRealtimeAppStateArgs): UseWebSocketOptions {
@@ -217,6 +219,10 @@ export function useRealtimeAppState({
 
         if (msg.type === 'CHAN') {
           onChannelMessage?.(msg.conversation_key);
+          // Fire mention ticker only when user is NOT currently in this channel
+          if (!msg.outgoing && isNewMessage && !isForActiveConversation && checkMention(msg.text)) {
+            onChannelMention?.(msg);
+          }
         }
       },
       onContact: (contact: Contact) => {

@@ -31,6 +31,7 @@ class AppSettingsRepository:
                    last_message_times,
                    advert_interval, last_advert_time, flood_scope,
                    blocked_keys, blocked_names, show_warning_ticker,
+                   show_mention_ticker,
                    auto_delete_raw_enabled, auto_delete_raw_days,
                    discovery_blocked_types, tracked_telemetry_repeaters,
                    auto_resend_channel
@@ -106,6 +107,9 @@ class AppSettingsRepository:
             show_warning_ticker=bool(
                 row["show_warning_ticker"] if row["show_warning_ticker"] is not None else 1
             ),
+            show_mention_ticker=bool(
+                row["show_mention_ticker"] if row["show_mention_ticker"] is not None else 1
+            ),
             auto_delete_raw_enabled=bool(
                 row["auto_delete_raw_enabled"] if row["auto_delete_raw_enabled"] is not None else 0
             ),
@@ -128,6 +132,7 @@ class AppSettingsRepository:
         blocked_keys: list[str] | None = None,
         blocked_names: list[str] | None = None,
         show_warning_ticker: bool | None = None,
+        show_mention_ticker: bool | None = None,
         auto_delete_raw_enabled: bool | None = None,
         auto_delete_raw_days: int | None = None,
         discovery_blocked_types: list[int] | None = None,
@@ -173,6 +178,10 @@ class AppSettingsRepository:
         if show_warning_ticker is not None:
             updates.append("show_warning_ticker = ?")
             params.append(1 if show_warning_ticker else 0)
+
+        if show_mention_ticker is not None:
+            updates.append("show_mention_ticker = ?")
+            params.append(1 if show_mention_ticker else 0)
 
         if auto_delete_raw_enabled is not None:
             updates.append("auto_delete_raw_enabled = ?")

@@ -388,6 +388,7 @@ export interface AppSettings {
   blocked_keys: string[];
   blocked_names: string[];
   show_warning_ticker: boolean;
+  show_mention_ticker?: boolean;
   auto_delete_raw_enabled: boolean;
   auto_delete_raw_days: number;
   high_advert_threshold?: number;
@@ -406,6 +407,7 @@ export interface AppSettingsUpdate {
   blocked_keys?: string[];
   blocked_names?: string[];
   show_warning_ticker?: boolean;
+  show_mention_ticker?: boolean;
   auto_delete_raw_enabled?: boolean;
   auto_delete_raw_days?: number;
   high_advert_threshold?: number;

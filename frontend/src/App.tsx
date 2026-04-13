@@ -24,6 +24,7 @@ import type { MessageInputHandle } from './components/MessageInput';
 import { DistanceUnitProvider } from './contexts/DistanceUnitContext';
 import { messageContainsMention } from './utils/messageParser';
 import { getStateKey } from './utils/conversationState';
+import { buildMentionEvent, type MentionEvent } from './components/MentionTicker';
 import type {
   BulkCreateHashtagChannelsResult,
   Conversation,
@@ -162,6 +163,28 @@ export function App() {
     });
   }, []);
 
+  // ── Mention ticker ─────────────────────────────────────────────────────────
+  const MENTION_EXPIRE_MS = 10 * 60 * 1_000;
+  const [pendingMentions, setPendingMentions] = useState<MentionEvent[]>([]);
+  // Keep channels ref stable for use in the WS callback
+  const channelsRef = useRef<Channel[]>([]);
+  const handleChannelMention = useCallback((msg: Message) => {
+    const ch = channelsRef.current.find((c) => c.key === msg.conversation_key);
+    const chName = ch ? `#${ch.name}` : msg.conversation_key.slice(0, 8).toUpperCase();
+    const event = buildMentionEvent(msg, chName);
+    const now = Date.now();
+    setPendingMentions((prev) => {
+      // Deduplicate by messageId; also drop expired entries
+      const filtered = prev.filter(
+        (m) => m.key !== event.key && now - m.at < MENTION_EXPIRE_MS
+      );
+      return [...filtered, event];
+    });
+  }, []);
+  const handleDismissMention = useCallback((key: number) => {
+    setPendingMentions((prev) => prev.filter((m) => m.key !== key));
+  }, []);
+
   // Shared refs between useConversationRouter and useContactsAndChannels
   const pendingDeleteFallbackRef = useRef(false);
   const hasSetDefaultConversation = useRef(false);
@@ -245,6 +268,11 @@ export function App() {
     removeConversationMessages: (conversationId) =>
       removeConversationMessagesRef.current(conversationId),
   });
+
+  // Keep channelsRef in sync so WS callbacks (e.g. mention ticker) can resolve channel names
+  useEffect(() => {
+    channelsRef.current = channels;
+  }, [channels]);
 
   const handleToggleFavorite = useCallback(
     async (type: 'channel' | 'contact', id: string) => {
@@ -460,6 +488,7 @@ export function App() {
     receiveMessageAck,
     notifyIncomingMessage,
     onChannelMessage: handleChannelMessage,
+    onChannelMention: handleChannelMention,
     recordRawPacketObservation,
   });
   const handleVisibilityPolicyChanged = useCallback(() => {
@@ -825,8 +854,10 @@ export function App() {
           crackerFoundChannels,
           onChannelsImported: handleChannelsImported,
         }}
-        onOpenChannelImportExport={() => setShowChannelImportExport(true)}
+        onOpenChannelImportExport={undefined}
         showWarningTicker={appSettings?.show_warning_ticker ?? true}
+        showMentionTicker={appSettings?.show_mention_ticker ?? true}
+        mentionTickerEvents={pendingMentions}
         onNavigateToHealth={(publicKey) =>
           handleSelectConversationWithTargetReset({
             type: 'mesh-health',
@@ -835,6 +866,16 @@ export function App() {
             healthFocusKey: publicKey,
           })
         }
+        onNavigateMentionToMessage={(channelKey, messageId) => {
+          const ch = channelsRef.current.find((c) => c.key === channelKey);
+          handleNavigateToMessage({
+            id: messageId,
+            type: 'CHAN',
+            conversation_key: channelKey,
+            conversation_name: ch ? `#${ch.name}` : channelKey,
+          });
+        }}
+        onDismissMention={handleDismissMention}
         onRepeaterAutoLogin={handleRepeaterAutoLogin}
       />
     </DistanceUnitProvider>

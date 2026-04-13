@@ -24,6 +24,7 @@ export interface RegistryChannel {
   added: string | null; // ISO date — when this entry was added to the registry
   packets: number; // Cumulative packet count from finder observations
   source: 'finder' | 'manual' | 'imported' | 'radio'; // 'radio' = seeded from existing DB channel
+  private?: boolean; // When true, this entry is excluded from all exports
 }
 
 const STORAGE_KEY = 'meshcore-channel-registry';
@@ -51,7 +52,7 @@ function emptyEntry(name: string, source: RegistryChannel['source'], now: string
     country: '',
     firstSeen: isLive ? now : null,
     lastHeard: isLive ? now : null,
-    added: now.slice(0, 10),
+    added: isLive ? now : now.slice(0, 10),
     packets: isLive ? 1 : 0,
     source,
   };
@@ -180,7 +181,7 @@ export function mergeImport(
         country: raw.country ?? '',
         firstSeen: raw.firstSeen ?? incomingLastHeard,
         lastHeard: incomingLastHeard,
-        added: raw.added ?? now.slice(0, 10),
+        added: raw.added ?? now,
         packets: raw.packets ?? 0,
         source: 'imported',
       });
