@@ -35,6 +35,10 @@ const TYPE_LABELS: Record<string, string> = {
 const DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE = 'meshcore/{IATA}/{PUBLIC_KEY}/packets';
 const DEFAULT_COMMUNITY_BROKER_HOST = 'mqtt-us-v1.letsmesh.net';
 const DEFAULT_COMMUNITY_BROKER_HOST_EU = 'mqtt-eu-v1.letsmesh.net';
+const DEFAULT_MESHWIKI_BROKER_HOST = 'mqtt.mwiki.nl';
+const DEFAULT_MESHWIKI_BROKER_PORT = 8883;
+const DEFAULT_MESHWIKI_USERNAME = 'observer';
+const DEFAULT_MESHWIKI_PASSWORD = '86w7bW9NJxuPcErp2Y5NCQ==';
 const DEFAULT_COMMUNITY_BROKER_PORT = 443;
 const DEFAULT_COMMUNITY_TRANSPORT = 'websockets';
 const DEFAULT_COMMUNITY_AUTH_MODE = 'token';
@@ -107,6 +111,7 @@ type DraftType =
   | 'mqtt_community_meshrank'
   | 'mqtt_community_letsmesh_us'
   | 'mqtt_community_letsmesh_eu'
+  | 'mqtt_community_meshwiki'
   | 'webhook'
   | 'apprise'
   | 'sqs'
@@ -241,6 +246,32 @@ const CREATE_INTEGRATION_DEFINITIONS: readonly CreateIntegrationDefinition[] = [
       config: createCommunityConfigDefaults({
         broker_host: DEFAULT_COMMUNITY_BROKER_HOST_EU,
         token_audience: DEFAULT_COMMUNITY_BROKER_HOST_EU,
+      }),
+      scope: { messages: 'none', raw_packets: 'all' },
+    },
+  },
+  {
+    value: 'mqtt_community_meshwiki',
+    savedType: 'mqtt_community',
+    label: 'MeshWiki',
+    section: 'Community Sharing',
+    description:
+      'A community MQTT config preconfigured for MeshWiki.nl (mqtt.mwiki.nl). Credentials are pre-filled; only the topic template can be customised after creation.',
+    defaultName: 'MeshWiki',
+    nameMode: 'fixed',
+    defaults: {
+      config: createCommunityConfigDefaults({
+        broker_host: DEFAULT_MESHWIKI_BROKER_HOST,
+        broker_port: DEFAULT_MESHWIKI_BROKER_PORT,
+        transport: 'tcp',
+        auth_mode: 'password',
+        use_tls: true,
+        tls_verify: true,
+        username: DEFAULT_MESHWIKI_USERNAME,
+        password: DEFAULT_MESHWIKI_PASSWORD,
+        email: '',
+        iata: '',
+        token_audience: '',
       }),
       scope: { messages: 'none', raw_packets: 'all' },
     },
@@ -472,6 +503,24 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
       topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
       username: '',
       password: '',
+    });
+  }
+
+  if (draftType === 'mqtt_community_meshwiki') {
+    return normalizeIntegrationConfigForSave('mqtt_community', {
+      ...config,
+      broker_host: DEFAULT_MESHWIKI_BROKER_HOST,
+      broker_port: DEFAULT_MESHWIKI_BROKER_PORT,
+      transport: 'tcp',
+      auth_mode: 'password',
+      use_tls: true,
+      tls_verify: true,
+      token_audience: '',
+      topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
+      username: DEFAULT_MESHWIKI_USERNAME,
+      password: DEFAULT_MESHWIKI_PASSWORD,
+      email: '',
+      iata: '',
     });
   }
 
@@ -2688,6 +2737,10 @@ export function SettingsFanoutSection({
             onChange={setEditConfig}
             brokerHost={DEFAULT_COMMUNITY_BROKER_HOST_EU}
           />
+        )}
+
+        {detailType === 'mqtt_community_meshwiki' && (
+          <MqttCommunityConfigEditor config={editConfig} onChange={setEditConfig} />
         )}
 
         {detailType === 'bot' && <BotConfigEditor config={editConfig} onChange={setEditConfig} />}
