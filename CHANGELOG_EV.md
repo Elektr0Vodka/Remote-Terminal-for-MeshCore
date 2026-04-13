@@ -1,3 +1,52 @@
+# Mention Ticker & Channel Registry Enhancements (13-4-2026)
+
+## Mention Ticker
+
+Adds a scrolling notification strip that fires when your username is @mentioned in a background channel.
+
+### MentionTicker component (`frontend/src/components/MentionTicker.tsx`)
+- Rendered in `AppShell` above the main content area, always visible while there are pending mentions.
+- Each entry shows the channel name, sender, and a message preview. Clicking navigates directly to that message without marking the channel as read.
+- Mention detection runs only for new incoming non-outgoing `CHAN` messages where the active conversation is *not* that channel. Never fires for your own messages.
+- Entries expire after 10 minutes and deduplicate by message ID.
+- Dismiss button (×) clears individual entries.
+
+### `show_mention_ticker` setting
+- New `show_mention_ticker` boolean in `AppSettings` / `AppSettingsUpdate` (defaults `true`).
+- Backend: migration 83 adds `show_mention_ticker INTEGER NOT NULL DEFAULT 1` to `app_settings`; model, repository, and router all updated.
+- Frontend toggle added to **Settings → Local** alongside the existing warning ticker toggle.
+
+### Warning Ticker fix
+- Fixed a regression where dismissed warning-ticker nodes could re-appear on the next health update even if no new nodes were added. The ticker now only un-dismisses when the warning list genuinely grows.
+
+---
+
+## Channel Registry Enhancements (13-4-2026)
+
+Additional metadata columns and Dutch-network tooling for the Channel Registry.
+
+### Region & Language columns (`frontend/src/components/ChannelRegistryView.tsx`)
+- Registry rows now display **Region** and **Language** columns between Country and Status.
+
+### Dutch geo auto-fill (`frontend/src/lib/dutchGeo.ts`)
+- Offline dataset of Dutch municipalities, provinces, and veiligheidsregio regions (~1400 entries).
+- When editing a channel, `matchDutchChannel(name)` checks if the name matches a known Dutch location.
+- If a match is found, an auto-fill banner appears in the edit modal offering to populate Country (`Netherlands`), Region (province), Language (`nl`), Category, and Scopes — including the veiligheidsregio scope prefixed `VR `.
+- `buildAutoFillFromGeo(entry)` builds the full `ChannelAutoFill` struct. `isVeiligheidsregio(scope)` returns `true` for any scope starting with `VR `.
+
+### Scope pills preview
+- The edit modal shows a live preview of all configured scopes as coloured pills.
+- Veiligheidsregio scopes (`VR *`) render with a distinct orange badge.
+- A MeshWiki region guide link appears in the scopes hint text.
+
+### Private channel flag
+- New `private?: boolean` field on `RegistryChannel` in `channelManager.ts`.
+- Edit modal includes a **Private (exclude from export)** checkbox.
+- All export paths (`handleExportSelected`, `handleExportAll`, JSON export) filter out private entries.
+- Private channels show a 🔒 icon in the registry row (`Lock` from lucide-react, `aria-label` for accessibility).
+
+---
+
 # Channel Registry (11-4-2026)
 
 Adds a **Channel Registry** page that maintains enriched metadata for known MeshCore channels — compatible with the [meshcore-nl-discovered-channels](https://github.com/Elektr0Vodka/meshcore-nl-discovered-channels) JSON schema and extended with per-channel activity tracking.
