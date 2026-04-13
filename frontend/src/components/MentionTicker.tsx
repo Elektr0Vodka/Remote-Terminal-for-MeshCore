@@ -15,7 +15,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AtSign, X } from 'lucide-react';
 import type { Message } from '../types';
 
-
 export interface MentionEvent {
   /** Unique key: messageId */
   key: number;
@@ -66,10 +65,7 @@ export function MentionTicker({ enabled, mentions, onNavigateToMessage }: Props)
           style={{ paddingLeft: '100%' }}
         >
           {mentions.map((m) => (
-            <span
-              key={m.key}
-              className="inline-flex items-center gap-1 mx-4 text-foreground"
-            >
+            <span key={m.key} className="inline-flex items-center gap-1 mx-4 text-foreground">
               <span className="font-medium text-primary">{m.channelName}</span>
               <span className="text-muted-foreground">·</span>
               <span className="text-muted-foreground font-medium">{m.senderName}</span>

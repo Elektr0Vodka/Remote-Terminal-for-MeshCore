@@ -954,7 +954,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
     veiligheidsregio_code: 'vr-brabant-noord',
     scopes: ['nl', 'nl-nb', 'nl-nb-hertogenbosch'],
     country: 'Netherlands',
-    notes: "Also known as Den Bosch",
+    notes: 'Also known as Den Bosch',
   },
   {
     name: 'Helmond',
@@ -1345,11 +1345,7 @@ const MUNICIPALITIES: DutchGeoEntry[] = [
 // Full dataset export
 // ---------------------------------------------------------------------------
 
-export const DUTCH_GEO: DutchGeoEntry[] = [
-  ...PROVINCES,
-  ...VEILIGHEIDSREGIOS,
-  ...MUNICIPALITIES,
-];
+export const DUTCH_GEO: DutchGeoEntry[] = [...PROVINCES, ...VEILIGHEIDSREGIOS, ...MUNICIPALITIES];
 
 // ---------------------------------------------------------------------------
 // Matching helper
@@ -1362,7 +1358,7 @@ export const DUTCH_GEO: DutchGeoEntry[] = [
 function normalize(s: string): string {
   return s
     .toLowerCase()
-    .replace(/^#+/, '')      // strip leading hash(es)
+    .replace(/^#+/, '') // strip leading hash(es)
     .replace(/[\s\-_]/g, '') // remove spaces, hyphens, underscores
     .trim();
 }
@@ -1417,9 +1413,7 @@ export interface ChannelAutoFill {
  */
 export function buildAutoFillFromGeo(entry: DutchGeoEntry): ChannelAutoFill {
   const vrScope = `VR ${entry.veiligheidsregio}`;
-  const scopes = entry.scopes.includes(vrScope)
-    ? entry.scopes
-    : [...entry.scopes, vrScope];
+  const scopes = entry.scopes.includes(vrScope) ? entry.scopes : [...entry.scopes, vrScope];
   return {
     country: 'Netherlands',
     region: entry.province,

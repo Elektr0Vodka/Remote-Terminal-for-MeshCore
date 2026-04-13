@@ -175,9 +175,7 @@ export function App() {
     const now = Date.now();
     setPendingMentions((prev) => {
       // Deduplicate by messageId; also drop expired entries
-      const filtered = prev.filter(
-        (m) => m.key !== event.key && now - m.at < MENTION_EXPIRE_MS
-      );
+      const filtered = prev.filter((m) => m.key !== event.key && now - m.at < MENTION_EXPIRE_MS);
       return [...filtered, event];
     });
   }, []);

@@ -114,8 +114,13 @@ async def migrate(conn: aiosqlite.Connection) -> None:
             "heard_count INTEGER NOT NULL DEFAULT 1",
         ]
         cap_copy_cols = [
-            "id", "public_key", "path_hex", "path_len",
-            "first_seen", "last_seen", "heard_count",
+            "id",
+            "public_key",
+            "path_hex",
+            "path_len",
+            "first_seen",
+            "last_seen",
+            "heard_count",
         ]
         if "best_rssi" in cap_old_cols:
             cap_col_defs.append("best_rssi INTEGER")

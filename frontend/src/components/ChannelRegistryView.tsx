@@ -27,11 +27,7 @@ import {
   type ChannelBulkStats,
   type RegistryChannel,
 } from '../lib/channelManager';
-import {
-  buildAutoFillFromGeo,
-  isVeiligheidsregio,
-  matchDutchChannel,
-} from '../lib/dutchGeo';
+import { buildAutoFillFromGeo, isVeiligheidsregio, matchDutchChannel } from '../lib/dutchGeo';
 import type { Channel } from '../types';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
@@ -349,8 +345,7 @@ function EditChannelModal({
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-lg leading-none">🇳🇱</span>
                 <span className="text-muted-foreground">
-                  Detected{' '}
-                  <span className="font-medium text-foreground">{geoMatch?.name}</span>
+                  Detected <span className="font-medium text-foreground">{geoMatch?.name}</span>
                   {' — '}
                   <span className="font-medium text-foreground">{geoFill.region}</span>
                   {', '}
@@ -1482,7 +1477,10 @@ function ChannelRow({
       />
       <span className="font-medium text-sm truncate flex items-center gap-1" title={entry.channel}>
         {entry.private && (
-          <Lock className="h-3 w-3 text-destructive flex-shrink-0" aria-label="Private — excluded from export" />
+          <Lock
+            className="h-3 w-3 text-destructive flex-shrink-0"
+            aria-label="Private — excluded from export"
+          />
         )}
         {entry.channel}
       </span>
