@@ -147,9 +147,35 @@ function getCountryFromCoords(lat: number, lon: number): CountryInfo | null {
   return { code, name, flag };
 }
 
-// ─── Recency colors ──────────────────────────────────────────────────────────
+// ─── Tile layer presets ───────────────────────────────────────────────────────
 
+interface TileLayerPreset {
+  id: string;
+  label: string;
+  url: string;
+  attribution: string;
+  background: string;
+  maxZoom?: number;
+}
 
+const MAP_MIN_ZOOM = 2;
+const MAP_MAX_ZOOM = 19;
+
+const TILE_LAYERS: readonly TileLayerPreset[] = [
+  {
+    id: 'light',
+    label: 'Light (OpenStreetMap)',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    background: '#1a1a2e',
+    maxZoom: 19,
+  },
+  {
+    id: 'dark',
+    label: 'Dark (CARTO)',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
     background: '#0d0d0d',
     maxZoom: 19,
   },

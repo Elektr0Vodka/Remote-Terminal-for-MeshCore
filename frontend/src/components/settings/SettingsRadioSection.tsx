@@ -823,91 +823,7 @@ export function SettingsRadioSection({
             >
               {advertisingMode === 'zero_hop' ? 'Sending...' : 'Send Zero-Hop Advertisement'}
             </Button>
-          ))}
-        </div>
-        {!health?.radio_connected && (
-          <p className="text-sm text-destructive">Radio not connected</p>
-        )}
-        {discoverError && (
-          <p className="text-sm text-destructive" role="alert">
-            {discoverError}
-          </p>
-        )}
-        {meshDiscovery && (
-          <div className="space-y-2 rounded-md border border-input bg-muted/20 p-3">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm font-medium">
-                Last sweep: {meshDiscovery.results.length} node
-                {meshDiscovery.results.length === 1 ? '' : 's'}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {meshDiscovery.duration_seconds.toFixed(0)}s listen window
-              </p>
-            </div>
-            {meshDiscovery.results.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No supported nodes responded during the last discovery sweep.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {meshDiscovery.results.map((result) => {
-                  // Resolve friendly name + short ID from known contacts
-                  const knownContact = (contacts ?? []).find(
-                    (c) =>
-                      c.public_key === result.public_key ||
-                      c.public_key.startsWith(result.public_key.slice(0, 12))
-                  );
-                  const friendlyName = knownContact?.name ?? result.name ?? null;
-                  const hashMode =
-                    knownContact?.advert_hash_mode ?? knownContact?.observed_hash_mode ?? null;
-                  const shortId = getContactShortId(result.public_key, hashMode, contacts);
-                  const isKnown = !!knownContact;
-
-                  return (
-                    <div
-                      key={result.public_key}
-                      className="rounded-md border border-input bg-background px-3 py-2"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm font-medium capitalize flex-shrink-0">
-                            {result.node_type}
-                          </span>
-                          {friendlyName && (
-                            <span className="text-sm font-semibold truncate">{friendlyName}</span>
-                          )}
-                          <span className="font-mono text-xs text-primary/70 flex-shrink-0">
-                            {shortId}
-                          </span>
-                          {isKnown && (
-                            <span className="text-[10px] px-1 py-0.5 rounded bg-success/15 text-success flex-shrink-0">
-                              known
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground flex-shrink-0">
-                          heard {result.heard_count} time{result.heard_count === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                      <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
-                        {result.public_key}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Local: {result.local_snr ?? 'n/a'} dB SNR / {result.local_rssi ?? 'n/a'} dBm
-                        RSSI
-                        {result.remote_snr != null && (
-                          <span> · Remote heard us: {result.remote_snr} dB SNR</span>
-                        )}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
-          {!health?.radio_connected && (
-            <p className="text-sm text-destructive">Radio not connected</p>
-          )}
         </div>
 
         <div className="space-y-3">
@@ -959,34 +875,57 @@ export function SettingsRadioSection({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {meshDiscovery.results.map((result) => (
-                    <div
-                      key={result.public_key}
-                      className="rounded-md border border-input bg-background px-3 py-2"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium">
-                          {result.name ?? <span className="capitalize">{result.node_type}</span>}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          heard {result.heard_count} time{result.heard_count === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                      {result.name && (
-                        <p className="text-xs capitalize text-muted-foreground">
-                          {result.node_type}
+                  {meshDiscovery.results.map((result) => {
+                    const knownContact = (contacts ?? []).find(
+                      (c) =>
+                        c.public_key === result.public_key ||
+                        c.public_key.startsWith(result.public_key.slice(0, 12))
+                    );
+                    const friendlyName = knownContact?.name ?? result.name ?? null;
+                    const hashMode =
+                      knownContact?.advert_hash_mode ?? knownContact?.observed_hash_mode ?? null;
+                    const shortId = getContactShortId(result.public_key, hashMode, contacts);
+                    const isKnown = !!knownContact;
+
+                    return (
+                      <div
+                        key={result.public_key}
+                        className="rounded-md border border-input bg-background px-3 py-2"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium capitalize flex-shrink-0">
+                              {result.node_type}
+                            </span>
+                            {friendlyName && (
+                              <span className="text-sm font-semibold truncate">{friendlyName}</span>
+                            )}
+                            <span className="font-mono text-xs text-primary/70 flex-shrink-0">
+                              {shortId}
+                            </span>
+                            {isKnown && (
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-success/15 text-success flex-shrink-0">
+                                known
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            heard {result.heard_count} time{result.heard_count === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                        <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+                          {result.public_key}
                         </p>
-                      )}
-                      <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                        {result.public_key}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Heard here: {result.local_snr ?? 'n/a'} dB SNR /{' '}
-                        {result.local_rssi ?? 'n/a'} dBm RSSI. Remote heard us:{' '}
-                        {result.remote_snr ?? 'n/a'} dB SNR.
-                      </p>
-                    </div>
-                  ))}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Local: {result.local_snr ?? 'n/a'} dB SNR / {result.local_rssi ?? 'n/a'}{' '}
+                          dBm RSSI
+                          {result.remote_snr != null && (
+                            <span> · Remote heard us: {result.remote_snr} dB SNR</span>
+                          )}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

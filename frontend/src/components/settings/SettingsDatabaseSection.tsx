@@ -486,6 +486,56 @@ export function SettingsDatabaseSection({
           )}
         </div>
 
+        {/* Auto-delete raw packets */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold">Auto-Delete Raw Packets</h4>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoDeleteRawEnabled}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setAutoDeleteRawEnabled(next);
+                void persistAppSettings({ auto_delete_raw_enabled: next }, () =>
+                  setAutoDeleteRawEnabled(!next)
+                );
+              }}
+              className="w-4 h-4 rounded border-input accent-primary"
+            />
+            <span className="text-sm">Automatically delete old undecrypted packets daily</span>
+          </label>
+          {autoDeleteRawEnabled && (
+            <div className="flex gap-2 items-end pl-7">
+              <div className="space-y-1">
+                <label htmlFor="auto-delete-days" className="text-xs font-medium">
+                  Older than (days)
+                </label>
+                <input
+                  id="auto-delete-days"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={autoDeleteRawDays}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAutoDeleteRawDays(val);
+                    const days = Math.max(1, parseInt(val, 10) || 14);
+                    void persistAppSettings({ auto_delete_raw_days: days }, () =>
+                      setAutoDeleteRawDays(String(appSettings.auto_delete_raw_days ?? 14))
+                    );
+                  }}
+                  className="w-24 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                />
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            When enabled, the server runs a daily background job that removes undecrypted raw
+            packets older than the configured threshold. Does not affect already-decrypted messages
+            or your chat history.
+          </p>
+        </div>
+
         {/* Blocked contacts list */}
         <div className="space-y-3">
           <h4 className="text-sm font-semibold">Blocked Contacts</h4>
