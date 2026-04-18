@@ -4,32 +4,47 @@ import { describe, expect, it, vi } from 'vitest';
 import { MapView } from '../components/MapView';
 import type { Contact } from '../types';
 
-vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  TileLayer: () => null,
-  CircleMarker: forwardRef<
-    HTMLDivElement,
-    { children: React.ReactNode; pathOptions?: { fillColor?: string } }
-  >(({ children, pathOptions }, ref) => (
-    <div ref={ref} data-fill-color={pathOptions?.fillColor}>
-      {children}
-    </div>
-  )),
-  Marker: forwardRef<unknown, { children: React.ReactNode }>(({ children }, ref) => {
-    useImperativeHandle(ref, () => ({ setIcon: vi.fn(), openPopup: vi.fn() }));
-    return <div>{children}</div>;
-  }),
-  Polyline: () => null,
-  Popup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  useMap: () => ({
-    setView: vi.fn(),
-    fitBounds: vi.fn(),
-    flyTo: vi.fn(),
-    getZoom: vi.fn(() => 10),
-    on: vi.fn(),
-    off: vi.fn(),
-  }),
-}));
+vi.mock('react-leaflet', () => {
+  const BaseLayer = ({
+    children,
+  }: {
+    children: React.ReactNode;
+    name: string;
+    checked?: boolean;
+  }) => <div>{children}</div>;
+  const LayersControlMock = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
+  (LayersControlMock as unknown as { BaseLayer: typeof BaseLayer }).BaseLayer = BaseLayer;
+  return {
+    MapContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    TileLayer: () => null,
+    CircleMarker: forwardRef<
+      HTMLDivElement,
+      { children: React.ReactNode; pathOptions?: { fillColor?: string } }
+    >(({ children, pathOptions }, ref) => (
+      <div ref={ref} data-fill-color={pathOptions?.fillColor}>
+        {children}
+      </div>
+    )),
+    Marker: forwardRef<unknown, { children: React.ReactNode }>(({ children }, ref) => {
+      useImperativeHandle(ref, () => ({ setIcon: vi.fn(), openPopup: vi.fn() }));
+      return <div>{children}</div>;
+    }),
+    Polyline: () => null,
+    Popup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    LayersControl: LayersControlMock,
+    useMap: () => ({
+      setView: vi.fn(),
+      fitBounds: vi.fn(),
+      flyTo: vi.fn(),
+      getZoom: vi.fn(() => 10),
+      setMaxZoom: vi.fn(),
+      setZoom: vi.fn(),
+      on: vi.fn(),
+      off: vi.fn(),
+    }),
+    useMapEvents: () => null,
+  };
+});
 
 vi.mock('react-leaflet-cluster', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,

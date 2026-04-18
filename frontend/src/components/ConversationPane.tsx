@@ -75,6 +75,7 @@ interface ConversationPaneProps {
     channelKey: string,
     pathHashModeOverride: number | null
   ) => Promise<void>;
+  onSelectConversation: (conversation: Conversation) => void;
   onOpenContactInfo: (publicKey: string, fromChannel?: boolean) => void;
   onOpenChannelInfo: (channelKey: string) => void;
   onSenderClick: (sender: string) => void;
@@ -87,7 +88,11 @@ interface ConversationPaneProps {
   onDismissUnreadMarker: () => void;
   onSendMessage: (text: string) => Promise<void>;
   onToggleNotifications: () => void;
-  onSelectConversation?: (conversation: Conversation) => void;
+  pushSupported?: boolean;
+  pushSubscribed?: boolean;
+  pushEnabledForConversation?: boolean;
+  onTogglePush?: () => void;
+  onOpenPushSettings?: () => void;
   trackedTelemetryRepeaters: string[];
   onToggleTrackedTelemetry: (publicKey: string) => Promise<void>;
   repeaterAutoLoginKey: string | null;
@@ -105,17 +110,17 @@ function ContactResolutionBanner({ variant }: { variant: 'unknown-full-key' | 'p
   if (variant === 'prefix-only') {
     return (
       <div className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        We only know a key prefix for this sender, which can happen when a fallback DM arrives
-        before we learn their full identity. This conversation is read-only until we hear an
-        advertisement that resolves the full key.
+        We&apos;ve received a message from this sender but don&apos;t have their full identity yet.
+        Sending is disabled until their identity is confirmed &mdash; this usually happens
+        automatically when they next advertise.
       </div>
     );
   }
 
   return (
     <div className="mx-4 mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-      A full identity profile is not yet available because we have not heard an advertisement from
-      this sender. The contact will fill in automatically when an advertisement arrives.
+      This sender&apos;s profile details (name, location) haven&apos;t arrived yet. They will fill
+      in automatically when the sender&apos;s next advert is heard.
     </div>
   );
 }
@@ -149,6 +154,7 @@ export function ConversationPane({
   onDeleteChannel,
   onSetChannelFloodScopeOverride,
   onSetChannelPathHashModeOverride,
+  onSelectConversation,
   onOpenContactInfo,
   onOpenChannelInfo,
   onSenderClick,
@@ -161,7 +167,11 @@ export function ConversationPane({
   onDismissUnreadMarker,
   onSendMessage,
   onToggleNotifications,
-  onSelectConversation,
+  pushSupported,
+  pushSubscribed,
+  pushEnabledForConversation,
+  onTogglePush,
+  onOpenPushSettings,
   trackedTelemetryRepeaters,
   onToggleTrackedTelemetry,
   repeaterAutoLoginKey,
@@ -357,6 +367,11 @@ export function ConversationPane({
         notificationsSupported={notificationsSupported}
         notificationsEnabled={notificationsEnabled}
         notificationsPermission={notificationsPermission}
+        pushSupported={pushSupported}
+        pushSubscribed={pushSubscribed}
+        pushEnabledForConversation={pushEnabledForConversation}
+        onTogglePush={onTogglePush}
+        onOpenPushSettings={onOpenPushSettings}
         onTrace={onTrace}
         onPathDiscovery={onPathDiscovery}
         onToggleNotifications={onToggleNotifications}

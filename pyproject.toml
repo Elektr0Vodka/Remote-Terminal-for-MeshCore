@@ -1,6 +1,6 @@
 [project]
 name = "remoteterm-meshcore"
-version = "3.11.3"
+version = "3.12.0"
 description = "RemoteTerm - Web interface for MeshCore radio mesh networks"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,14 +17,7 @@ dependencies = [
     "aiomqtt>=2.0",
     "apprise>=1.9.8",
     "boto3>=1.38.0",
-]
-
-[project.optional-dependencies]
-test = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.24.0",
-    "pytest-xdist>=3.0",
-    "httpx>=0.27.0",
+    "pywebpush>=0.14.0",
 ]
 
 [tool.pytest.ini_options]

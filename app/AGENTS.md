@@ -27,10 +27,10 @@ app/
 ├── config.py            # Env-driven runtime settings
 ├── channel_constants.py # Public/default channel constants shared across sync/send logic
 ├── database.py          # SQLite connection + base schema + migration runner
-├── migrations.py        # Schema migrations (SQLite user_version)
+├── migrations/          # Schema migrations (SQLite user_version, per-version modules)
 ├── models.py            # Pydantic request/response models and typed write contracts (for example ContactUpsert)
 ├── version_info.py      # Unified version/build metadata resolution for debug + startup surfaces
-├── repository/          # Data access layer (contacts, channels, messages, raw_packets, settings, fanout)
+├── repository/          # Data access layer (contacts, channels, messages, raw_packets, settings, fanout, push_subscriptions, repeater_telemetry)
 ├── services/            # Shared orchestration/domain services
 │   ├── messages.py              # Shared message creation, dedup, ACK application
 │   ├── message_send.py          # Direct send, channel send, resend workflows
@@ -51,8 +51,12 @@ app/
 ├── events.py            # Typed WS event payload serialization
 ├── websocket.py         # WS manager + broadcast helpers
 ├── security.py          # Optional app-wide HTTP Basic auth middleware for HTTP + WS
+├── push/                # Web Push notification subsystem
+│   ├── vapid.py                 # VAPID key generation, storage, caching
+│   ├── send.py                  # pywebpush wrapper (async via thread executor)
+│   └── manager.py               # Push dispatch: filter, build payload, concurrent send
 ├── fanout/              # Fanout bus: MQTT, bots, webhooks, Apprise, SQS (see fanout/AGENTS_fanout.md)
-├── dependencies.py      # Shared FastAPI dependency providers
+├── telemetry_interval.py # Shared telemetry interval math for tracked-repeater scheduler
 ├── path_utils.py        # Path hex rendering and hop-width helpers
 ├── region_scope.py      # Normalize/validate regional flood-scope values
 ├── keystore.py          # Ephemeral private/public key storage for DM decryption
@@ -67,12 +71,13 @@ app/
     ├── packets.py
     ├── read_state.py
     ├── rooms.py
-    ├── server_control.py
+    ├── server_control.py   # Shared helpers for repeater/room CLI flows (not an APIRouter)
     ├── settings.py
     ├── fanout.py
     ├── repeaters.py
     ├── statistics.py
     ├── bot_detection.py
+    ├── push.py
     └── ws.py
 ```
 
@@ -137,8 +142,9 @@ app/
 
 ### Echo/repeat dedup
 
-- Message uniqueness: `(type, conversation_key, text, sender_timestamp)`.
-- Duplicate insert is treated as an echo/repeat: the new path (if any) is appended, and the ACK count is incremented only for outgoing channel messages. Incoming direct messages with the same conversation/text/sender timestamp also collapse onto one stored row, with later observations merging path data instead of creating a second DM.
+- Channel message uniqueness (`idx_messages_dedup_null_safe`): `(type, conversation_key, text, COALESCE(sender_timestamp, 0))` where `type = 'CHAN'`.
+- Incoming PRIV message uniqueness (`idx_messages_incoming_priv_dedup`): `(type, conversation_key, text, COALESCE(sender_timestamp, 0), COALESCE(sender_key, ''))` where `type = 'PRIV' AND outgoing = 0` — `sender_key` was added in migration 056 to distinguish room-server posts from different senders in the same second.
+- Duplicate insert is treated as an echo/repeat: the new path (if any) is appended, and the ACK count is incremented only for outgoing channel messages. Incoming direct messages with the same dedup identity also collapse onto one stored row, with later observations merging path data instead of creating a second DM.
 
 ### Raw packet dedup policy
 
@@ -180,6 +186,17 @@ app/
 - Community MQTT publishes raw packets only, but its derived `path` field for direct packets is emitted as comma-separated hop identifiers, not flat path bytes.
 - See `app/fanout/AGENTS_fanout.md` for full architecture details and event payload shapes.
 
+### Web Push notifications
+
+Web Push is a standalone subsystem in `app/push/`, separate from the fanout module system. It sends browser push notifications for incoming messages even when the tab is closed.
+
+- **Not a fanout module** — Web Push manages per-browser subscriptions (N browsers, each with its own endpoint and delivery state), unlike fanout which is one-config-to-one-destination.
+- **VAPID keys**: auto-generated P-256 key pair on first startup, stored in `app_settings.vapid_private_key` / `vapid_public_key`. Cached in-module by `app/push/vapid.py`.
+- **Dispatch**: `broadcast_event()` in `websocket.py` fires `push_manager.dispatch_message(data)` alongside fanout for `message` events. The manager checks the global `app_settings.push_conversations` list, then sends to all currently registered subscriptions via `pywebpush` (run in a thread executor).
+- **Stale cleanup**: HTTP 404/410 from the push service triggers immediate subscription deletion.
+- **Subscriptions stored** in `push_subscriptions` table with `UNIQUE(endpoint)` for upsert semantics.
+- Requires HTTPS (self-signed OK) and outbound internet to reach browser push services.
+
 ## API Surface (all under `/api`)
 
 ### Health
@@ -220,6 +237,7 @@ app/
 - `POST /contacts/{public_key}/repeater/radio-settings`
 - `POST /contacts/{public_key}/repeater/advert-intervals`
 - `POST /contacts/{public_key}/repeater/owner-info`
+- `GET /contacts/{public_key}/repeater/telemetry-history` — stored telemetry history for a repeater (read-only, no radio access)
 - `POST /contacts/{public_key}/room/login`
 - `POST /contacts/{public_key}/room/status`
 - `POST /contacts/{public_key}/room/lpp-telemetry`
@@ -263,6 +281,7 @@ app/
 - `POST /settings/blocked-keys/toggle`
 - `POST /settings/blocked-names/toggle`
 - `POST /settings/tracked-telemetry/toggle`
+- `GET /settings/tracked-telemetry/schedule` — current telemetry scheduling derivation, interval options, and next-run-at timestamp
 
 ### Fanout
 - `GET /fanout` — list all fanout configs
@@ -279,6 +298,16 @@ app/
 
 ### Statistics
 - `GET /statistics` — aggregated mesh network stats (entity counts, message/packet splits, activity windows, busiest channels)
+
+### Push
+- `GET /push/vapid-public-key` — VAPID public key for browser `PushManager.subscribe()`
+- `POST /push/subscribe` — register/upsert push subscription (keyed by endpoint URL)
+- `GET /push/subscriptions` — list all push subscriptions
+- `PATCH /push/subscriptions/{id}` — update label or filter preferences
+- `DELETE /push/subscriptions/{id}` — delete subscription
+- `POST /push/subscriptions/{id}/test` — send test notification
+- `GET /push/conversations` — global list of push-enabled conversation state keys
+- `POST /push/conversations/toggle` — add or remove a conversation from the global push list
 
 ### WebSocket
 - `WS /ws`
@@ -313,7 +342,8 @@ Main tables:
 - `bot_detection_nodes` (per-sender automation/impact scores, manual tags, and scoring detail columns — created by migration 79)
 - `repeater_telemetry_history` (time-series telemetry snapshots for tracked repeaters)
 - `fanout_configs` (MQTT, bot, webhook, Apprise, SQS integration configs)
-- `app_settings`
+- `push_subscriptions` (Web Push browser subscriptions with delivery metadata; UNIQUE on endpoint)
+- `app_settings` (includes `vapid_private_key` and `vapid_public_key` for Web Push VAPID signing)
 
 Contact route state is canonicalized on the backend:
 - stored route inputs: `direct_path`, `direct_path_len`, `direct_path_hash_mode`, `direct_path_updated_at`, plus optional `route_override_*`
@@ -336,6 +366,7 @@ Repository writes should prefer typed models such as `ContactUpsert` over ad hoc
 - `blocked_keys`, `blocked_names`, `discovery_blocked_types`
 - `tracked_telemetry_repeaters`
 - `auto_resend_channel`
+- `telemetry_interval_hours`
 
 Note: MQTT, community MQTT, and bot configs were migrated to the `fanout_configs` table (migrations 36-38).
 

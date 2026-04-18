@@ -1,7 +1,16 @@
 import { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
 import { Cable, Info, Search, X } from 'lucide-react';
 import { iso1A2Code, emojiFlag, feature as ccFeature } from '@rapideditor/country-coder';
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Polyline,
+  Popup,
+  useMap,
+  useMapEvents,
+  LayersControl,
+} from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import type { LatLngBoundsExpression } from 'leaflet';
 import L from 'leaflet';
@@ -44,6 +53,9 @@ interface MapViewProps {
   ) => Promise<RadioTraceResponse>;
   rawPackets?: RawPacket[];
   config?: RadioConfig | null;
+  /** When provided, the contact name in each popup becomes a clickable link
+   *  that opens the conversation for that contact (DM, repeater, or room). */
+  onSelectContact?: (contact: Contact) => void;
 }
 
 // ─── Contact type constants ──────────────────────────────────────────────────
@@ -136,6 +148,88 @@ function getCountryFromCoords(lat: number, lon: number): CountryInfo | null {
 }
 
 // ─── Recency colors ──────────────────────────────────────────────────────────
+
+
+    background: '#0d0d0d',
+    maxZoom: 19,
+  },
+  {
+    id: 'topographic',
+    label: 'Topographic (OpenTopoMap)',
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attribution:
+      'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+    background: '#a3b3bc',
+    maxZoom: 17,
+  },
+  {
+    id: 'satellite',
+    label: 'Satellite (Esri)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution:
+      'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    background: '#1a1f2e',
+    // Esri's tile service advertises LODs up to 23 and returns HTTP 200 for
+    // every tile request, but the underlying imagery is only high-resolution
+    // up to ~18 in most developed areas and shallower in rural regions. We
+    // cap at 18 rather than 19 so users don't zoom into visibly-empty or
+    // severely-upscaled tiles. Remote regions may still be sparse at 18.
+    maxZoom: 18,
+  },
+] as const;
+
+const MAP_LAYER_STORAGE_KEY = 'remoteterm-map-layer';
+const LEGACY_DARK_MAP_STORAGE_KEY = 'remoteterm-dark-map';
+
+function getSavedLayerId(): string {
+  try {
+    const stored = localStorage.getItem(MAP_LAYER_STORAGE_KEY);
+    if (stored && TILE_LAYERS.some((l) => l.id === stored)) return stored;
+    // Legacy migration: boolean dark-map flag predates multi-layer support.
+    const legacyDark = localStorage.getItem(LEGACY_DARK_MAP_STORAGE_KEY) === 'true';
+    return legacyDark ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+/**
+ * Leaflet-internal companion component: listens for base-layer changes driven
+ * by Leaflet's own LayersControl UI and pipes the selection back to React.
+ * Kept separate so the persistence/state logic stays out of the render tree.
+ */
+function LayerChangeWatcher({ onChange }: { onChange: (name: string) => void }) {
+  useMapEvents({
+    baselayerchange: (event) => {
+      if (event.name) onChange(event.name);
+    },
+  });
+  return null;
+}
+
+/**
+ * Enforces the active layer's zoom ceiling on the underlying Leaflet map.
+ *
+ * Leaflet's `map.getMaxZoom()` prefers `options.maxZoom` (set on MapContainer)
+ * over per-layer `maxZoom`, so a per-TileLayer cap is silently ignored unless
+ * we push it down to the map itself. We do that here whenever the active
+ * layer changes, and clamp the current zoom if the user happened to be zoomed
+ * past the new cap at the moment of the switch.
+ *
+ * The MapContainer's fixed `minZoom`/`maxZoom` remain the absolute hull that
+ * prevents the "Attempted to load an infinite number of tiles" race during
+ * initial mount (see `MAP_MIN_ZOOM`/`MAP_MAX_ZOOM` below).
+ */
+function MaxZoomByActiveLayer({ maxZoom }: { maxZoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setMaxZoom(maxZoom);
+    if (map.getZoom() > maxZoom) {
+      map.setZoom(maxZoom);
+    }
+  }, [map, maxZoom]);
+  return null;
+}
 
 const MAP_RECENCY_COLORS = {
   recent: '#06b6d4',
@@ -849,58 +943,6 @@ function HeatmapLayer({ points }: { points: HeatPoint[] }) {
   return null;
 }
 
-// ─── Tile layers ──────────────────────────────────────────────────────────────
-
-type TileLayerKey = 'osm' | 'dark' | 'light' | 'satellite' | 'topo';
-
-const TILE_LAYERS: Record<TileLayerKey, { label: string; url: string; attribution: string }> = {
-  osm: {
-    label: 'OSM',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  },
-  dark: {
-    label: 'Dark',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-  },
-  light: {
-    label: 'Light',
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-  },
-  satellite: {
-    label: 'Satellite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>',
-  },
-  topo: {
-    label: 'Topo',
-    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://opentopomap.org/">OpenTopoMap</a>',
-  },
-};
-
-const TILE_PREF_KEY = 'remoteterm-map-tile';
-function loadTilePref(): TileLayerKey {
-  try {
-    const r = localStorage.getItem(TILE_PREF_KEY);
-    return (r as TileLayerKey) ?? 'osm';
-  } catch {
-    return 'osm';
-  }
-}
-function saveTilePref(v: TileLayerKey): void {
-  try {
-    localStorage.setItem(TILE_PREF_KEY, v);
-  } catch {
-    /* ignore storage errors */
-  }
-}
-
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 
 function loadClusterPref(): boolean {
@@ -1481,33 +1523,35 @@ export function MapView({
   // ── Heatmap toggle ──────────────────────────────────────────────────────────
   const [heatmap, setHeatmap] = useState(false);
 
-  // ── Tile layer ──────────────────────────────────────────────────────────────
-  const [tileKey, setTileKey] = useState<TileLayerKey>(loadTilePref);
-  const prevNonDarkTileRef = useRef<TileLayerKey>(tileKey !== 'dark' ? tileKey : 'osm');
-  const handleTileChange = (key: TileLayerKey) => {
-    if (key !== 'dark') prevNonDarkTileRef.current = key;
-    setTileKey(key);
-    saveTilePref(key);
-  };
+  // ── Tile layer (upstream LayersControl-based system) ─────────────────────────
+  const [selectedLayerId, setSelectedLayerId] = useState<string>(getSavedLayerId);
+  const activeLayer = TILE_LAYERS.find((l) => l.id === selectedLayerId) ?? TILE_LAYERS[0];
 
-  // ── Dark map sync with settings (localStorage: remoteterm-dark-map) ────────
+  const handleLayerChange = useCallback((layerName: string) => {
+    const match = TILE_LAYERS.find((l) => l.label === layerName);
+    if (!match) return;
+    setSelectedLayerId(match.id);
+    try {
+      localStorage.setItem(MAP_LAYER_STORAGE_KEY, match.id);
+      // Clear the legacy key so a future downgrade-rollback doesn't revert us.
+      localStorage.removeItem(LEGACY_DARK_MAP_STORAGE_KEY);
+    } catch {
+      // localStorage may be disabled; selection stays in memory only.
+    }
+  }, []);
+
+  // Sync layer selection across tabs and windows.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'remoteterm-dark-map') {
-        if (e.newValue === 'true') {
-          if (tileKey !== 'dark') prevNonDarkTileRef.current = tileKey;
-          setTileKey('dark');
-          saveTilePref('dark');
-        } else {
-          const restoreTo = prevNonDarkTileRef.current;
-          setTileKey(restoreTo);
-          saveTilePref(restoreTo);
-        }
+      if (e.key !== MAP_LAYER_STORAGE_KEY) return;
+      const next = e.newValue ?? '';
+      if (TILE_LAYERS.some((l) => l.id === next)) {
+        setSelectedLayerId(next);
       }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [tileKey]);
+  }, []);
 
   // ── Packet visualization state ──────────────────────────────────────────────
   const [showPackets, setShowPackets] = useState(false);
@@ -2424,24 +2468,6 @@ export function MapView({
           <span>Owned</span>
         </button>
 
-        {/* Tile layer picker */}
-        <div className="flex items-center gap-1 ml-1 border-l border-border pl-2">
-          {(Object.keys(TILE_LAYERS) as TileLayerKey[]).map((key) => (
-            <button
-              key={key}
-              onClick={() => handleTileChange(key)}
-              title={TILE_LAYERS[key].label}
-              className={`px-2 py-0.5 text-[10px] rounded transition-colors border ${
-                tileKey === key
-                  ? 'bg-primary/10 border-primary/40 text-foreground font-medium'
-                  : 'bg-muted border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-              }`}
-            >
-              {TILE_LAYERS[key].label}
-            </button>
-          ))}
-        </div>
-
         {/* Node search */}
         <div className="relative flex items-center gap-1 border-l border-border pl-2">
           <Search className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -2723,14 +2749,28 @@ export function MapView({
         <MapContainer
           center={[20, 0]}
           zoom={2}
+          minZoom={MAP_MIN_ZOOM}
+          maxZoom={MAP_MAX_ZOOM}
           className="h-full w-full"
-          style={{ background: '#1a1a2e' }}
+          style={{ background: activeLayer.background }}
         >
-          <TileLayer
-            key={TILE_LAYERS[tileKey].url}
-            attribution={TILE_LAYERS[tileKey].attribution}
-            url={TILE_LAYERS[tileKey].url}
-          />
+          <LayersControl position="topright" collapsed={false}>
+            {TILE_LAYERS.map((layer) => (
+              <LayersControl.BaseLayer
+                key={layer.id}
+                name={layer.label}
+                checked={layer.id === selectedLayerId}
+              >
+                <TileLayer
+                  url={layer.url}
+                  attribution={layer.attribution}
+                  maxZoom={layer.maxZoom}
+                />
+              </LayersControl.BaseLayer>
+            ))}
+          </LayersControl>
+          <LayerChangeWatcher onChange={handleLayerChange} />
+          <MaxZoomByActiveLayer maxZoom={activeLayer.maxZoom ?? MAP_MAX_ZOOM} />
           <MapBoundsHandler contacts={mappableContacts} focusedContact={focusedContact} />
           <MapViewPersist />
           <FlyToHandler

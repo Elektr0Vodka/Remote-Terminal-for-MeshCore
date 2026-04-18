@@ -15,6 +15,7 @@ import type {
   Contact,
   HealthStatus,
   TelemetryHistoryEntry,
+  TelemetrySchedule,
 } from '../../types';
 
 export function SettingsDatabaseSection({
@@ -56,20 +57,46 @@ export function SettingsDatabaseSection({
   const [discoveryBlockedTypes, setDiscoveryBlockedTypes] = useState<number[]>([]);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const [latestTelemetry, setLatestTelemetry] = useState<
     Record<string, TelemetryHistoryEntry | null>
   >({});
   const telemetryFetchedRef = useRef(false);
+
+  const [schedule, setSchedule] = useState<TelemetrySchedule | null>(null);
+  const [intervalDraft, setIntervalDraft] = useState<number>(appSettings.telemetry_interval_hours);
+
+  // Serialization chain for every auto-persisted control on this page.
+  // Without this, rapid successive toggles (or mixed dropdown + checkbox
+  // interactions) can dispatch overlapping PATCHes that land out of order
+  // on HTTP/2 — a stale write then wins, reverting the user's last click.
+  // Each call awaits the previous one before sending its request, so the
+  // server sees updates in the order the user made them.
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     setAutoDecryptOnAdvert(appSettings.auto_decrypt_dm_on_advert);
     setAutoDeleteRawEnabled(appSettings.auto_delete_raw_enabled ?? false);
     setAutoDeleteRawDays(String(appSettings.auto_delete_raw_days ?? 14));
     setDiscoveryBlockedTypes(appSettings.discovery_blocked_types ?? []);
+    setIntervalDraft(appSettings.telemetry_interval_hours);
   }, [appSettings]);
+
+  // Re-fetch the scheduler derivation whenever the tracked list changes or
+  // the stored preference changes. Cheap: single GET, no radio lock.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getTelemetrySchedule()
+      .then((s) => {
+        if (!cancelled) setSchedule(s);
+      })
+      .catch(() => {
+        // Non-critical: dropdown falls back to the unfiltered menu.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [trackedTelemetryRepeaters.length, appSettings.telemetry_interval_hours]);
 
   useEffect(() => {
     if (trackedTelemetryRepeaters.length === 0 || telemetryFetchedRef.current) return;
@@ -136,39 +163,33 @@ export function SettingsDatabaseSection({
     }
   };
 
-  const handleSave = async () => {
-    setBusy(true);
-    setError(null);
-
-    try {
-      const update: AppSettingsUpdate = {
-        auto_decrypt_dm_on_advert: autoDecryptOnAdvert,
-        auto_delete_raw_enabled: autoDeleteRawEnabled,
-        auto_delete_raw_days: Math.max(1, parseInt(autoDeleteRawDays, 10) || 14),
-      };
-      const currentBlocked = appSettings.discovery_blocked_types ?? [];
-      if (
-        discoveryBlockedTypes.length !== currentBlocked.length ||
-        discoveryBlockedTypes.some((t) => !currentBlocked.includes(t))
-      ) {
-        update.discovery_blocked_types = discoveryBlockedTypes;
+  /**
+   * Apply an AppSettings PATCH after any already-queued saves finish, and
+   * revert local state if the save fails. Every auto-persist control on
+   * this page routes through here so the user-visible order of clicks is
+   * the order the backend sees, regardless of network reordering.
+   */
+  const persistAppSettings = (update: AppSettingsUpdate, revert: () => void): Promise<void> => {
+    const chained = saveChainRef.current.then(async () => {
+      try {
+        await onSaveAppSettings(update);
+      } catch (err) {
+        console.error('Failed to save database settings:', err);
+        revert();
+        toast.error('Failed to save setting', {
+          description: err instanceof Error ? err.message : 'Unknown error',
+        });
       }
-      await onSaveAppSettings(update);
-      toast.success('Database settings saved');
-    } catch (err) {
-      console.error('Failed to save database settings:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save');
-      toast.error('Failed to save settings');
-    } finally {
-      setBusy(false);
-    }
+    });
+    saveChainRef.current = chained;
+    return chained;
   };
 
   return (
     <div className={className}>
       {/* ── Database Overview ── */}
       <div className="space-y-3">
-        <Label className="text-base">Database Overview</Label>
+        <h3 className="text-base font-semibold tracking-tight">Database Overview</h3>
         <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-sm">Database size</span>
@@ -195,11 +216,11 @@ export function SettingsDatabaseSection({
 
       {/* ── Storage Cleanup ── */}
       <div className="space-y-4">
-        <Label className="text-base">Storage Cleanup</Label>
+        <h3 className="text-base font-semibold tracking-tight">Storage Cleanup</h3>
 
         <div className="rounded-md border border-border p-3 space-y-2">
-          <Label className="text-sm">Delete Undecrypted Packets</Label>
-          <p className="text-xs text-muted-foreground">
+          <h3 className="text-sm font-semibold">Delete Undecrypted Packets</h3>
+          <p className="text-[0.8125rem] text-muted-foreground">
             Permanently deletes stored raw packets that have not yet been decrypted. These are
             retained in case you later obtain the correct key — once deleted, these messages can
             never be recovered.
@@ -231,8 +252,8 @@ export function SettingsDatabaseSection({
         </div>
 
         <div className="rounded-md border border-border p-3 space-y-2">
-          <Label className="text-sm">Purge Archival Raw Packets</Label>
-          <p className="text-xs text-muted-foreground">
+          <h3 className="text-sm font-semibold">Purge Archival Raw Packets</h3>
+          <p className="text-[0.8125rem] text-muted-foreground">
             Deletes the raw packet bytes behind messages that are already decrypted and visible in
             chat. This frees space but removes packet-analysis availability for those messages. It
             does not affect displayed messages or future decryption.
@@ -252,17 +273,24 @@ export function SettingsDatabaseSection({
 
       {/* ── DM Decryption ── */}
       <div className="space-y-3">
-        <Label className="text-base">DM Decryption</Label>
+        <h3 className="text-base font-semibold tracking-tight">DM Decryption</h3>
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
             checked={autoDecryptOnAdvert}
-            onChange={(e) => setAutoDecryptOnAdvert(e.target.checked)}
+            onChange={(e) => {
+              const next = e.target.checked;
+              const prev = autoDecryptOnAdvert;
+              setAutoDecryptOnAdvert(next);
+              void persistAppSettings({ auto_decrypt_dm_on_advert: next }, () =>
+                setAutoDecryptOnAdvert(prev)
+              );
+            }}
             className="w-4 h-4 rounded border-input accent-primary"
           />
           <span className="text-sm">Auto-decrypt historical DMs when new contact advertises</span>
         </label>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[0.8125rem] text-muted-foreground">
           When enabled, the server will automatically try to decrypt stored DM packets when a new
           contact sends an advertisement. This may cause brief delays on large packet backlogs.
         </p>
@@ -272,11 +300,62 @@ export function SettingsDatabaseSection({
 
       {/* ── Tracked Repeater Telemetry ── */}
       <div className="space-y-3">
-        <Label className="text-base">Tracked Repeater Telemetry</Label>
-        <p className="text-xs text-muted-foreground">
-          Repeaters opted into automatic telemetry collection are polled every 8 hours. Up to 8
-          repeaters may be tracked at a time ({trackedTelemetryRepeaters.length} / 8 slots used).
+        <h3 className="text-base font-semibold tracking-tight">Tracked Repeater Telemetry</h3>
+        <p className="text-[0.8125rem] text-muted-foreground">
+          Repeaters opted into automatic telemetry collection are polled on a scheduled interval. To
+          limit mesh traffic, the app caps telemetry at 24 checks per day across all tracked
+          repeaters — so fewer tracked repeaters allows shorter intervals, and more tracked
+          repeaters forces longer ones. Up to {schedule?.max_tracked ?? 8} repeaters may be tracked
+          at once ({trackedTelemetryRepeaters.length} / {schedule?.max_tracked ?? 8} slots used).
         </p>
+
+        {/* Interval picker. Legal options depend on current tracked count;
+            we list only those. If the saved preference is no longer legal,
+            the effective interval is shown below so the user knows what the
+            scheduler is actually using. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="telemetry-interval" className="text-sm">
+            Collection interval
+          </Label>
+          <div className="flex items-center gap-2">
+            <select
+              id="telemetry-interval"
+              value={intervalDraft}
+              onChange={(e) => {
+                const nextValue = Number(e.target.value);
+                if (!Number.isFinite(nextValue) || nextValue === intervalDraft) return;
+                const prevValue = intervalDraft;
+                setIntervalDraft(nextValue);
+                void persistAppSettings({ telemetry_interval_hours: nextValue }, () =>
+                  setIntervalDraft(prevValue)
+                );
+              }}
+              className="h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              {(schedule?.options ?? [1, 2, 3, 4, 6, 8, 12, 24]).map((hrs) => (
+                <option key={hrs} value={hrs}>
+                  Every {hrs} hour{hrs === 1 ? '' : 's'} ({Math.floor(24 / hrs)} check
+                  {Math.floor(24 / hrs) === 1 ? '' : 's'}/day)
+                </option>
+              ))}
+            </select>
+          </div>
+          {schedule && schedule.effective_hours !== schedule.preferred_hours && (
+            <p className="text-xs text-warning">
+              Saved preference is {schedule.preferred_hours} hour
+              {schedule.preferred_hours === 1 ? '' : 's'}, but the scheduler is using{' '}
+              {schedule.effective_hours} hours because {schedule.tracked_count} repeater
+              {schedule.tracked_count === 1 ? '' : 's'}{' '}
+              {schedule.tracked_count === 1 ? 'is' : 'are'} tracked. Your preference will be
+              restored if you drop back to a supported count.
+            </p>
+          )}
+          {schedule?.next_run_at != null && (
+            <p className="text-xs text-muted-foreground">
+              Next run at {formatTime(schedule.next_run_at)} (UTC top of hour).
+            </p>
+          )}
+        </div>
 
         {trackedTelemetryRepeaters.length === 0 ? (
           <p className="text-sm text-muted-foreground italic">
@@ -349,193 +428,146 @@ export function SettingsDatabaseSection({
         )}
       </div>
 
-      {error && (
-        <div className="text-sm text-destructive" role="alert">
-          {error}
-        </div>
-      )}
-
-      <Button onClick={handleSave} disabled={busy} className="w-full">
-        {busy ? 'Saving...' : 'Save Settings'}
-      </Button>
-
       <Separator />
 
       {/* ── Contact Management ── */}
-      <div className="space-y-2">
-        <Label className="text-base">Contact Management</Label>
-      </div>
+      <div className="space-y-5">
+        <h3 className="text-base font-semibold tracking-tight">Contact Management</h3>
 
-      {/* Block discovery of new node types */}
-      <div className="space-y-3">
-        <Label>Block Discovery of New Node Types</Label>
-        <p className="text-xs text-muted-foreground">
-          Checked types will be ignored when heard via advertisement. Existing contacts of these
-          types are still updated. This does not affect contacts added manually or via DM.
-        </p>
-        <div className="space-y-1.5">
-          {(
-            [
-              [1, 'Block clients'],
-              [2, 'Block repeaters'],
-              [3, 'Block room servers'],
-              [4, 'Block sensors'],
-            ] as const
-          ).map(([typeCode, label]) => {
-            const checked = discoveryBlockedTypes.includes(typeCode);
-            return (
-              <label key={typeCode} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() =>
-                    setDiscoveryBlockedTypes((prev) =>
-                      checked ? prev.filter((t) => t !== typeCode) : [...prev, typeCode]
-                    )
-                  }
-                  className="rounded border-input"
-                />
-                {label}
-              </label>
-            );
-          })}
+        {/* Block discovery of new node types */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold">Block Discovery of New Node Types</h4>
+          <p className="text-[0.8125rem] text-muted-foreground">
+            Checked types will be ignored when heard via advertisement. Existing contacts of these
+            types are still updated. This does not affect contacts added manually or via DM.
+          </p>
+          <div className="space-y-1.5">
+            {(
+              [
+                [1, 'Block clients'],
+                [2, 'Block repeaters'],
+                [3, 'Block room servers'],
+                [4, 'Block sensors'],
+              ] as const
+            ).map(([typeCode, label]) => {
+              const checked = discoveryBlockedTypes.includes(typeCode);
+              return (
+                <label key={typeCode} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      const prev = discoveryBlockedTypes;
+                      const next = checked
+                        ? prev.filter((t) => t !== typeCode)
+                        : [...prev, typeCode];
+                      setDiscoveryBlockedTypes(next);
+                      void persistAppSettings({ discovery_blocked_types: next }, () =>
+                        setDiscoveryBlockedTypes(prev)
+                      );
+                    }}
+                    className="rounded border-input"
+                  />
+                  {label}
+                </label>
+              );
+            })}
+          </div>
+          {discoveryBlockedTypes.length > 0 && (
+            <p className="text-xs text-warning">
+              New{' '}
+              {discoveryBlockedTypes
+                .map((t) =>
+                  t === 1 ? 'clients' : t === 2 ? 'repeaters' : t === 3 ? 'room servers' : 'sensors'
+                )
+                .join(', ')}{' '}
+              heard via advertisement will not be added to your contact list.
+            </p>
+          )}
         </div>
-        {discoveryBlockedTypes.length > 0 && (
-          <p className="text-xs text-warning">
-            New{' '}
-            {discoveryBlockedTypes
-              .map((t) =>
-                t === 1 ? 'clients' : t === 2 ? 'repeaters' : t === 3 ? 'room servers' : 'sensors'
-              )
-              .join(', ')}{' '}
-            heard via advertisement will not be added to your contact list.
+
+        {/* Blocked contacts list */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold">Blocked Contacts</h4>
+          <p className="text-[0.8125rem] text-muted-foreground">
+            Blocked contacts are hidden from the sidebar. Blocking only hides messages from the UI —
+            MQTT forwarding and bot responses are not affected. Messages are still stored and will
+            reappear if unblocked.
           </p>
-        )}
-      </div>
 
-      <Separator />
-
-      {/* Blocked contacts list */}
-      <div className="space-y-3">
-        <Label>Auto-Delete Raw Packets</Label>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={autoDeleteRawEnabled}
-            onChange={(e) => setAutoDeleteRawEnabled(e.target.checked)}
-            className="w-4 h-4 rounded border-input accent-primary"
-          />
-          <span className="text-sm">Automatically delete old undecrypted packets daily</span>
-        </label>
-        {autoDeleteRawEnabled && (
-          <div className="flex gap-2 items-end pl-7">
-            <div className="space-y-1">
-              <Label htmlFor="auto-delete-days" className="text-xs">
-                Older than (days)
-              </Label>
-              <Input
-                id="auto-delete-days"
-                type="number"
-                min="1"
-                max="365"
-                value={autoDeleteRawDays}
-                onChange={(e) => setAutoDeleteRawDays(e.target.value)}
-                className="w-24"
-              />
+          {blockedKeys.length === 0 && blockedNames.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              No blocked contacts. Block contacts from their info pane, viewed by clicking their
+              avatar in any channel, or their name within the top status bar with the conversation
+              open.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {blockedKeys.length > 0 && (
+                <div>
+                  <span className="text-xs text-muted-foreground font-medium">Blocked Keys</span>
+                  <div className="mt-1 space-y-1">
+                    {blockedKeys.map((key) => (
+                      <div key={key} className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono truncate flex-1">{key}</span>
+                        {onToggleBlockedKey && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onToggleBlockedKey(key)}
+                            className="h-7 text-xs flex-shrink-0"
+                          >
+                            Unblock
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {blockedNames.length > 0 && (
+                <div>
+                  <span className="text-xs text-muted-foreground font-medium">Blocked Names</span>
+                  <div className="mt-1 space-y-1">
+                    {blockedNames.map((name) => (
+                      <div key={name} className="flex items-center justify-between gap-2">
+                        <span className="text-sm truncate flex-1">{name}</span>
+                        {onToggleBlockedName && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onToggleBlockedName(name)}
+                            className="h-7 text-xs flex-shrink-0"
+                          >
+                            Unblock
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
-        <p className="text-xs text-muted-foreground">
-          When enabled, the server runs a daily background job that removes undecrypted raw packets
-          older than the configured threshold. Does not affect already-decrypted messages or your
-          chat history.
-        </p>
-      </div>
+          )}
+        </div>
 
-      <Separator />
-
-      <div className="space-y-3">
-        <Label>Blocked Contacts</Label>
-        <p className="text-xs text-muted-foreground">
-          Blocked contacts are hidden from the sidebar. Blocking only hides messages from the UI —
-          MQTT forwarding and bot responses are not affected. Messages are still stored and will
-          reappear if unblocked.
-        </p>
-
-        {blockedKeys.length === 0 && blockedNames.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">
-            No blocked contacts. Block contacts from their info pane, viewed by clicking their
-            avatar in any channel, or their name within the top status bar with the conversation
-            open.
+        {/* Bulk delete */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold">Bulk Delete Contacts</h4>
+          <p className="text-[0.8125rem] text-muted-foreground">
+            Remove multiple contacts or repeaters at once. Useful for cleaning up spam or unwanted
+            nodes. Message history will be preserved.
           </p>
-        ) : (
-          <div className="space-y-2">
-            {blockedKeys.length > 0 && (
-              <div>
-                <span className="text-xs text-muted-foreground font-medium">Blocked Keys</span>
-                <div className="mt-1 space-y-1">
-                  {blockedKeys.map((key) => (
-                    <div key={key} className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-mono truncate flex-1">{key}</span>
-                      {onToggleBlockedKey && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onToggleBlockedKey(key)}
-                          className="h-7 text-xs flex-shrink-0"
-                        >
-                          Unblock
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {blockedNames.length > 0 && (
-              <div>
-                <span className="text-xs text-muted-foreground font-medium">Blocked Names</span>
-                <div className="mt-1 space-y-1">
-                  {blockedNames.map((name) => (
-                    <div key={name} className="flex items-center justify-between gap-2">
-                      <span className="text-sm truncate flex-1">{name}</span>
-                      {onToggleBlockedName && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onToggleBlockedName(name)}
-                          className="h-7 text-xs flex-shrink-0"
-                        >
-                          Unblock
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <Separator />
-
-      {/* Bulk delete */}
-      <div className="space-y-3">
-        <Label>Bulk Delete Contacts</Label>
-        <p className="text-xs text-muted-foreground">
-          Remove multiple contacts or repeaters at once. Useful for cleaning up spam or unwanted
-          nodes. Message history will be preserved.
-        </p>
-        <Button variant="outline" className="w-full" onClick={() => setBulkDeleteOpen(true)}>
-          Open Bulk Delete
-        </Button>
-        <BulkDeleteContactsModal
-          open={bulkDeleteOpen}
-          onClose={() => setBulkDeleteOpen(false)}
-          contacts={contacts}
-          onDeleted={(keys) => onBulkDeleteContacts?.(keys)}
-        />
+          <Button variant="outline" className="w-full" onClick={() => setBulkDeleteOpen(true)}>
+            Open Bulk Delete
+          </Button>
+          <BulkDeleteContactsModal
+            open={bulkDeleteOpen}
+            onClose={() => setBulkDeleteOpen(false)}
+            contacts={contacts}
+            onDeleted={(keys) => onBulkDeleteContacts?.(keys)}
+          />
+        </div>
       </div>
     </div>
   );

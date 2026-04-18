@@ -364,7 +364,7 @@ class TestUndecryptedTextPacketStreaming:
             [],
         ]
 
-        async def fake_execute(*_args, **_kwargs):
+        def fake_execute(*_args, **_kwargs):
             batch = batches.pop(0)
 
             class FakeCursor:
@@ -374,6 +374,16 @@ class TestUndecryptedTextPacketStreaming:
                 async def close(self):
                     pass
 
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, exc_type, exc, tb):
+                    return None
+
+            # aiosqlite's execute() returns a `contextmanager`-decorated
+            # coroutine that is both awaitable and usable as an async-with.
+            # Our repo code now uses `async with conn.execute(...) as cursor:`,
+            # so the mock just needs to return something with __aenter__/__aexit__.
             return FakeCursor()
 
         with patch.object(test_db.conn, "execute", side_effect=fake_execute):

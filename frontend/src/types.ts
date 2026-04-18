@@ -396,6 +396,7 @@ export interface AppSettings {
   discovery_blocked_types: number[];
   tracked_telemetry_repeaters: string[];
   auto_resend_channel: boolean;
+  telemetry_interval_hours: number;
 }
 
 export interface AppSettingsUpdate {
@@ -413,11 +414,22 @@ export interface AppSettingsUpdate {
   high_advert_threshold?: number;
   medium_advert_threshold?: number;
   discovery_blocked_types?: number[];
+  telemetry_interval_hours?: number;
+}
+
+export interface TelemetrySchedule {
+  preferred_hours: number;
+  effective_hours: number;
+  options: number[];
+  tracked_count: number;
+  max_tracked: number;
+  next_run_at: number | null;
 }
 
 export interface TrackedTelemetryResponse {
   tracked_telemetry_repeaters: string[];
   names: Record<string, string>;
+  schedule: TelemetrySchedule;
 }
 
 /** Contact type constants */
@@ -543,6 +555,17 @@ export interface TelemetryLppSensor {
 export interface TelemetryHistoryEntry {
   timestamp: number;
   data: Record<string, number> & { lpp_sensors?: TelemetryLppSensor[] };
+}
+
+export interface PushSubscriptionInfo {
+  id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  label: string;
+  created_at: number;
+  last_success_at: number | null;
+  failure_count: number;
 }
 
 export interface TraceResponse {

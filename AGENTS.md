@@ -179,7 +179,9 @@ Outgoing DMs send once immediately, then may retry up to 2 more times in the bac
 
 ACKs are not a contact-route source. They drive message delivery state and may appear in analytics/detail surfaces, but they do not update `direct_path*` or otherwise influence route selection for future sends.
 
-**Channel messages**: Flood messages echo back through repeaters. Repeats are identified by the database UNIQUE constraint on `(type, conversation_key, text, sender_timestamp)` — when an INSERT hits a duplicate, `_handle_duplicate_message()` in `packet_processor.py` adds the new path and, for outgoing messages only, increments the ack count. Incoming repeats add path data but do not change the ack count. There is no timestamp-windowed matching; deduplication is exact-match only.
+**Channel messages**: Flood messages echo back through repeaters. Repeats are identified by the database UNIQUE constraint `idx_messages_dedup_null_safe` on `(type, conversation_key, text, COALESCE(sender_timestamp, 0))` where `type = 'CHAN'` — when an INSERT hits a duplicate, `_handle_duplicate_message()` in `packet_processor.py` adds the new path and, for outgoing messages only, increments the ack count. Incoming repeats add path data but do not change the ack count. There is no timestamp-windowed matching; deduplication is exact-match only.
+
+**Incoming direct messages**: A separate unique index `idx_messages_incoming_priv_dedup` on `(type, conversation_key, text, COALESCE(sender_timestamp, 0), COALESCE(sender_key, ''))` where `type = 'PRIV' AND outgoing = 0` deduplicates incoming DMs. The additional `sender_key` term (added in migration 056) distinguishes room-server posts from different senders that arrive in the same second with identical text.
 
 This message-layer echo/path handling is independent of raw-packet storage deduplication.
 
@@ -197,6 +199,7 @@ This message-layer echo/path handling is independent of raw-packet storage dedup
 │   ├── event_handlers.py   # Radio events
 │   ├── decoder.py          # Packet decryption
 │   ├── websocket.py        # Real-time broadcasts
+│   ├── push/               # Web Push notification subsystem (VAPID keys, dispatch, send)
 │   └── fanout/             # Fanout bus: MQTT, bots, webhooks, Apprise, SQS (see fanout/AGENTS_fanout.md)
 ├── frontend/               # React frontend
 │   ├── AGENTS.md           # Frontend documentation
@@ -345,6 +348,7 @@ All endpoints are prefixed with `/api` (e.g., `/api/health`).
 | POST | `/api/contacts/{public_key}/repeater/radio-settings` | Fetch repeater radio config via CLI |
 | POST | `/api/contacts/{public_key}/repeater/advert-intervals` | Fetch advert intervals |
 | POST | `/api/contacts/{public_key}/repeater/owner-info` | Fetch owner info |
+| GET | `/api/contacts/{public_key}/repeater/telemetry-history` | Stored telemetry history for a repeater (read-only, no radio access) |
 | POST | `/api/contacts/{public_key}/room/login` | Log in to a room server |
 | POST | `/api/contacts/{public_key}/room/status` | Fetch room-server status telemetry |
 | POST | `/api/contacts/{public_key}/room/lpp-telemetry` | Fetch room-server CayenneLPP sensor data |
@@ -378,12 +382,21 @@ All endpoints are prefixed with `/api` (e.g., `/api/health`).
 | POST | `/api/settings/blocked-keys/toggle` | Toggle blocked key |
 | POST | `/api/settings/blocked-names/toggle` | Toggle blocked name |
 | POST | `/api/settings/tracked-telemetry/toggle` | Toggle tracked telemetry repeater |
+| GET | `/api/settings/tracked-telemetry/schedule` | Current telemetry scheduling derivation and next-run-at timestamp |
 | GET | `/api/fanout` | List all fanout configs |
 | POST | `/api/fanout` | Create new fanout config |
 | PATCH | `/api/fanout/{id}` | Update fanout config (triggers module reload) |
 | DELETE | `/api/fanout/{id}` | Delete fanout config (stops module) |
 | POST | `/api/fanout/bots/disable-until-restart` | Stop bot fanout modules and keep bots disabled until the process restarts |
 | GET | `/api/statistics` | Aggregated mesh network statistics |
+| GET | `/api/push/vapid-public-key` | VAPID public key for browser push subscription |
+| POST | `/api/push/subscribe` | Register/upsert a push subscription |
+| GET | `/api/push/subscriptions` | List all push subscriptions |
+| PATCH | `/api/push/subscriptions/{id}` | Update subscription label or filter preferences |
+| DELETE | `/api/push/subscriptions/{id}` | Delete a push subscription |
+| POST | `/api/push/subscriptions/{id}/test` | Send a test push notification |
+| GET | `/api/push/conversations` | Global list of push-enabled conversation state keys |
+| POST | `/api/push/conversations/toggle` | Add or remove a conversation from the global push list |
 | WS | `/api/ws` | Real-time updates |
 
 ## Key Concepts
@@ -438,6 +451,17 @@ All external integrations are managed through the fanout bus (`app/fanout/`). Ea
 
 Community MQTT forwards raw packets only. Its derived `path` field, when present on direct packets, is a comma-separated list of hop identifiers as reported by the packet format. Token width therefore varies with the packet's path hash mode; it is intentionally not a flat per-byte rendering.
 
+### Web Push Notifications
+
+Web Push is a standalone subsystem (`app/push/`) that sends browser push notifications for incoming messages even when the browser tab is closed. It is **not** a fanout module — it manages its own per-browser subscriptions, while the set of push-enabled conversations is stored once per server instance.
+
+- **Requires HTTPS** (self-signed certificates work) and outbound internet from the server to reach browser push services (Google FCM, Mozilla autopush).
+- VAPID key pair is auto-generated on first startup and stored in `app_settings`.
+- Each browser subscription is stored in `push_subscriptions` with device identity and delivery state. The set of push-enabled conversations is stored globally in `app_settings.push_conversations`, so all subscribed browsers receive the same configured rooms/DMs.
+- `broadcast_event()` in `websocket.py` dispatches to `push_manager.dispatch_message()` alongside fanout for `message` events.
+- Expired subscriptions (HTTP 404/410 from push service) are auto-deleted.
+- Frontend: service worker (`sw.js`) handles push display and notification click navigation. The `BellRing` icon in `ChatHeader` toggles per-conversation push. Device management lives in Settings > Local.
+
 ### Server-Side Decryption
 
 The server can decrypt packets using stored keys, both in real-time and for historical packets.
@@ -484,7 +508,7 @@ mc.subscribe(EventType.ACK, handler)
 | `MESHCORE_ENABLE_MESSAGE_POLL_FALLBACK` | `false` | Switch the always-on radio audit task from hourly checks to aggressive 10-second polling; the audit checks both missed message drift and channel-slot cache drift |
 | `MESHCORE_FORCE_CHANNEL_SLOT_RECONFIGURE` | `false` | Disable channel-slot reuse and force `set_channel(...)` before every channel send, even on serial/BLE |
 
-**Note:** Runtime app settings are stored in the database (`app_settings` table), not environment variables. These include `max_radio_contacts`, `auto_decrypt_dm_on_advert`, `advert_interval`, `last_advert_time`, `last_message_times`, `flood_scope`, `blocked_keys`, `blocked_names`, `discovery_blocked_types`, `tracked_telemetry_repeaters`, and `auto_resend_channel`. `max_radio_contacts` is the configured radio contact capacity baseline used by background maintenance: favorites reload first, non-favorite fill targets about 80% of that value, and full offload/reload triggers around 95% occupancy. They are configured via `GET/PATCH /api/settings`. MQTT, bot, webhook, Apprise, and SQS configs are stored in the `fanout_configs` table, managed via `/api/fanout`. If the radio's channel slots appear unstable or another client is mutating them underneath this app, operators can force the old always-reconfigure send path with `MESHCORE_FORCE_CHANNEL_SLOT_RECONFIGURE=true`.
+**Note:** Runtime app settings are stored in the database (`app_settings` table), not environment variables. These include `max_radio_contacts`, `auto_decrypt_dm_on_advert`, `advert_interval`, `last_advert_time`, `last_message_times`, `flood_scope`, `blocked_keys`, `blocked_names`, `discovery_blocked_types`, `tracked_telemetry_repeaters`, `auto_resend_channel`, and `telemetry_interval_hours`. `max_radio_contacts` is the configured radio contact capacity baseline used by background maintenance: favorites reload first, non-favorite fill targets about 80% of that value, and full offload/reload triggers around 95% occupancy. They are configured via `GET/PATCH /api/settings`. MQTT, bot, webhook, Apprise, and SQS configs are stored in the `fanout_configs` table, managed via `/api/fanout`. If the radio's channel slots appear unstable or another client is mutating them underneath this app, operators can force the old always-reconfigure send path with `MESHCORE_FORCE_CHANNEL_SLOT_RECONFIGURE=true`.
 
 Byte-perfect channel retries are user-triggered via `POST /api/messages/channel/{message_id}/resend` and are allowed for 30 seconds after the original send.
 

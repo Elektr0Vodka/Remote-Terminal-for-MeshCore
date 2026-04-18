@@ -26,6 +26,7 @@ import type {
   RadioTraceResponse,
   RadioDiscoveryTarget,
   PathDiscoveryResponse,
+  PushSubscriptionInfo,
   ResendChannelMessageResponse,
   RepeaterAclResponse,
   RepeaterAdvertIntervalsResponse,
@@ -37,6 +38,7 @@ import type {
   RepeaterRadioSettingsResponse,
   RepeaterStatusResponse,
   TelemetryHistoryEntry,
+  TelemetrySchedule,
   TrackedTelemetryResponse,
   StatisticsResponse,
   NoiseFloorSample,
@@ -387,6 +389,8 @@ export const api = {
       body: JSON.stringify({ public_key: publicKey }),
     }),
 
+  getTelemetrySchedule: () => fetchJson<TelemetrySchedule>('/settings/tracked-telemetry/schedule'),
+
   // Favorites
   toggleFavorite: (type: 'channel' | 'contact', id: string) =>
     fetchJson<{ type: string; id: string; favorite: boolean }>('/settings/favorites/toggle', {
@@ -518,4 +522,28 @@ export const api = {
   kmsUpdateKey: (id: number, body: KmsKeyUpdate) =>
     fetchJson<KmsKey>(`/kms/keys/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   kmsDeleteKey: (id: number) => fetch(`${API_BASE}/kms/keys/${id}`, { method: 'DELETE' }),
+
+  // ── Push Notifications ────────────────────────────────────────────────────
+  getVapidPublicKey: () => fetchJson<{ public_key: string }>('/push/vapid-public-key'),
+  pushSubscribe: (subscription: {
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    label?: string;
+  }) =>
+    fetchJson<PushSubscriptionInfo>('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    }),
+  getPushSubscriptions: () => fetchJson<PushSubscriptionInfo[]>('/push/subscriptions'),
+  deletePushSubscription: (id: string) =>
+    fetchJson<{ deleted: boolean }>(`/push/subscriptions/${id}`, { method: 'DELETE' }),
+  testPushSubscription: (id: string) =>
+    fetchJson<{ status: string }>(`/push/subscriptions/${id}/test`, { method: 'POST' }),
+  getPushConversations: () => fetchJson<string[]>('/push/conversations'),
+  togglePushConversation: (key: string) =>
+    fetchJson<string[]>('/push/conversations/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    }),
 };

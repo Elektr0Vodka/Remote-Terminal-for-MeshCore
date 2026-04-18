@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsModal } from '../components/SettingsModal';
@@ -73,6 +73,7 @@ const baseSettings: AppSettings = {
   discovery_blocked_types: [],
   tracked_telemetry_repeaters: [],
   auto_resend_channel: false,
+  telemetry_interval_hours: 8,
 };
 
 function renderModal(overrides?: {
@@ -336,7 +337,7 @@ describe('SettingsModal', () => {
     fireEvent.change(screen.getByLabelText('Advert Location Source'), {
       target: { value: 'off' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Radio Config' }));
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith(
@@ -350,7 +351,7 @@ describe('SettingsModal', () => {
     openRadioSection();
 
     fireEvent.click(screen.getByLabelText('Extra Direct ACK Transmission'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Radio Config' }));
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ multi_acks_enabled: true }));
@@ -364,8 +365,8 @@ describe('SettingsModal', () => {
     const maxContactsInput = screen.getByLabelText('Max Contacts on Radio');
     fireEvent.change(maxContactsInput, { target: { value: '250' } });
 
-    // Click the "Save Settings" button in the Flood & Advert Control section
-    const saveButtons = screen.getAllByRole('button', { name: 'Save Settings' });
+    // Click the "Save Messaging Settings" button
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Messaging Settings' });
     fireEvent.click(saveButtons[0]);
 
     await waitFor(() => {
@@ -379,8 +380,8 @@ describe('SettingsModal', () => {
     });
     openRadioSection();
 
-    // Click the "Save Settings" button in the Flood & Advert Control section
-    const saveButtons = screen.getAllByRole('button', { name: 'Save Settings' });
+    // Click the "Save Messaging Settings" button
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Messaging Settings' });
     fireEvent.click(saveButtons[0]);
 
     await waitFor(() => {
@@ -445,52 +446,86 @@ describe('SettingsModal', () => {
     expect(screen.getByText('iPhone')).toBeInTheDocument();
   });
 
-  it('clears stale errors when switching external desktop sections', async () => {
+  it('reverts checkbox state when auto-persist fails on the database section', async () => {
+    // Auto-persist replaced the old "Save Settings" button on this section.
+    // The risk is now: a toggle gets applied optimistically, the PATCH fails,
+    // and we're left with the UI out of sync with saved state. Verify the
+    // revert-on-error path keeps the checkbox consistent with the server.
     const onSaveAppSettings = vi.fn(async () => {
       throw new Error('Save failed');
     });
 
-    const { view } = renderModal({
+    renderModal({
       externalSidebarNav: true,
       desktopSection: 'database',
       onSaveAppSettings,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save Settings' }));
+    const checkbox = screen.getByRole('checkbox', {
+      name: /Auto-decrypt historical DMs/i,
+    }) as HTMLInputElement;
+    const initialChecked = checkbox.checked;
+
+    fireEvent.click(checkbox);
+
     await waitFor(() => {
-      expect(screen.getByText('Save failed')).toBeInTheDocument();
+      expect(onSaveAppSettings).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(checkbox.checked).toBe(initialChecked);
+    });
+  });
+
+  it('serializes rapid auto-persist clicks so stale writes cannot win', async () => {
+    // Regression test for a race where rapid consecutive checkbox toggles
+    // fire overlapping PATCHes that can land out of order. The page now
+    // chains saves through a single promise, so the server sees them in
+    // the order the user clicked. This test hand-controls resolution
+    // order to force the "stale write" scenario if serialization were off.
+
+    const deferred: { resolve: () => void }[] = [];
+    const callOrder: number[] = [];
+
+    const onSaveAppSettings = vi.fn(async (_update: unknown) => {
+      const index = deferred.length;
+      callOrder.push(index);
+      await new Promise<void>((res) => {
+        deferred.push({ resolve: res });
+      });
     });
 
-    await act(async () => {
-      view.rerender(
-        <SettingsModal
-          open
-          externalSidebarNav
-          desktopSection="fanout"
-          config={baseConfig}
-          health={baseHealth}
-          appSettings={baseSettings}
-          onClose={vi.fn()}
-          onSave={vi.fn(async () => {})}
-          onSaveAppSettings={onSaveAppSettings}
-          onSetPrivateKey={vi.fn(async () => {})}
-          onReboot={vi.fn(async () => {})}
-          onDisconnect={vi.fn(async () => {})}
-          onReconnect={vi.fn(async () => {})}
-          onAdvertise={vi.fn(async () => {})}
-          meshDiscovery={null}
-          meshDiscoveryLoadingTarget={null}
-          onDiscoverMesh={vi.fn(async () => {})}
-          onHealthRefresh={vi.fn(async () => {})}
-          onRefreshAppSettings={vi.fn(async () => {})}
-        />
-      );
-      await Promise.resolve();
+    renderModal({
+      externalSidebarNav: true,
+      desktopSection: 'database',
+      onSaveAppSettings,
     });
 
-    expect(api.getFanoutConfigs).toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Add Integration' })).toBeInTheDocument();
-    expect(screen.queryByText('Save failed')).not.toBeInTheDocument();
+    // Two distinct checkboxes in quick succession.
+    const blockClients = screen.getByRole('checkbox', { name: /Block clients/i });
+    const blockRepeaters = screen.getByRole('checkbox', { name: /Block repeaters/i });
+
+    fireEvent.click(blockClients);
+    fireEvent.click(blockRepeaters);
+
+    // Wait for the first PATCH to be registered. Only the first should be
+    // in-flight — the second must be queued behind it.
+    await waitFor(() => {
+      expect(deferred.length).toBe(1);
+    });
+    expect(callOrder).toEqual([0]);
+
+    // Resolve the first PATCH. The chain should now dispatch the second.
+    deferred[0].resolve();
+    await waitFor(() => {
+      expect(deferred.length).toBe(2);
+    });
+    expect(callOrder).toEqual([0, 1]);
+
+    // Resolve the second so the test tears down cleanly.
+    deferred[1].resolve();
+    await waitFor(() => {
+      expect(onSaveAppSettings).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('does not call onClose after save/reboot flows in page mode', async () => {
@@ -510,7 +545,7 @@ describe('SettingsModal', () => {
     });
     openRadioSection();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save & Reboot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Radio Config & Reboot' }));
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledTimes(1);
       expect(onReboot).toHaveBeenCalledTimes(1);
@@ -534,7 +569,7 @@ describe('SettingsModal', () => {
     renderModal();
     openLocalSection();
 
-    const checkbox = screen.getByLabelText('Reopen to last viewed channel/conversation');
+    const checkbox = screen.getByLabelText('Reopen Last Conversation');
     expect(checkbox).not.toBeChecked();
 
     fireEvent.click(checkbox);

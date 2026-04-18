@@ -356,7 +356,7 @@ const CREATE_INTEGRATION_DEFINITIONS: readonly CreateIntegrationDefinition[] = [
     label: 'Map Upload',
     section: 'Community Sharing',
     description:
-      'Upload repeaters and room servers to map.meshcore.dev or a compatible map API endpoint.',
+      'Upload repeaters and room servers to map.meshcore.io or a compatible map API endpoint.',
     defaultName: 'Map Upload',
     nameMode: 'counted',
     defaults: {
@@ -778,7 +778,7 @@ function MqttPrivateConfigEditor({
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Forward mesh data to your own MQTT broker for home automation, logging, or alerting.
       </p>
 
@@ -892,6 +892,7 @@ function MqttHaConfigEditor({
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [trackedRepeaters, setTrackedRepeaters] = useState<string[]>([]);
   const [contactSearch, setContactSearch] = useState('');
+  const [radioConfig, setRadioConfig] = useState<{ public_key: string; name: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -906,6 +907,11 @@ function MqttHaConfigEditor({
       }
       setContacts(all);
     })().catch(console.error);
+
+    api
+      .getRadioConfig()
+      .then((radio) => setRadioConfig({ public_key: radio.public_key, name: radio.name }))
+      .catch(console.error);
 
     api
       .getSettings()
@@ -952,6 +958,82 @@ function MqttHaConfigEditor({
   const selectedContactDetails = contactOptions.filter((c) =>
     selectedContacts.includes(c.public_key)
   );
+  const selectedRepeaterDetails = repeaterOptions.filter((c) =>
+    selectedRepeaters.includes(c.public_key)
+  );
+  const prefix = ((config.topic_prefix as string) || 'meshcore').trim() || 'meshcore';
+
+  const nodeIdForKey = useCallback((publicKey: string) => publicKey.slice(0, 12).toLowerCase(), []);
+
+  const topicSummary = useMemo(() => {
+    const items: Array<{
+      kind: 'radio' | 'event' | 'repeater' | 'contact';
+      label: string;
+      publicKey: string;
+      nodeId: string;
+      topics: string[];
+    }> = [];
+
+    if (radioConfig?.public_key) {
+      const nodeId = nodeIdForKey(radioConfig.public_key);
+      items.push({
+        kind: 'radio',
+        label: radioConfig.name || radioConfig.public_key.slice(0, 12),
+        publicKey: radioConfig.public_key,
+        nodeId,
+        topics: [`${prefix}/${nodeId}/health`],
+      });
+      items.push({
+        kind: 'event',
+        label: radioConfig.name || radioConfig.public_key.slice(0, 12),
+        publicKey: radioConfig.public_key,
+        nodeId,
+        topics: [`${prefix}/${nodeId}/events/message`],
+      });
+    }
+
+    for (const repeater of selectedRepeaterDetails) {
+      const nodeId = nodeIdForKey(repeater.public_key);
+      items.push({
+        kind: 'repeater',
+        label: repeater.name || repeater.public_key.slice(0, 12),
+        publicKey: repeater.public_key,
+        nodeId,
+        topics: [`${prefix}/${nodeId}/telemetry`],
+      });
+    }
+
+    for (const contact of selectedContactDetails) {
+      const nodeId = nodeIdForKey(contact.public_key);
+      items.push({
+        kind: 'contact',
+        label: contact.name || contact.public_key.slice(0, 12),
+        publicKey: contact.public_key,
+        nodeId,
+        topics: [`${prefix}/${nodeId}/gps`],
+      });
+    }
+
+    return items;
+  }, [nodeIdForKey, prefix, radioConfig, selectedContactDetails, selectedRepeaterDetails]);
+
+  const kindLabel: Record<(typeof topicSummary)[number]['kind'], string> = {
+    radio: 'Local radio state',
+    event: 'Message events',
+    repeater: 'Repeater telemetry',
+    contact: 'Contact GPS',
+  };
+  const localRadioNodeId = radioConfig?.public_key
+    ? nodeIdForKey(radioConfig.public_key)
+    : '<radio_node_id>';
+  const exampleRepeaterNodeId =
+    selectedRepeaterDetails.length > 0
+      ? nodeIdForKey(selectedRepeaterDetails[0].public_key)
+      : '<repeater_node_id>';
+  const exampleContactNodeId =
+    selectedContactDetails.length > 0
+      ? nodeIdForKey(selectedContactDetails[0].public_key)
+      : '<contact_node_id>';
 
   const toggleTrackedContact = (key: string) => {
     const current = [...selectedContacts];
@@ -969,111 +1051,175 @@ function MqttHaConfigEditor({
     onChange({ ...config, tracked_repeaters: current });
   };
 
-  const prefix = ((config.topic_prefix as string) || 'meshcore').trim() || 'meshcore';
-
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        Uses{' '}
-        <span
-          role="link"
-          tabIndex={0}
-          className="underline cursor-pointer hover:text-primary transition-colors"
-          onClick={() =>
-            window.open('https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery', '_blank')
-          }
-          onKeyDown={(e) => {
-            if (e.key === 'Enter')
+      <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold tracking-tight">Home Assistant MQTT Discovery</h3>
+          <p className="text-sm text-muted-foreground">
+            Publish discovery configs and MeshCore state to your MQTT broker so Home Assistant
+            creates native devices, sensors, GPS trackers, and message events automatically.
+          </p>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-3">
+          <div className="rounded-md border border-border/70 bg-background/80 p-3">
+            <div className="text-sm font-medium text-foreground">1. Same broker</div>
+            <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+              Home Assistant&apos;s built-in MQTT integration must point at the same broker
+              configured below.
+            </p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-background/80 p-3">
+            <div className="text-sm font-medium text-foreground">2. Pick what to expose</div>
+            <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+              Choose repeaters for telemetry sensors and contacts for GPS tracker entities.
+            </p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-background/80 p-3">
+            <div className="text-sm font-medium text-foreground">3. Automate in HA</div>
+            <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+              Radio health and message events publish continuously; repeater and contact data update
+              when new data is heard or collected.
+            </p>
+          </div>
+        </div>
+
+        <p className="text-[0.8125rem] text-muted-foreground">
+          Uses{' '}
+          <span
+            role="link"
+            tabIndex={0}
+            className="underline cursor-pointer hover:text-primary transition-colors"
+            onClick={() =>
               window.open(
                 'https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery',
                 '_blank'
-              );
-          }}
-        >
-          MQTT Discovery
-        </span>{' '}
-        to automatically create devices and entities in Home Assistant. Your HA instance must have
-        the MQTT integration configured and connected to the same broker. See{' '}
-        <span
-          role="link"
-          tabIndex={0}
-          className="underline cursor-pointer hover:text-primary transition-colors"
-          onClick={() =>
-            window.open(
-              'https://github.com/jkingsman/Remote-Terminal-for-MeshCore/blob/main/README_HA.md',
-              '_blank'
-            )
-          }
-          onKeyDown={(e) => {
-            if (e.key === 'Enter')
+              )
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter')
+                window.open(
+                  'https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery',
+                  '_blank'
+                );
+            }}
+          >
+            MQTT Discovery
+          </span>{' '}
+          and the topic conventions documented in{' '}
+          <span
+            role="link"
+            tabIndex={0}
+            className="underline cursor-pointer hover:text-primary transition-colors"
+            onClick={() =>
               window.open(
                 'https://github.com/jkingsman/Remote-Terminal-for-MeshCore/blob/main/README_HA.md',
                 '_blank'
-              );
-          }}
-        >
-          README_HA.md
-        </span>{' '}
-        for automation examples and setup details. Note that entities like repeaters and contact GPS
-        won't update until new data is available; there is no caching layer (so devices/entities
-        might take hours to days to appear).
-      </p>
+              )
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter')
+                window.open(
+                  'https://github.com/jkingsman/Remote-Terminal-for-MeshCore/blob/main/README_HA.md',
+                  '_blank'
+                );
+            }}
+          >
+            README_HA.md
+          </span>
+          .
+        </p>
+      </div>
 
       <details className="group">
-        <summary className="text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium cursor-pointer select-none flex items-center gap-1">
+        <summary className="text-sm font-medium text-foreground cursor-pointer select-none flex items-center gap-1">
           <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-0 -rotate-90" />
           What gets created in Home Assistant
         </summary>
-        <div className="mt-2 space-y-2 text-xs text-muted-foreground rounded-md border border-border bg-muted/20 p-3">
+        <div className="mt-2 space-y-2 text-sm text-muted-foreground rounded-md border border-border bg-muted/20 p-3">
           <div>
             <span className="font-medium text-foreground">Local radio device</span> (always)
             <span className="ml-1">&mdash; updates every 60s</span>
             <ul className="mt-0.5 ml-4 list-disc space-y-0.5">
               <li>
-                <code className="text-[0.6875rem]">binary_sensor.meshcore_*_connected</code> &mdash;
-                radio online/offline
+                <code className="text-[0.6875rem]">
+                  {`binary_sensor.meshcore_${localRadioNodeId}_connected`}
+                </code>{' '}
+                &mdash; radio online/offline
               </li>
               <li>
-                <code className="text-[0.6875rem]">sensor.meshcore_*_noise_floor</code> &mdash;
-                radio noise floor (dBm)
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${localRadioNodeId}_noise_floor`}
+                </code>{' '}
+                &mdash; radio noise floor (dBm)
               </li>
             </ul>
           </div>
 
           <div>
             <span className="font-medium text-foreground">Per tracked repeater</span> &mdash;
-            updates on telemetry collect cycle (~8h) or manual dashboard fetch
+            updates on telemetry collect cycle (~8h) or manual dashboard fetch. Entity IDs shown use
+            one repeater for example; these sensors are created for each selected repeater.
             <ul className="mt-0.5 ml-4 list-disc space-y-0.5">
               <li>
-                <code className="text-[0.6875rem]">sensor.meshcore_*_battery_voltage</code> (V)
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_battery_voltage`}
+                </code>{' '}
+                (V)
               </li>
               <li>
-                <code className="text-[0.6875rem]">sensor.meshcore_*_noise_floor</code>,{' '}
-                <code className="text-[0.6875rem]">*_last_rssi</code>,{' '}
-                <code className="text-[0.6875rem]">*_last_snr</code> (dBm/dB)
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_noise_floor`}
+                </code>
+                ,{' '}
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_last_rssi`}
+                </code>
+                ,{' '}
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_last_snr`}
+                </code>{' '}
+                (dBm/dB)
               </li>
               <li>
-                <code className="text-[0.6875rem]">sensor.meshcore_*_packets_received</code>,{' '}
-                <code className="text-[0.6875rem]">*_packets_sent</code>
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_packets_received`}
+                </code>
+                ,{' '}
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_packets_sent`}
+                </code>
               </li>
               <li>
-                <code className="text-[0.6875rem]">sensor.meshcore_*_uptime</code> (seconds)
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_uptime`}
+                </code>{' '}
+                (seconds)
               </li>
               <li>
-                <code className="text-[0.6875rem]">sensor.meshcore_*_lpp_temperature_ch*</code>,{' '}
-                <code className="text-[0.6875rem]">*_lpp_humidity_ch*</code>, etc. &mdash;
-                CayenneLPP sensors (auto-detected from repeater)
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_lpp_temperature_ch1`}
+                </code>
+                ,{' '}
+                <code className="text-[0.6875rem]">
+                  {`sensor.meshcore_${exampleRepeaterNodeId}_lpp_humidity_ch1`}
+                </code>
+                , etc. &mdash; CayenneLPP sensors (auto-detected from repeater)
               </li>
             </ul>
           </div>
 
           <div>
             <span className="font-medium text-foreground">Per tracked contact</span> &mdash; updates
-            passively when advertisements with GPS are heard
+            passively when advertisements with GPS are heard. Shown for one contact; a tracker is
+            created for each selected contact.
             <ul className="mt-0.5 ml-4 list-disc space-y-0.5">
               <li>
-                <code className="text-[0.6875rem]">device_tracker.meshcore_*</code> &mdash;
-                latitude/longitude
+                <code className="text-[0.6875rem]">
+                  {`device_tracker.meshcore_${exampleContactNodeId}`}
+                </code>{' '}
+                &mdash; latitude/longitude
               </li>
             </ul>
           </div>
@@ -1083,8 +1229,10 @@ function MqttHaConfigEditor({
             each message matching the scope below
             <ul className="mt-0.5 ml-4 list-disc space-y-0.5">
               <li>
-                <code className="text-[0.6875rem]">event.meshcore_messages</code> &mdash; trigger
-                automations on sender, channel, or message content
+                <code className="text-[0.6875rem]">
+                  {`event.meshcore_${localRadioNodeId}_messages`}
+                </code>{' '}
+                &mdash; trigger automations on sender, channel, or message content
               </li>
             </ul>
           </div>
@@ -1098,11 +1246,62 @@ function MqttHaConfigEditor({
         </div>
       </details>
 
+      <details className="group">
+        <summary className="text-sm font-medium text-foreground cursor-pointer select-none flex items-center gap-1">
+          <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-0 -rotate-90" />
+          Published Topic Summary
+        </summary>
+        <div className="mt-2 space-y-2 rounded-md border border-border bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">
+            Home Assistant device and entity IDs are keyed off the first 12 characters of each
+            node&apos;s public key, not the display name. Those same 12 characters are used in the
+            MQTT state topics below.
+          </p>
+          {topicSummary.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              No topic previews available yet. Connect to a radio to resolve the local radio key,
+              and select contacts or repeaters above to preview their published topics.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {topicSummary.map((item) => (
+                <div
+                  key={`${item.kind}-${item.publicKey}`}
+                  className="rounded border border-border/70 bg-background/70 p-2"
+                >
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                    <span className="font-medium text-foreground">{kindLabel[item.kind]}</span>
+                    <span className="text-foreground">{item.label}</span>
+                    <span className="font-mono text-[0.6875rem] text-muted-foreground">
+                      node id {item.nodeId}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[0.6875rem] text-muted-foreground font-mono break-all">
+                    key {item.publicKey}
+                  </div>
+                  {item.topics.map((topic) => (
+                    <div
+                      key={topic}
+                      className="mt-1 rounded bg-muted px-2 py-1 text-[0.6875rem] font-mono text-foreground break-all"
+                    >
+                      {topic}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[0.6875rem] text-muted-foreground">
+            Discovery config topics are also published under{' '}
+            <code className="text-[0.6875rem]">homeassistant/.../config</code>, but the topics above
+            are the primary runtime state and event topics.
+          </p>
+        </div>
+      </details>
+
       <Separator />
 
-      <p className="text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium">
-        MQTT Broker
-      </p>
+      <h3 className="text-base font-semibold tracking-tight">MQTT Broker</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -1193,10 +1392,8 @@ function MqttHaConfigEditor({
       <Separator />
 
       <div className="space-y-2">
-        <p className="text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium">
-          GPS Tracked Contacts
-        </p>
-        <p className="text-xs text-muted-foreground">
+        <h3 className="text-base font-semibold tracking-tight">GPS Tracked Contacts</h3>
+        <p className="text-[0.8125rem] text-muted-foreground">
           Each selected contact becomes a <code className="text-[0.6875rem]">device_tracker</code>{' '}
           in HA, updated whenever an advertisement with GPS coordinates is heard. Useful for
           tracking mobile nodes on an HA map dashboard.
@@ -1224,7 +1421,7 @@ function MqttHaConfigEditor({
         )}
 
         {contactOptions.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">No contacts available.</p>
+          <p className="text-[0.8125rem] text-muted-foreground italic">No contacts available.</p>
         ) : (
           <>
             <Input
@@ -1236,7 +1433,7 @@ function MqttHaConfigEditor({
             />
             <div className="max-h-48 overflow-y-auto space-y-1 rounded border border-border p-2">
               {filteredContacts.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic py-1">
+                <p className="text-[0.8125rem] text-muted-foreground italic py-1">
                   No contacts match &ldquo;{contactSearch}&rdquo;
                 </p>
               ) : (
@@ -1266,10 +1463,8 @@ function MqttHaConfigEditor({
       <Separator />
 
       <div className="space-y-2">
-        <p className="text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium">
-          Telemetry Tracked Repeaters
-        </p>
-        <p className="text-xs text-muted-foreground">
+        <h3 className="text-base font-semibold tracking-tight">Telemetry Tracked Repeaters</h3>
+        <p className="text-[0.8125rem] text-muted-foreground">
           Each selected repeater becomes an HA device with sensors for battery voltage, RSSI, SNR,
           noise floor, packet counts, and uptime. Data updates whenever telemetry is collected
           (auto-collect runs every ~8 hours, or on manual dashboard fetch). Only repeaters already
@@ -1277,13 +1472,13 @@ function MqttHaConfigEditor({
           repeater and opting in at the bottom of the page).
         </p>
         {trackedRepeaters.length === 0 ? (
-          <div className="rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <div className="rounded-md border border-muted bg-muted/30 px-3 py-2 text-[0.8125rem] text-muted-foreground">
             No repeaters are being auto-tracked for telemetry. Add repeaters to the auto-telemetry
             tracking list in the Radio section first, then return here to select which ones to
             expose to HA.
           </div>
         ) : repeaterOptions.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">
+          <p className="text-[0.8125rem] text-muted-foreground italic">
             Auto-tracked repeaters not found in contact list.
           </p>
         ) : (
@@ -1309,14 +1504,12 @@ function MqttHaConfigEditor({
       <Separator />
 
       <div className="space-y-2">
-        <p className="text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium">
-          Message Events
-        </p>
-        <p className="text-xs text-muted-foreground">
+        <h3 className="text-base font-semibold tracking-tight">Message Events</h3>
+        <p className="text-[0.8125rem] text-muted-foreground">
           Matching messages fire an{' '}
-          <code className="text-[0.6875rem]">event.meshcore_messages</code> entity in HA with
-          sender, text, channel, and direction attributes. Use HA automations to trigger actions on
-          specific messages, channels, or contacts.
+          <code className="text-[0.6875rem]">{`event.meshcore_${localRadioNodeId}_messages`}</code>{' '}
+          entity in HA with sender, text, channel, and direction attributes. Use HA automations to
+          trigger actions on specific messages, channels, or contacts.
         </p>
       </div>
       <ScopeSelector scope={scope} onChange={onScopeChange} />
@@ -1335,7 +1528,7 @@ function MqttCommunityConfigEditor({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Advanced community MQTT editor. Use this for manual meshcoretomqtt-compatible setups or for
         modifying a saved preset after creation. Only raw RF packets are shared &mdash; never
         decrypted messages.
@@ -1398,7 +1591,7 @@ function MqttCommunityConfigEditor({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         LetsMesh uses <code>token</code> auth. MeshRank uses <code>none</code>.
       </p>
 
@@ -1413,7 +1606,9 @@ function MqttCommunityConfigEditor({
               value={(config.token_audience as string | undefined) ?? ''}
               onChange={(e) => onChange({ ...config, token_audience: e.target.value })}
             />
-            <p className="text-xs text-muted-foreground">Defaults to the broker host when blank</p>
+            <p className="text-[0.8125rem] text-muted-foreground">
+              Defaults to the broker host when blank
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="fanout-comm-email">Owner Email (optional)</Label>
@@ -1424,7 +1619,7 @@ function MqttCommunityConfigEditor({
               value={(config.email as string) || ''}
               onChange={(e) => onChange({ ...config, email: e.target.value })}
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[0.8125rem] text-muted-foreground">
               Used to claim your node on the community aggregator
             </p>
           </div>
@@ -1488,7 +1683,7 @@ function MqttCommunityConfigEditor({
           onChange={(e) => onChange({ ...config, iata: e.target.value.toUpperCase() })}
           className="w-32"
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[0.8125rem] text-muted-foreground">
           Your nearest airport&apos;s IATA code (required)
         </p>
       </div>
@@ -1502,7 +1697,7 @@ function MqttCommunityConfigEditor({
           value={(config.topic_template as string | undefined) ?? ''}
           onChange={(e) => onChange({ ...config, topic_template: e.target.value })}
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[0.8125rem] text-muted-foreground">
           Use <code>{'{IATA}'}</code> and <code>{'{PUBLIC_KEY}'}</code>. Default:{' '}
           <code>{DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE}</code>
         </p>
@@ -1520,7 +1715,7 @@ function MeshRankConfigEditor({
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Pre-filled MeshRank setup. This saves as a regular Community MQTT integration once created,
         but only asks for the MeshRank packet topic you were given.
       </p>
@@ -1547,7 +1742,7 @@ function MeshRankConfigEditor({
             })
           }
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[0.8125rem] text-muted-foreground">
           Paste the full topic template from your MeshRank config, for example{' '}
           <code>meshrank/uplink/B435F6D5F7896B74C6B995FE221C2C1F/{'{PUBLIC_KEY}'}/packets</code>.
         </p>
@@ -1567,7 +1762,7 @@ function LetsMeshConfigEditor({
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Pre-filled LetsMesh setup. This saves as a regular Community MQTT integration once created,
         but only asks for the values LetsMesh expects from you.
       </p>
@@ -1648,7 +1843,7 @@ function BotConfigEditor({
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[0.8125rem] text-muted-foreground">
           Define a <code className="bg-muted px-1 rounded">bot()</code> function that receives
           message data and optionally returns a reply.
         </p>
@@ -1672,7 +1867,7 @@ function BotConfigEditor({
         <BotCodeEditor value={code} onChange={(c) => onChange({ ...config, code: c })} />
       </Suspense>
 
-      <div className="text-xs text-muted-foreground space-y-1">
+      <div className="text-[0.8125rem] text-muted-foreground space-y-1">
         <p>
           <strong>Available:</strong> Standard Python libraries and any modules installed in the
           server environment.
@@ -1720,15 +1915,15 @@ function MapUploadConfigEditor({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Automatically upload heard repeater and room server advertisements to{' '}
         <a
-          href="https://map.meshcore.dev"
+          href="https://map.meshcore.io"
           target="_blank"
           rel="noopener noreferrer"
           className="underline hover:text-foreground"
         >
-          map.meshcore.dev
+          map.meshcore.io
         </a>
         . Requires the radio&apos;s private key to be available (firmware must have{' '}
         <code>ENABLE_PRIVATE_KEY_EXPORT=1</code>). Only raw RF packets are shared &mdash; never
@@ -1751,7 +1946,7 @@ function MapUploadConfigEditor({
         />
         <div>
           <span className="text-sm font-medium">Dry Run (log only, no uploads)</span>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[0.8125rem] text-muted-foreground">
             When enabled, upload payloads are logged at INFO level but not sent. Disable once you
             have confirmed the logged output looks correct.
           </p>
@@ -1765,12 +1960,12 @@ function MapUploadConfigEditor({
         <Input
           id="fanout-map-api-url"
           type="url"
-          placeholder="https://map.meshcore.dev/api/v1/uploader/node"
+          placeholder="https://map.meshcore.io/api/v1/uploader/node"
           value={(config.api_url as string) || ''}
           onChange={(e) => onChange({ ...config, api_url: e.target.value })}
         />
-        <p className="text-xs text-muted-foreground">
-          Leave blank to use the default <code>map.meshcore.dev</code> endpoint.
+        <p className="text-[0.8125rem] text-muted-foreground">
+          Leave blank to use the default <code>map.meshcore.io</code> endpoint.
         </p>
       </div>
 
@@ -1785,7 +1980,7 @@ function MapUploadConfigEditor({
         />
         <div>
           <span className="text-sm font-medium">Enable Geofence</span>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[0.8125rem] text-muted-foreground">
             Only upload nodes whose location falls within the configured radius of your radio&apos;s
             own position. Helps exclude nodes with false or spoofed coordinates. Uses the
             latitude/longitude set in Radio Settings.
@@ -1803,7 +1998,7 @@ function MapUploadConfigEditor({
             </div>
           )}
           {radioLatLonConfigured && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[0.8125rem] text-muted-foreground">
               Using radio position{' '}
               <code>
                 {radioLat?.toFixed(5)}, {radioLon?.toFixed(5)}
@@ -1827,7 +2022,7 @@ function MapUploadConfigEditor({
                 })
               }
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[0.8125rem] text-muted-foreground">
               Nodes further than this distance from your radio&apos;s position will not be uploaded.
             </p>
           </div>
@@ -1864,6 +2059,162 @@ function getFilterKeys(filter: unknown): string[] {
   if (typeof filter === 'object' && filter !== null && 'except' in filter)
     return ((filter as Record<string, unknown>).except as string[]) ?? [];
   return [];
+}
+
+const MAX_SCOPE_PILL_DISPLAY = 32;
+
+interface PillsSearchListItem {
+  key: string;
+  label: string;
+  /** Optional trailing monospace hint (e.g. pubkey prefix) */
+  trailing?: string;
+}
+
+/**
+ * Search-and-pills picker for the generic fanout scope selector.
+ * Shows selected items as removable pills (up to MAX_SCOPE_PILL_DISPLAY),
+ * a search input, and a scrollable list of filtered items with checkboxes.
+ * When more than MAX_SCOPE_PILL_DISPLAY items are selected, the pill row
+ * collapses to a single informational badge to keep the interface clean.
+ */
+function PillsSearchList({
+  label,
+  labelSuffix,
+  items,
+  selectedKeys,
+  onToggle,
+  onAll,
+  onNone,
+  searchPlaceholder,
+  emptyItemsMessage,
+}: {
+  label: string;
+  labelSuffix: string;
+  items: PillsSearchListItem[];
+  selectedKeys: string[];
+  onToggle: (key: string) => void;
+  onAll: () => void;
+  onNone: () => void;
+  searchPlaceholder: string;
+  emptyItemsMessage: string;
+}) {
+  const [search, setSearch] = useState('');
+  const searchLower = search.toLowerCase().trim();
+
+  const filtered = useMemo(() => {
+    const matches = items.filter((it) => {
+      if (!searchLower) return true;
+      return (
+        it.label.toLowerCase().includes(searchLower) || it.key.toLowerCase().startsWith(searchLower)
+      );
+    });
+    // Selected items sort to top (mirrors the Home Assistant tracked-contacts picker)
+    return matches.sort((a, b) => {
+      const aSel = selectedKeys.includes(a.key) ? 0 : 1;
+      const bSel = selectedKeys.includes(b.key) ? 0 : 1;
+      if (aSel !== bSel) return aSel - bSel;
+      return a.label.localeCompare(b.label);
+    });
+  }, [items, searchLower, selectedKeys]);
+
+  const selectedDetails = useMemo(
+    () => items.filter((it) => selectedKeys.includes(it.key)),
+    [items, selectedKeys]
+  );
+  const overPillLimit = selectedDetails.length > MAX_SCOPE_PILL_DISPLAY;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">
+          {label} <span className="text-muted-foreground font-normal">({labelSuffix})</span>
+        </Label>
+        <span className="flex gap-1">
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={onAll}
+          >
+            All
+          </button>
+          <span className="text-xs text-muted-foreground">/</span>
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={onNone}
+          >
+            None
+          </button>
+        </span>
+      </div>
+
+      {selectedDetails.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {overPillLimit ? (
+            <span className="inline-flex items-center text-[0.6875rem] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+              &gt;{MAX_SCOPE_PILL_DISPLAY} selections made; hiding selection preview to keep the
+              interface clean
+            </span>
+          ) : (
+            selectedDetails.map((it) => (
+              <span
+                key={it.key}
+                className="inline-flex items-center gap-1 text-[0.6875rem] px-2 py-0.5 rounded-full bg-primary/10 text-primary"
+              >
+                {it.label}
+                <button
+                  type="button"
+                  className="ml-0.5 hover:text-destructive transition-colors"
+                  onClick={() => onToggle(it.key)}
+                  aria-label={`Remove ${it.label}`}
+                >
+                  &times;
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <p className="text-[0.8125rem] text-muted-foreground italic">{emptyItemsMessage}</p>
+      ) : (
+        <>
+          <Input
+            type="text"
+            placeholder={searchPlaceholder}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 text-sm"
+          />
+          <div className="max-h-48 overflow-y-auto space-y-1 rounded border border-border p-2">
+            {filtered.length === 0 ? (
+              <p className="text-[0.8125rem] text-muted-foreground italic py-1">
+                No {label.toLowerCase()} match &ldquo;{search}&rdquo;
+              </p>
+            ) : (
+              filtered.map((it) => (
+                <label key={it.key} className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedKeys.includes(it.key)}
+                    onChange={() => onToggle(it.key)}
+                    className="h-3.5 w-3.5 rounded border-input accent-primary"
+                  />
+                  <span className="truncate">{it.label}</span>
+                  {it.trailing && (
+                    <span className="text-[0.625rem] text-muted-foreground ml-auto font-mono shrink-0">
+                      {it.trailing}
+                    </span>
+                  )}
+                </label>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function ScopeSelector({
@@ -1975,9 +2326,6 @@ function ScopeSelector({
       selectedContacts.length >= filteredContacts.length);
   const showEmptyScopeWarning = messagesEffectivelyNone && !rawEnabled;
 
-  const isChannelChecked = (key: string) => selectedChannels.includes(key);
-  const isContactChecked = (key: string) => selectedContacts.includes(key);
-
   const listHint =
     mode === 'only'
       ? 'Newly added channels or contacts will not be automatically included.'
@@ -1991,7 +2339,7 @@ function ScopeSelector({
 
   return (
     <div className="space-y-3">
-      <Label>Message Scope</Label>
+      <h3 className="text-base font-semibold tracking-tight">Message Scope</h3>
 
       {showRawPackets && (
         <label className="flex items-center gap-3 cursor-pointer">
@@ -2028,110 +2376,54 @@ function ScopeSelector({
 
       {isListMode && (
         <>
-          <p className="text-xs text-muted-foreground">{listHint}</p>
+          <p className="text-[0.8125rem] text-muted-foreground">{listHint}</p>
 
           {channels.length > 0 && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">
-                  Channels{' '}
-                  <span className="text-muted-foreground font-normal">({checkboxLabel})</span>
-                </Label>
-                <span className="flex gap-1">
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() =>
-                      onChange({
-                        ...scope,
-                        messages: buildMessages(
-                          channels.map((ch) => ch.key),
-                          selectedContacts
-                        ),
-                      })
-                    }
-                  >
-                    All
-                  </button>
-                  <span className="text-xs text-muted-foreground">/</span>
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() =>
-                      onChange({ ...scope, messages: buildMessages([], selectedContacts) })
-                    }
-                  >
-                    None
-                  </button>
-                </span>
-              </div>
-              <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 space-y-1">
-                {channels.map((ch) => (
-                  <label key={ch.key} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isChannelChecked(ch.key)}
-                      onChange={() => toggleChannel(ch.key)}
-                      className="h-3.5 w-3.5 rounded border-input accent-primary"
-                    />
-                    <span className="text-sm truncate">{ch.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            <PillsSearchList
+              label="Channels"
+              labelSuffix={checkboxLabel}
+              items={channels.map((ch) => ({ key: ch.key, label: ch.name }))}
+              selectedKeys={selectedChannels}
+              onToggle={toggleChannel}
+              onAll={() =>
+                onChange({
+                  ...scope,
+                  messages: buildMessages(
+                    channels.map((ch) => ch.key),
+                    selectedContacts
+                  ),
+                })
+              }
+              onNone={() => onChange({ ...scope, messages: buildMessages([], selectedContacts) })}
+              searchPlaceholder={`Search ${channels.length} channel${channels.length === 1 ? '' : 's'}...`}
+              emptyItemsMessage="No channels available."
+            />
           )}
 
           {filteredContacts.length > 0 && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">
-                  Contacts{' '}
-                  <span className="text-muted-foreground font-normal">({checkboxLabel})</span>
-                </Label>
-                <span className="flex gap-1">
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() =>
-                      onChange({
-                        ...scope,
-                        messages: buildMessages(
-                          selectedChannels,
-                          filteredContacts.map((c) => c.public_key)
-                        ),
-                      })
-                    }
-                  >
-                    All
-                  </button>
-                  <span className="text-xs text-muted-foreground">/</span>
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() =>
-                      onChange({ ...scope, messages: buildMessages(selectedChannels, []) })
-                    }
-                  >
-                    None
-                  </button>
-                </span>
-              </div>
-              <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 space-y-1">
-                {filteredContacts.map((c) => (
-                  <label key={c.public_key} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isContactChecked(c.public_key)}
-                      onChange={() => toggleContact(c.public_key)}
-                      className="h-3.5 w-3.5 rounded border-input accent-primary"
-                    />
-                    <span className="text-sm truncate">
-                      {c.name || c.public_key.substring(0, 12) + '...'}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            <PillsSearchList
+              label="Contacts"
+              labelSuffix={checkboxLabel}
+              items={filteredContacts.map((c) => ({
+                key: c.public_key,
+                label: c.name || c.public_key.slice(0, 12),
+                trailing: c.public_key.slice(0, 12),
+              }))}
+              selectedKeys={selectedContacts}
+              onToggle={toggleContact}
+              onAll={() =>
+                onChange({
+                  ...scope,
+                  messages: buildMessages(
+                    selectedChannels,
+                    filteredContacts.map((c) => c.public_key)
+                  ),
+                })
+              }
+              onNone={() => onChange({ ...scope, messages: buildMessages(selectedChannels, []) })}
+              searchPlaceholder={`Search ${filteredContacts.length} contact${filteredContacts.length === 1 ? '' : 's'}...`}
+              emptyItemsMessage="No contacts available."
+            />
           )}
         </>
       )}
@@ -2152,7 +2444,7 @@ function AppriseConfigEditor({
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Send push notifications via{' '}
         <a
           href="https://github.com/caronc/apprise"
@@ -2186,7 +2478,7 @@ function AppriseConfigEditor({
           onChange={(e) => onChange({ ...config, urls: e.target.value })}
           rows={4}
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[0.8125rem] text-muted-foreground">
           One URL per line. All URLs receive every matched notification. For Matrix room version 12
           (servername-less room IDs), append <code>?hsreq=no</code> to the URL.
         </p>
@@ -2201,7 +2493,7 @@ function AppriseConfigEditor({
         />
         <div>
           <span className="text-sm">Preserve identity on Discord</span>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[0.8125rem] text-muted-foreground">
             When enabled, Discord webhooks will use their configured name/avatar instead of
             overriding with MeshCore sender info.
           </p>
@@ -2257,7 +2549,7 @@ function WebhookConfigEditor({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Send message data as JSON to an HTTP endpoint when messages are received.
       </p>
 
@@ -2291,8 +2583,8 @@ function WebhookConfigEditor({
       <Separator />
 
       <div className="space-y-3">
-        <Label>HMAC Signing</Label>
-        <p className="text-xs text-muted-foreground">
+        <h3 className="text-base font-semibold tracking-tight">HMAC Signing</h3>
+        <p className="text-[0.8125rem] text-muted-foreground">
           When a secret is set, each request includes an HMAC-SHA256 signature of the JSON body in
           the specified header (e.g. <code className="bg-muted px-1 rounded">sha256=ab12cd...</code>
           ).
@@ -2355,7 +2647,7 @@ function SqsConfigEditor({
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Send matched mesh events to an Amazon SQS queue for durable processing by workers, Lambdas,
         or downstream automation.
       </p>
@@ -2396,15 +2688,17 @@ function SqsConfigEditor({
             value={(config.endpoint_url as string) || ''}
             onChange={(e) => onChange({ ...config, endpoint_url: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">Useful for LocalStack or custom endpoints</p>
+          <p className="text-[0.8125rem] text-muted-foreground">
+            Useful for LocalStack or custom endpoints
+          </p>
         </div>
       </div>
 
       <Separator />
 
       <div className="space-y-2">
-        <Label>Static Credentials (optional)</Label>
-        <p className="text-xs text-muted-foreground">
+        <h3 className="text-base font-semibold tracking-tight">Static Credentials (optional)</h3>
+        <p className="text-[0.8125rem] text-muted-foreground">
           Leave blank to use the server&apos;s normal AWS credential chain.
         </p>
       </div>

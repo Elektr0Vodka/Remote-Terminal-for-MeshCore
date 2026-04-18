@@ -40,7 +40,8 @@ frontend/src/
 ├── styles.css              # Additional global app styles
 ├── themes.css              # Color theme definitions
 ├── contexts/
-│   └── DistanceUnitContext.tsx # Browser-local distance-unit context/provider
+│   ├── DistanceUnitContext.tsx # Browser-local distance-unit context/provider
+│   └── PushSubscriptionContext.tsx # Push subscription state context/provider
 ├── lib/
 │   └── utils.ts            # cn() — clsx + tailwind-merge helper
 ├── hooks/
@@ -57,6 +58,7 @@ frontend/src/
 │   ├── useConversationRouter.ts    # URL hash → active conversation routing
 │   ├── useContactsAndChannels.ts   # Contact/channel loading, creation, deletion
 │   ├── useBrowserNotifications.ts  # Per-conversation browser notification preferences + dispatch
+│   ├── usePushSubscription.ts      # Web Push subscription lifecycle, per-conversation filters
 │   ├── useFaviconBadge.ts          # Browser tab unread badge state
 │   ├── useRawPacketStatsSession.ts # Session-scoped packet-feed stats history
 │   └── useRememberedServerPassword.ts # Browser-local repeater/room password persistence
@@ -91,7 +93,13 @@ frontend/src/
 │   ├── radioPresets.ts            # LoRa radio preset configurations
 │   ├── publicChannel.ts           # Public-channel resolution helpers for routing/hash defaults
 │   ├── fontScale.ts               # Browser-local relative font scale persistence/application
-│   └── theme.ts                   # Theme switching helpers
+│   ├── theme.ts                   # Theme switching helpers
+│   ├── autoFocusInput.ts          # Auto-focus input helper
+│   ├── batteryDisplay.ts          # Battery level display helpers
+│   ├── messageIdentity.ts         # Message identity/dedup helpers
+│   ├── rawPacketInspector.ts      # Raw packet inspection helpers
+│   ├── serverLoginState.ts        # Server login state helpers
+│   └── statusDotPulse.ts          # Status dot pulse animation helpers
 ├── components/
 │   ├── StatusBar.tsx
 │   ├── Sidebar.tsx
@@ -135,7 +143,8 @@ frontend/src/
 │   │   ├── SettingsDatabaseSection.tsx   # DB size, cleanup, auto-decrypt, local label
 │   │   ├── SettingsStatisticsSection.tsx # Read-only mesh network stats
 │   │   ├── SettingsAboutSection.tsx     # Version, author, license, links
-│   │   └── ThemeSelector.tsx           # Color theme picker
+│   │   ├── ThemeSelector.tsx           # Color theme picker
+│   │   └── BulkDeleteContactsModal.tsx # Bulk contact deletion dialog
 │   ├── repeater/
 │   │   ├── repeaterPaneShared.tsx        # Shared: RepeaterPane, KvRow, format helpers
 │   │   ├── RepeaterTelemetryPane.tsx    # Battery, airtime, packet counts
@@ -145,6 +154,7 @@ frontend/src/
 │   │   ├── RepeaterRadioSettingsPane.tsx # Radio config + advert intervals
 │   │   ├── RepeaterLppTelemetryPane.tsx # CayenneLPP sensor data
 │   │   ├── RepeaterOwnerInfoPane.tsx    # Owner info + guest password
+│   │   ├── RepeaterTelemetryHistoryPane.tsx # Historical telemetry chart/table
 │   │   ├── RepeaterActionsPane.tsx      # Send Advert, Sync Clock, Reboot
 │   │   └── RepeaterConsolePane.tsx      # CLI console with history
 │   └── ui/                     # shadcn/ui primitives
@@ -360,7 +370,7 @@ LocalStorage migration helpers for favorites; canonical favorites are server-sid
 - `blocked_keys`, `blocked_names`, `discovery_blocked_types`
 - `tracked_telemetry_repeaters`
 - `auto_resend_channel`
-
+- `telemetry_interval_hours`
 
 Note: MQTT, bot, and community MQTT settings were migrated to the `fanout_configs` table (managed via `/api/fanout`). They are no longer part of `AppSettings`.
 
@@ -437,6 +447,17 @@ The `SearchView` component (`components/SearchView.tsx`) provides full-text sear
 - **Bidirectional pagination**: After jumping mid-history, `hasNewerMessages` enables forward pagination via `fetchNewerMessages`. The scroll-to-bottom button calls `jumpToBottom` (re-fetches latest page) instead of just scrolling.
 - **WS message suppression**: When `hasNewerMessages` is true, incoming WS messages for the active conversation are not added to the message list (the user is viewing historical context, not the latest page).
 
+## Web Push Notifications
+
+Web Push allows notifications even when the browser tab is closed. Requires HTTPS (self-signed OK).
+
+- **Service worker**: `frontend/public/sw.js` handles `push` events (show notification) and `notificationclick` (focus/open tab, navigate via `url_hash`). Registered in `main.tsx` on secure contexts only.
+- **`usePushSubscription` hook**: manages the full subscription lifecycle — subscribe (register SW → `PushManager.subscribe()` → POST to backend), unsubscribe, global push-conversation toggles, device listing, and deletion.
+- **ChatHeader integration**: `BellRing` icon (amber when active) appears next to the existing desktop notification `Bell` on secure contexts. First click subscribes the browser and enables push for that conversation; subsequent clicks toggle the conversation on/off.
+- **Settings > Local**: `PushDeviceManagement` component shows subscription status, lists all registered devices with test/delete buttons. Uses `usePushSubscription` hook directly.
+- Auto-generates device labels from User-Agent (e.g., "Chrome on macOS").
+- `PushSubscriptionInfo` type in `types.ts`; API methods in `api.ts`.
+
 ## Styling
 
 UI styling is mostly utility-class driven (Tailwind-style classes in JSX) plus shared globals in `index.css` and `styles.css`.
@@ -449,7 +470,9 @@ Do not rely on old class-only layout assumptions.
 Key conventions documented in the reference:
 
 - **Text sizes** use `rem`-based Tailwind values so they scale with the user's font-size slider. Do not use hard-locked `px` values (e.g., `text-[10px]`). The canonical sizes are `text-[0.625rem]` (10px), `text-[0.6875rem]` (11px), `text-[0.8125rem]` (13px), plus standard Tailwind `text-xs`/`text-sm`/`text-base`/`text-lg`/`text-xl`.
-- **Section labels** use `text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium`.
+- **Group titles** (sub-section headings within settings tabs) use `<h3 className="text-base font-semibold tracking-tight">`. These separate major groups like "Connection", "Identity", "MQTT Broker". When a group contains named sub-items (e.g. "Contact Management" → "Blocked Contacts", "Bulk Delete"), use `<h4 className="text-sm font-semibold">` for the children and nest them inside the parent group's `div` instead of separating with `<Separator />`.
+- **Helper / description text** uses `text-[0.8125rem] text-muted-foreground` (13px). This is for explanatory paragraphs under inputs or sections — not for metadata, timestamps, or alert text which stay at `text-xs`.
+- **Metadata labels** use `text-[0.625rem] uppercase tracking-wider text-muted-foreground font-medium` for compact category tags like "Push-enabled conversations" or "Registered Devices".
 - **Buttons** use the shadcn `<Button>` component. Semantic color overrides (danger, warning, success) use `variant="outline"` with `className="border-{color}/50 text-{color} hover:bg-{color}/10"`.
 - **Badges/tags** use `text-[0.625rem] uppercase tracking-wider px-1.5 py-0.5 rounded` with `bg-muted` (neutral) or `bg-primary/10` (active).
 - **Clickable text** (copy-to-clipboard, navigational links) uses `role="button" tabIndex={0}` with `cursor-pointer hover:text-primary transition-colors`.

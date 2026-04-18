@@ -13,13 +13,21 @@ import type { HealthStatus, RadioConfig } from '../types';
 import { api } from '../api';
 import { toast } from './ui/sonner';
 import { handleKeyboardActivate } from '../utils/a11y';
-import { applyTheme, getSavedTheme, THEME_CHANGE_EVENT, THEMES } from '../utils/theme';
+import { applyTheme, getEffectiveTheme, THEME_CHANGE_EVENT, THEMES } from '../utils/theme';
 import {
   BATTERY_DISPLAY_CHANGE_EVENT,
   getShowBatteryPercent,
   getShowBatteryVoltage,
   mvToPercent,
 } from '../utils/batteryDisplay';
+import {
+  STATUS_DOT_PULSE_CHANGE_EVENT,
+  STATUS_DOT_PULSE_DURATION_MS,
+  STATUS_DOT_PULSE_PACKET_EVENT,
+  getStatusDotPulseEnabled,
+  pulseColorFor,
+  type StatusDotPulseKind,
+} from '../utils/statusDotPulse';
 import { cn } from '@/lib/utils';
 
 interface StatusBarProps {
@@ -185,19 +193,76 @@ export function StatusBar({
             : 'Radio Disconnected';
 
   const [reconnecting, setReconnecting] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState(getSavedTheme);
+  // Track the *effective* theme (follow-os is resolved to original/light) so the
+  // toggle icon and action match what the user currently sees rendered.
+  const [currentTheme, setCurrentTheme] = useState(getEffectiveTheme);
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const [pulseEnabled, setPulseEnabled] = useState(getStatusDotPulseEnabled);
+  const [pulseKind, setPulseKind] = useState<StatusDotPulseKind | null>(null);
 
   // Sync theme state when changed from anywhere (e.g. the Settings → Appearance page)
   useEffect(() => {
-    const handler = (event: Event) => {
-      const themeId = (event as CustomEvent<string>).detail;
-      setCurrentTheme(typeof themeId === 'string' && themeId ? themeId : getSavedTheme());
+    const syncEffective = () => setCurrentTheme(getEffectiveTheme());
+    window.addEventListener(THEME_CHANGE_EVENT, syncEffective);
+
+    // When saved theme is "follow-os", OS appearance changes alter the effective
+    // theme without firing a THEME_CHANGE_EVENT, so also watch matchMedia.
+    const mql =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: light)')
+        : null;
+    if (mql) {
+      if (typeof mql.addEventListener === 'function') {
+        mql.addEventListener('change', syncEffective);
+      } else if (typeof (mql as MediaQueryList).addListener === 'function') {
+        (mql as MediaQueryList).addListener(syncEffective);
+      }
+    }
+
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, syncEffective);
+      if (mql) {
+        if (typeof mql.removeEventListener === 'function') {
+          mql.removeEventListener('change', syncEffective);
+        } else if (typeof (mql as MediaQueryList).removeListener === 'function') {
+          (mql as MediaQueryList).removeListener(syncEffective);
+        }
+      }
     };
-    window.addEventListener(THEME_CHANGE_EVENT, handler as EventListener);
-    return () => window.removeEventListener(THEME_CHANGE_EVENT, handler as EventListener);
   }, []);
+
+  useEffect(() => {
+    const handler = () => setPulseEnabled(getStatusDotPulseEnabled());
+    window.addEventListener(STATUS_DOT_PULSE_CHANGE_EVENT, handler);
+    return () => window.removeEventListener(STATUS_DOT_PULSE_CHANGE_EVENT, handler);
+  }, []);
+
+  useEffect(() => {
+    if (!pulseEnabled) {
+      setPulseKind(null);
+      return;
+    }
+    let timer: number | null = null;
+    const handler = (event: Event) => {
+      const kind = (event as CustomEvent<StatusDotPulseKind>).detail;
+      setPulseKind(kind);
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+      timer = window.setTimeout(() => {
+        setPulseKind(null);
+        timer = null;
+      }, STATUS_DOT_PULSE_DURATION_MS);
+    };
+    window.addEventListener(STATUS_DOT_PULSE_PACKET_EVENT, handler);
+    return () => {
+      window.removeEventListener(STATUS_DOT_PULSE_PACKET_EVENT, handler);
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [pulseEnabled]);
 
   // Close picker on outside click
   useEffect(() => {
@@ -261,9 +326,12 @@ export function StatusBar({
             radioState === 'initializing' || radioState === 'connecting'
               ? 'bg-warning'
               : connected
-                ? 'bg-status-connected shadow-[0_0_6px_hsl(var(--status-connected)/0.5)]'
+                ? pulseKind
+                  ? ''
+                  : 'bg-status-connected shadow-[0_0_6px_hsl(var(--status-connected)/0.5)]'
                 : 'bg-status-disconnected'
           )}
+          style={connected && pulseKind ? { backgroundColor: pulseColorFor(pulseKind) } : undefined}
           aria-hidden="true"
         />
         <span className="hidden lg:inline text-muted-foreground">{statusLabel}</span>

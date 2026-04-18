@@ -14,6 +14,9 @@ Dangerous characters by format:
 
 import re
 import subprocess
+import sys
+
+import pytest
 
 SERVICE_SCRIPT = "scripts/setup/install_service.sh"
 DOCKER_SCRIPT = "scripts/setup/install_docker.sh"
@@ -111,6 +114,7 @@ systemd_escape_env_value "$1"
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
     return result.stdout
@@ -170,6 +174,7 @@ yaml_quote "$1"
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
     return result.stdout
@@ -192,6 +197,9 @@ def _yaml_round_trip(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="bash parameter expansion syntax requires Linux/macOS bash"
+)
 class TestSystemdEscape:
     """All brutal strings survive systemd escape → unquote → specifier round trip."""
 
@@ -226,13 +234,16 @@ class TestSystemdEscape:
         assert not failures, "Not double-quoted:\n" + "\n".join(failures)
 
     def test_function_present_in_installer(self):
-        with open(SERVICE_SCRIPT) as f:
+        with open(SERVICE_SCRIPT, encoding="utf-8") as f:
             content = f.read()
         assert "systemd_escape_env_value()" in content
         assert 'systemd_escape_env_value "$AUTH_USERNAME"' in content
         assert 'systemd_escape_env_value "$AUTH_PASSWORD"' in content
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="bash parameter expansion syntax requires Linux/macOS bash"
+)
 class TestYamlQuote:
     """All brutal strings survive YAML single-quote escape → unquote round trip."""
 
@@ -256,7 +267,7 @@ class TestYamlQuote:
         assert not failures, "Not single-quoted:\n" + "\n".join(failures)
 
     def test_function_present_in_installer(self):
-        with open(DOCKER_SCRIPT) as f:
+        with open(DOCKER_SCRIPT, encoding="utf-8") as f:
             content = f.read()
         assert "yaml_quote()" in content
         assert 'yaml_quote "$AUTH_USERNAME"' in content
