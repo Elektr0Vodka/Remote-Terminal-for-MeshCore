@@ -364,6 +364,7 @@ class Channel(BaseModel):
     )
     last_read_at: int | None = None  # Server-side read state tracking
     favorite: bool = False
+    muted: bool = False
 
 
 class ChannelMessageCounts(BaseModel):

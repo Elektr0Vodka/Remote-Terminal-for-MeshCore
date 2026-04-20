@@ -28,10 +28,10 @@ import { getStateKey } from './utils/conversationState';
 import { buildMentionEvent, type MentionEvent } from './components/MentionTicker';
 import type {
   BulkCreateHashtagChannelsResult,
+  Channel,
   Conversation,
   Message,
   RawPacket,
-  Channel,
 } from './types';
 import { CONTACT_TYPE_REPEATER, CONTACT_TYPE_ROOM } from './types';
 import { shouldAutoFocusInput } from './utils/autoFocusInput';
@@ -270,7 +270,7 @@ export function App() {
       removeConversationMessagesRef.current(conversationId),
   });
 
-  // Keep channelsRef in sync so WS callbacks (e.g. mention ticker) can resolve channel names
+  // Keep channelsRef in sync so WS callbacks (mention ticker and mute filtering) can read current channel state
   useEffect(() => {
     channelsRef.current = channels;
   }, [channels]);
@@ -411,6 +411,20 @@ export function App() {
   useFaviconBadge(unreadCounts, mentions, channels);
   useUnreadTitle(unreadCounts, contacts, channels);
 
+  const handleToggleMute = useCallback(
+    async (key: string) => {
+      setChannels((prev) => prev.map((c) => (c.key === key ? { ...c, muted: !c.muted } : c)));
+      try {
+        await api.toggleChannelMute(key);
+        await refreshUnreads();
+      } catch {
+        setChannels((prev) => prev.map((c) => (c.key === key ? { ...c, muted: !c.muted } : c)));
+        toast.error('Failed to update mute');
+      }
+    },
+    [setChannels, refreshUnreads]
+  );
+
   useEffect(() => {
     if (activeConversation?.type !== 'channel') {
       setChannelUnreadMarker(null);
@@ -476,6 +490,7 @@ export function App() {
     setContacts,
     blockedKeysRef,
     blockedNamesRef,
+    channelsRef,
     activeConversationRef,
     observeMessage,
     recordMessageEvent,
@@ -656,6 +671,7 @@ export function App() {
     onRunTracePath: api.requestRadioTrace,
     onPathDiscovery: handlePathDiscovery,
     onToggleFavorite: handleToggleFavorite,
+    onToggleMute: handleToggleMute,
     onDeleteContact: handleDeleteContact,
     onDeleteChannel: handleDeleteChannel,
     onSetChannelFloodScopeOverride: handleSetChannelFloodScopeOverride,

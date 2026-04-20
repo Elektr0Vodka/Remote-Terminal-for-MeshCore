@@ -163,6 +163,7 @@ export function ChannelImportExportModal({
         path_hash_mode_override: null,
         last_read_at: null,
         favorite: false,
+        muted: false,
       }));
       if (toExport.length === 0) {
         toast.warning('No channels found yet', {
