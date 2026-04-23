@@ -11,6 +11,14 @@ These are intended for diagnosing or working around radios that behave oddly.
 | `MESHCORE_LOAD_WITH_AUTOEVICT` | false | Enable autoevict mode for contact loading (see [Contact Loading Issues](#contact-loading-issues) below) |
 | `__CLOWNTOWN_DO_CLOCK_WRAPAROUND` | false | Highly experimental: if the radio clock is ahead of system time, try forcing the clock to `0xFFFFFFFF`, wait for uint32 wraparound, and then retry normal time sync before falling back to reboot |
 
+## Private Key Export
+
+`MESHCORE_ENABLE_LOCAL_PRIVATE_KEY_EXPORT=true` enables `GET /api/radio/private-key`, which returns the in-memory private key as hex for backup or migration. The key is held in memory only (exported from the radio on connect) and is never persisted to disk. Only enable this on a trusted network when you need to retrieve the key.
+
+Import via `PUT /api/radio/private-key` is always available regardless of this setting — it is write-only and does not expose key material.
+
+The Radio Settings config export/import feature uses these endpoints. When export is disabled, config exports will omit the private key and show a notice.
+
 By default the app relies on radio events plus MeshCore auto-fetch for incoming messages, and also runs a low-frequency hourly audit poll. That audit checks both:
 
 - whether messages were left on the radio without reaching the app through event subscription

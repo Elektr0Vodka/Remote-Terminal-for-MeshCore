@@ -258,6 +258,12 @@ async def send_channel_message_with_effective_scope(
             )
             raise HTTPException(status_code=504, detail=NO_RADIO_RESPONSE_AFTER_SEND_DETAIL)
         if send_result.type == EventType.ERROR:
+            logger.error(
+                "Radio returned error during %s for channel %s: %s",
+                action_label,
+                channel.name,
+                send_result.payload,
+            )
             radio_manager.invalidate_cached_channel_slot(channel_key)
         else:
             radio_manager.note_channel_slot_used(channel_key)
@@ -856,7 +862,7 @@ async def send_channel_message_to_channel(
                 )
             )
     except Exception:
-        pass  # Never let watchdog setup failure break the send
+        logger.error("Echo watchdog setup failed", exc_info=True)
 
     return outgoing_message
 
