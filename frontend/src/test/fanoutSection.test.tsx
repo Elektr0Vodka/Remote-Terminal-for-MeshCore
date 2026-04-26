@@ -136,7 +136,7 @@ describe('SettingsFanoutSection', () => {
     const optionButtons = within(dialog)
       .getAllByRole('button')
       .filter((button) => button.hasAttribute('aria-pressed'));
-    expect(optionButtons).toHaveLength(12);
+    expect(optionButtons).toHaveLength(14);
     expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeInTheDocument();
     expect(
@@ -153,6 +153,12 @@ describe('SettingsFanoutSection', () => {
     ).toBeInTheDocument();
     expect(
       within(dialog).getByRole('button', { name: startsWithAccessibleName('MeshWiki') })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: startsWithAccessibleName('Cornmeister.nl') })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: startsWithAccessibleName('DutchMeshCore.nl') })
     ).toBeInTheDocument();
     expect(
       within(dialog).getByRole('button', {

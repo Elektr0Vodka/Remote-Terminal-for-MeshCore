@@ -48,6 +48,13 @@ const DEFAULT_MESHWIKI_BROKER_HOST = 'mqtt.mwiki.nl';
 const DEFAULT_MESHWIKI_BROKER_PORT = 8883;
 const DEFAULT_MESHWIKI_USERNAME = 'observer';
 const DEFAULT_MESHWIKI_PASSWORD = '86w7bW9NJxuPcErp2Y5NCQ==';
+const DEFAULT_CORNMEISTER_BROKER_HOST = 'mqtt.cornmeister.nl';
+const DEFAULT_CORNMEISTER_BROKER_PORT = 8883;
+const DEFAULT_CORNMEISTER_USERNAME = 'observer';
+const DEFAULT_CORNMEISTER_PASSWORD = 'hiermetdiedata';
+const DEFAULT_DUTCHMESHCORE_BROKER_HOST = 'collector1.dutchmeshcore.nl';
+const DEFAULT_DUTCHMESHCORE_BROKER_PORT = 443;
+const DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE = 'collector1.dutchmeshcore.nl';
 const DEFAULT_COMMUNITY_BROKER_PORT = 443;
 const DEFAULT_COMMUNITY_TRANSPORT = 'websockets';
 const DEFAULT_COMMUNITY_AUTH_MODE = 'token';
@@ -121,6 +128,8 @@ type DraftType =
   | 'mqtt_community_letsmesh_us'
   | 'mqtt_community_letsmesh_eu'
   | 'mqtt_community_meshwiki'
+  | 'mqtt_community_cornmeister'
+  | 'mqtt_community_dutchmeshcore'
   | 'webhook'
   | 'apprise'
   | 'sqs'
@@ -281,6 +290,58 @@ const CREATE_INTEGRATION_DEFINITIONS: readonly CreateIntegrationDefinition[] = [
         email: '',
         iata: '',
         token_audience: '',
+      }),
+      scope: { messages: 'none', raw_packets: 'all' },
+    },
+  },
+  {
+    value: 'mqtt_community_cornmeister',
+    savedType: 'mqtt_community',
+    label: 'Cornmeister.nl',
+    section: 'Community Sharing',
+    description:
+      'A community MQTT config preconfigured for Cornmeister.nl (mqtt.cornmeister.nl). Credentials are pre-filled; only the topic template can be customised after creation.',
+    defaultName: 'Cornmeister.nl',
+    nameMode: 'fixed',
+    defaults: {
+      config: createCommunityConfigDefaults({
+        broker_host: DEFAULT_CORNMEISTER_BROKER_HOST,
+        broker_port: DEFAULT_CORNMEISTER_BROKER_PORT,
+        transport: 'tcp',
+        auth_mode: 'password',
+        use_tls: true,
+        tls_verify: true,
+        username: DEFAULT_CORNMEISTER_USERNAME,
+        password: DEFAULT_CORNMEISTER_PASSWORD,
+        email: '',
+        iata: '',
+        token_audience: '',
+      }),
+      scope: { messages: 'none', raw_packets: 'all' },
+    },
+  },
+  {
+    value: 'mqtt_community_dutchmeshcore',
+    savedType: 'mqtt_community',
+    label: 'DutchMeshCore.nl',
+    section: 'Community Sharing',
+    description:
+      'A community MQTT config preconfigured for DutchMeshCore.nl (collector1.dutchmeshcore.nl) over secure WebSockets on port 443. Credentials are pre-filled; only the topic template can be customised after creation.',
+    defaultName: 'DutchMeshCore.nl',
+    nameMode: 'fixed',
+    defaults: {
+      config: createCommunityConfigDefaults({
+        broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST,
+        broker_port: DEFAULT_DUTCHMESHCORE_BROKER_PORT,
+        transport: 'websockets',
+        auth_mode: 'none',
+        use_tls: true,
+        tls_verify: true,
+        username: '',
+        password: '',
+        email: '',
+        iata: '',
+        token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE,
       }),
       scope: { messages: 'none', raw_packets: 'all' },
     },
@@ -530,6 +591,42 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
       topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
       username: DEFAULT_MESHWIKI_USERNAME,
       password: DEFAULT_MESHWIKI_PASSWORD,
+      email: '',
+      iata: '',
+    });
+  }
+
+  if (draftType === 'mqtt_community_cornmeister') {
+    return normalizeIntegrationConfigForSave('mqtt_community', {
+      ...config,
+      broker_host: DEFAULT_CORNMEISTER_BROKER_HOST,
+      broker_port: DEFAULT_CORNMEISTER_BROKER_PORT,
+      transport: 'tcp',
+      auth_mode: 'password',
+      use_tls: true,
+      tls_verify: true,
+      token_audience: '',
+      topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
+      username: DEFAULT_CORNMEISTER_USERNAME,
+      password: DEFAULT_CORNMEISTER_PASSWORD,
+      email: '',
+      iata: '',
+    });
+  }
+
+  if (draftType === 'mqtt_community_dutchmeshcore') {
+    return normalizeIntegrationConfigForSave('mqtt_community', {
+      ...config,
+      broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST,
+      broker_port: DEFAULT_DUTCHMESHCORE_BROKER_PORT,
+      transport: 'websockets',
+      auth_mode: 'none',
+      use_tls: true,
+      tls_verify: true,
+      token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE,
+      topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
+      username: '',
+      password: '',
       email: '',
       iata: '',
     });
@@ -3230,6 +3327,14 @@ export function SettingsFanoutSection({
         )}
 
         {detailType === 'mqtt_community_meshwiki' && (
+          <MqttCommunityConfigEditor config={editConfig} onChange={setEditConfig} />
+        )}
+
+        {detailType === 'mqtt_community_cornmeister' && (
+          <MqttCommunityConfigEditor config={editConfig} onChange={setEditConfig} />
+        )}
+
+        {detailType === 'mqtt_community_dutchmeshcore' && (
           <MqttCommunityConfigEditor config={editConfig} onChange={setEditConfig} />
         )}
 
