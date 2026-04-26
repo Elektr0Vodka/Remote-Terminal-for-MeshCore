@@ -326,7 +326,7 @@ const CREATE_INTEGRATION_DEFINITIONS: readonly CreateIntegrationDefinition[] = [
     label: 'DutchMeshCore.nl',
     section: 'Community Sharing',
     description:
-      'A community MQTT config preconfigured for DutchMeshCore.nl (collector1.dutchmeshcore.nl) over secure WebSockets on port 443. Credentials are pre-filled; only the topic template can be customised after creation.',
+      'A community MQTT config preconfigured for DutchMeshCore.nl (collector1.dutchmeshcore.nl) over secure WebSockets on port 443. Enter your email address and customise the topic template after creation.',
     defaultName: 'DutchMeshCore.nl',
     nameMode: 'fixed',
     defaults: {
@@ -627,7 +627,7 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
       topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
       username: '',
       password: '',
-      email: '',
+      email: (config.email as string) || '',
       iata: '',
     });
   }
