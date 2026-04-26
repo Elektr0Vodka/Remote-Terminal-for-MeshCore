@@ -485,6 +485,7 @@ export interface RepeaterStatusResponse {
   flood_dups: number;
   direct_dups: number;
   full_events: number;
+  recv_errors: number | null;
   telemetry_history: TelemetryHistoryEntry[];
 }
 

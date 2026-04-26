@@ -6,6 +6,7 @@ import {
   useRef,
   useMemo,
   useEffect,
+  type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
@@ -14,6 +15,11 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { cn } from '@/lib/utils';
+import {
+  getTextReplaceEnabled,
+  getTextReplaceMapJson,
+  applyTextReplacements,
+} from '../utils/textReplace';
 
 // ─── Emoji picker data ───────────────────────────────────────────────────────
 
@@ -1219,6 +1225,31 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
     [text, sending, disabled, onSend]
   );
 
+  const handleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const raw = input.value;
+    // Skip replacement during IME / dead-key composition to avoid garbling interim input
+    if (!e.nativeEvent || (e.nativeEvent as InputEvent).isComposing) {
+      setText(raw);
+      return;
+    }
+    if (getTextReplaceEnabled()) {
+      const result = applyTextReplacements(
+        raw,
+        input.selectionStart ?? raw.length,
+        getTextReplaceMapJson()
+      );
+      if (result) {
+        setText(result.text);
+        // Schedule cursor restore after React flushes the new value
+        const pos = result.cursor;
+        requestAnimationFrame(() => input.setSelectionRange(pos, pos));
+        return;
+      }
+    }
+    setText(raw);
+  }, []);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1297,7 +1328,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
           data-1p-ignore="true"
           data-bwignore="true"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || 'Type a message...'}
           disabled={disabled || sending}
