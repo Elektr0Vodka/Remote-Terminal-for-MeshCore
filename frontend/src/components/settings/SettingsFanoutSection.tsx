@@ -52,9 +52,11 @@ const DEFAULT_CORNMEISTER_BROKER_HOST = 'mqtt.cornmeister.nl';
 const DEFAULT_CORNMEISTER_BROKER_PORT = 8883;
 const DEFAULT_CORNMEISTER_USERNAME = 'observer';
 const DEFAULT_CORNMEISTER_PASSWORD = 'hiermetdiedata';
-const DEFAULT_DUTCHMESHCORE_BROKER_HOST = 'collector1.dutchmeshcore.nl';
+const DEFAULT_DUTCHMESHCORE_BROKER_HOST_1 = 'collector1.dutchmeshcore.nl';
+const DEFAULT_DUTCHMESHCORE_BROKER_HOST_2 = 'collector2.dutchmeshcore.nl';
 const DEFAULT_DUTCHMESHCORE_BROKER_PORT = 443;
-const DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE = 'collector1.dutchmeshcore.nl';
+const DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE_1 = 'collector1.dutchmeshcore.nl';
+const DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE_2 = 'collector2.dutchmeshcore.nl';
 const DEFAULT_COMMUNITY_BROKER_PORT = 443;
 const DEFAULT_COMMUNITY_TRANSPORT = 'websockets';
 const DEFAULT_COMMUNITY_AUTH_MODE = 'token';
@@ -130,6 +132,7 @@ type DraftType =
   | 'mqtt_community_meshwiki'
   | 'mqtt_community_cornmeister'
   | 'mqtt_community_dutchmeshcore'
+  | 'mqtt_community_dutchmeshcore2'
   | 'webhook'
   | 'apprise'
   | 'sqs'
@@ -323,15 +326,15 @@ const CREATE_INTEGRATION_DEFINITIONS: readonly CreateIntegrationDefinition[] = [
   {
     value: 'mqtt_community_dutchmeshcore',
     savedType: 'mqtt_community',
-    label: 'DutchMeshCore.nl',
+    label: 'DutchMeshCore.nl (collector1)',
     section: 'Community Sharing',
     description:
-      'A community MQTT config preconfigured for DutchMeshCore.nl (collector1.dutchmeshcore.nl) over secure WebSockets on port 443. Enter your email address and customise the topic template after creation.',
-    defaultName: 'DutchMeshCore.nl',
+      'A community MQTT config preconfigured for DutchMeshCore.nl (collector1.dutchmeshcore.nl) over secure WebSockets on port 443. Enter your email and IATA region code after creation.',
+    defaultName: 'DutchMeshCore.nl (collector1)',
     nameMode: 'fixed',
     defaults: {
       config: createCommunityConfigDefaults({
-        broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST,
+        broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST_1,
         broker_port: DEFAULT_DUTCHMESHCORE_BROKER_PORT,
         transport: 'websockets',
         auth_mode: 'none',
@@ -341,7 +344,33 @@ const CREATE_INTEGRATION_DEFINITIONS: readonly CreateIntegrationDefinition[] = [
         password: '',
         email: '',
         iata: '',
-        token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE,
+        token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE_1,
+      }),
+      scope: { messages: 'none', raw_packets: 'all' },
+    },
+  },
+  {
+    value: 'mqtt_community_dutchmeshcore2',
+    savedType: 'mqtt_community',
+    label: 'DutchMeshCore.nl (collector2)',
+    section: 'Community Sharing',
+    description:
+      'A community MQTT config preconfigured for DutchMeshCore.nl (collector2.dutchmeshcore.nl) over secure WebSockets on port 443. Enter your email and IATA region code after creation.',
+    defaultName: 'DutchMeshCore.nl (collector2)',
+    nameMode: 'fixed',
+    defaults: {
+      config: createCommunityConfigDefaults({
+        broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST_2,
+        broker_port: DEFAULT_DUTCHMESHCORE_BROKER_PORT,
+        transport: 'websockets',
+        auth_mode: 'none',
+        use_tls: true,
+        tls_verify: true,
+        username: '',
+        password: '',
+        email: '',
+        iata: '',
+        token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE_2,
       }),
       scope: { messages: 'none', raw_packets: 'all' },
     },
@@ -617,18 +646,36 @@ function normalizeDraftConfig(draftType: DraftType, config: Record<string, unkno
   if (draftType === 'mqtt_community_dutchmeshcore') {
     return normalizeIntegrationConfigForSave('mqtt_community', {
       ...config,
-      broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST,
+      broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST_1,
       broker_port: DEFAULT_DUTCHMESHCORE_BROKER_PORT,
       transport: 'websockets',
       auth_mode: 'none',
       use_tls: true,
       tls_verify: true,
-      token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE,
+      token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE_1,
       topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
       username: '',
       password: '',
       email: (config.email as string) || '',
-      iata: '',
+      iata: (config.iata as string) || '',
+    });
+  }
+
+  if (draftType === 'mqtt_community_dutchmeshcore2') {
+    return normalizeIntegrationConfigForSave('mqtt_community', {
+      ...config,
+      broker_host: DEFAULT_DUTCHMESHCORE_BROKER_HOST_2,
+      broker_port: DEFAULT_DUTCHMESHCORE_BROKER_PORT,
+      transport: 'websockets',
+      auth_mode: 'none',
+      use_tls: true,
+      tls_verify: true,
+      token_audience: DEFAULT_DUTCHMESHCORE_TOKEN_AUDIENCE_2,
+      topic_template: (config.topic_template as string) || DEFAULT_COMMUNITY_PACKET_TOPIC_TEMPLATE,
+      username: '',
+      password: '',
+      email: (config.email as string) || '',
+      iata: (config.iata as string) || '',
     });
   }
 
@@ -3335,6 +3382,10 @@ export function SettingsFanoutSection({
         )}
 
         {detailType === 'mqtt_community_dutchmeshcore' && (
+          <MqttCommunityConfigEditor config={editConfig} onChange={setEditConfig} />
+        )}
+
+        {detailType === 'mqtt_community_dutchmeshcore2' && (
           <MqttCommunityConfigEditor config={editConfig} onChange={setEditConfig} />
         )}
 
