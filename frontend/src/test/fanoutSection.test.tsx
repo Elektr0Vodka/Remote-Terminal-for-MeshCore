@@ -114,6 +114,7 @@ beforeEach(() => {
     show_warning_ticker: true,
     auto_delete_raw_enabled: false,
     auto_delete_raw_days: 14,
+    telemetry_routed_hourly: false,
   });
   mockedApi.getRadioConfig.mockResolvedValue({
     public_key: 'aa'.repeat(32),
@@ -1072,6 +1073,7 @@ describe('SettingsFanoutSection', () => {
       show_warning_ticker: true,
       auto_delete_raw_enabled: false,
       auto_delete_raw_days: 14,
+      telemetry_routed_hourly: false,
     });
 
     renderSection();
