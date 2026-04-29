@@ -87,16 +87,32 @@ export function CrackerPanel({
     };
   }, []);
 
-  // Load wordlist dynamically when panel becomes visible for the first time
+  // Load wordlist dynamically when panel becomes visible for the first time.
+  // Also tries to fetch /words_extra.txt from the server and merges it in;
+  // missing file is silently ignored so deployment without the file still works.
   useEffect(() => {
     if (!visible || wordlistLoaded) return;
 
     import('meshcore-hashtag-cracker/wordlist')
       .then(({ ENGLISH_WORDLIST }) => {
-        if (crackerRef.current) {
-          crackerRef.current.setWordlist(ENGLISH_WORDLIST);
-          setWordlistLoaded(true);
-        }
+        return fetch('/words_extra.txt')
+          .then((res) => (res.ok ? res.text() : ''))
+          .catch(() => '')
+          .then((extra) => {
+            const extraWords = extra
+              ? extra
+                  .split('\n')
+                  .map((w) => w.trim())
+                  .filter((w) => w.length > 0)
+              : [];
+            return [...ENGLISH_WORDLIST, ...extraWords];
+          })
+          .then((combined) => {
+            if (crackerRef.current) {
+              crackerRef.current.setWordlist(combined);
+              setWordlistLoaded(true);
+            }
+          });
       })
       .catch((err) => {
         console.error('Failed to load wordlist:', err);
