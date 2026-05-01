@@ -4,14 +4,13 @@ import {
   useImperativeHandle,
   forwardRef,
   useRef,
-  useMemo,
   useEffect,
+  useMemo,
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
 import { Smile } from 'lucide-react';
-import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { cn } from '@/lib/utils';
@@ -1100,9 +1099,18 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
   const [sending, setSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiCategory, setEmojiCategory] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
+
+  /** Resize textarea to fit content, clamped between 1 row and ~6 rows. */
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    // Clamp: min 40px (≈1 row), max 160px (≈6 rows)
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, []);
 
   // Close picker on outside click
   useEffect(() => {
@@ -1122,20 +1130,20 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
 
   const insertEmoji = useCallback(
     (emoji: string) => {
-      const input = inputRef.current;
-      if (!input) {
+      const textarea = textareaRef.current;
+      if (!textarea) {
         setText((prev) => prev + emoji);
         return;
       }
-      const start = input.selectionStart ?? text.length;
-      const end = input.selectionEnd ?? text.length;
+      const start = textarea.selectionStart ?? text.length;
+      const end = textarea.selectionEnd ?? text.length;
       const next = text.slice(0, start) + emoji + text.slice(end);
       setText(next);
       // Restore cursor after the inserted emoji
       const newPos = start + emoji.length;
       requestAnimationFrame(() => {
-        input.focus();
-        input.setSelectionRange(newPos, newPos);
+        textarea.focus();
+        textarea.setSelectionRange(newPos, newPos);
       });
     },
     [text]
@@ -1144,13 +1152,17 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
   useImperativeHandle(ref, () => ({
     appendText: (appendedText: string) => {
       setText((prev) => prev + appendedText);
-      // Focus the input after appending
-      inputRef.current?.focus();
+      textareaRef.current?.focus();
     },
     focus: () => {
-      inputRef.current?.focus();
+      textareaRef.current?.focus();
     },
   }));
+
+  // Re-measure height whenever text changes (covers programmatic updates like appendText)
+  useEffect(() => {
+    autoResize();
+  }, [text, autoResize]);
 
   // Calculate character limits based on conversation type
   const limits = useMemo(() => {
@@ -1219,13 +1231,13 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
       } finally {
         setSending(false);
       }
-      // Refocus after React re-enables the input
-      setTimeout(() => inputRef.current?.focus(), 0);
+      // Refocus after React re-enables the textarea
+      setTimeout(() => textareaRef.current?.focus(), 0);
     },
     [text, sending, disabled, onSend]
   );
 
-  const handleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+  const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
     const input = e.target;
     const raw = input.value;
     // Skip replacement during IME / dead-key composition to avoid garbling interim input
@@ -1251,11 +1263,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
   }, []);
 
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSubmit(e as unknown as FormEvent);
       }
+      // Shift+Enter falls through naturally and inserts a newline
     },
     [handleSubmit]
   );
@@ -1317,22 +1330,28 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(fu
         </div>
       )}
 
-      <div className="flex gap-2">
-        <Input
-          ref={inputRef}
-          type="text"
+      <div className="flex gap-2 items-end">
+        <textarea
+          ref={textareaRef}
           autoComplete="off"
           name="chat-message-input"
           aria-label={placeholder || 'Type a message'}
           data-lpignore="true"
           data-1p-ignore="true"
           data-bwignore="true"
+          rows={1}
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || 'Type a message...'}
           disabled={disabled || sending}
-          className="flex-1 min-w-0"
+          className={cn(
+            'flex-1 min-w-0 resize-none overflow-y-auto',
+            'rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background',
+            'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+            'disabled:cursor-not-allowed disabled:opacity-50 md:text-sm'
+          )}
+          style={{ minHeight: '40px', maxHeight: '160px' }}
         />
         <button
           ref={emojiButtonRef}

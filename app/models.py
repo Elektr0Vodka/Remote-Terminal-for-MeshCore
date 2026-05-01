@@ -474,6 +474,8 @@ class RawPacketDecryptedInfo(BaseModel):
     sender: str | None = None
     channel_key: str | None = None
     contact_key: str | None = None
+    sender_timestamp: int | None = None
+    message: str | None = None
 
 
 class RawPacketBroadcast(BaseModel):
