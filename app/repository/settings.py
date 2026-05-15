@@ -63,6 +63,7 @@ class AppSettingsRepository:
                    show_mention_ticker,
                    auto_delete_raw_enabled, auto_delete_raw_days,
                    discovery_blocked_types, tracked_telemetry_repeaters,
+                   tracked_telemetry_contacts,
                    auto_resend_channel, telemetry_interval_hours,
                    telemetry_routed_hourly
             FROM app_settings WHERE id = 1
@@ -119,6 +120,15 @@ class AppSettingsRepository:
         except (json.JSONDecodeError, TypeError, KeyError):
             tracked_telemetry_repeaters = []
 
+        # Parse tracked_telemetry_contacts JSON
+        tracked_telemetry_contacts: list[str] = []
+        try:
+            raw_tracked_contacts = row["tracked_telemetry_contacts"]
+            if raw_tracked_contacts:
+                tracked_telemetry_contacts = json.loads(raw_tracked_contacts)
+        except (json.JSONDecodeError, TypeError, KeyError):
+            tracked_telemetry_contacts = []
+
         # Parse auto_resend_channel boolean
         try:
             auto_resend_channel = bool(row["auto_resend_channel"])
@@ -156,6 +166,7 @@ class AppSettingsRepository:
             auto_delete_raw_days=_int_col(row, "auto_delete_raw_days", default=14),
             discovery_blocked_types=discovery_blocked_types,
             tracked_telemetry_repeaters=tracked_telemetry_repeaters,
+            tracked_telemetry_contacts=tracked_telemetry_contacts,
             auto_resend_channel=auto_resend_channel,
             telemetry_interval_hours=telemetry_interval_hours,
             telemetry_routed_hourly=telemetry_routed_hourly,
@@ -179,6 +190,7 @@ class AppSettingsRepository:
         auto_delete_raw_days: int | None = None,
         discovery_blocked_types: list[int] | None = None,
         tracked_telemetry_repeaters: list[str] | None = None,
+        tracked_telemetry_contacts: list[str] | None = None,
         auto_resend_channel: bool | None = None,
         telemetry_interval_hours: int | None = None,
         telemetry_routed_hourly: bool | None = None,
@@ -247,6 +259,10 @@ class AppSettingsRepository:
             updates.append("tracked_telemetry_repeaters = ?")
             params.append(json.dumps(tracked_telemetry_repeaters))
 
+        if tracked_telemetry_contacts is not None:
+            updates.append("tracked_telemetry_contacts = ?")
+            params.append(json.dumps(tracked_telemetry_contacts))
+
         if auto_resend_channel is not None:
             updates.append("auto_resend_channel = ?")
             params.append(1 if auto_resend_channel else 0)
@@ -285,6 +301,7 @@ class AppSettingsRepository:
         blocked_names: list[str] | None = None,
         discovery_blocked_types: list[int] | None = None,
         tracked_telemetry_repeaters: list[str] | None = None,
+        tracked_telemetry_contacts: list[str] | None = None,
         auto_resend_channel: bool | None = None,
         telemetry_interval_hours: int | None = None,
         telemetry_routed_hourly: bool | None = None,
@@ -303,6 +320,7 @@ class AppSettingsRepository:
                 blocked_names=blocked_names,
                 discovery_blocked_types=discovery_blocked_types,
                 tracked_telemetry_repeaters=tracked_telemetry_repeaters,
+                tracked_telemetry_contacts=tracked_telemetry_contacts,
                 auto_resend_channel=auto_resend_channel,
                 telemetry_interval_hours=telemetry_interval_hours,
                 telemetry_routed_hourly=telemetry_routed_hourly,

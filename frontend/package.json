@@ -1,7 +1,7 @@
 {
   "name": "remoteterm-meshcore-frontend",
   "private": true,
-  "version": "3.13.0-EV",
+  "version": "3.14.0-EV",
   "type": "module",
   "scripts": {
     "dev": "vite",

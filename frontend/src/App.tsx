@@ -223,6 +223,7 @@ export function App() {
     handleToggleBlockedKey,
     handleToggleBlockedName,
     handleToggleTrackedTelemetry,
+    handleToggleTrackedTelemetryContact,
   } = useAppSettings();
 
   // Keep user's name in ref for mention detection in WebSocket callback
@@ -774,6 +775,8 @@ export function App() {
     },
     trackedTelemetryRepeaters: appSettings?.tracked_telemetry_repeaters ?? [],
     onToggleTrackedTelemetry: handleToggleTrackedTelemetry,
+    trackedTelemetryContacts: appSettings?.tracked_telemetry_contacts ?? [],
+    onToggleTrackedTelemetryContact: handleToggleTrackedTelemetryContact,
   };
   const handleCrackerChannelsFound = useCallback((found: CrackerFoundChannel[]) => {
     setCrackerFoundChannels(found);
@@ -829,6 +832,8 @@ export function App() {
         name,
       });
     },
+    trackedTelemetryContacts: appSettings?.tracked_telemetry_contacts ?? [],
+    onToggleTrackedTelemetryContact: handleToggleTrackedTelemetryContact,
   };
   const channelInfoPaneProps = {
     channelKey: infoPaneChannelKey,

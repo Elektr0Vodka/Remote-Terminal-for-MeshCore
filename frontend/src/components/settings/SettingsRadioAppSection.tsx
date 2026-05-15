@@ -1,97 +1,136 @@
 import { useState, useEffect, useRef } from 'react';
-import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
 import { toast } from '../ui/sonner';
 import { api } from '../../api';
 import { formatTime } from '../../utils/messageParser';
-import type { AppSettings, AppSettingsUpdate, HealthStatus } from '../../types';
+import { lppDisplayUnit } from '../repeater/repeaterPaneShared';
+import { useDistanceUnit } from '../../contexts/DistanceUnitContext';
+import { BulkDeleteContactsModal } from './BulkDeleteContactsModal';
+import type {
+  AppSettings,
+  AppSettingsUpdate,
+  Contact,
+  TelemetryHistoryEntry,
+  TelemetrySchedule,
+} from '../../types';
 
-export function SettingsDatabaseSection({
+export function SettingsRadioAppSection({
   appSettings,
-  health,
   onSaveAppSettings,
-  onHealthRefresh,
+  blockedKeys = [],
+  blockedNames = [],
+  onToggleBlockedKey,
+  onToggleBlockedName,
+  contacts = [],
+  onBulkDeleteContacts,
+  trackedTelemetryRepeaters = [],
+  onToggleTrackedTelemetry,
+  trackedTelemetryContacts = [],
+  onToggleTrackedTelemetryContact,
   className,
 }: {
   appSettings: AppSettings;
-  health: HealthStatus | null;
   onSaveAppSettings: (update: AppSettingsUpdate) => Promise<void>;
-  onHealthRefresh: () => Promise<void>;
+  blockedKeys?: string[];
+  blockedNames?: string[];
+  onToggleBlockedKey?: (key: string) => void;
+  onToggleBlockedName?: (name: string) => void;
+  contacts?: Contact[];
+  onBulkDeleteContacts?: (deletedKeys: string[]) => void;
+  trackedTelemetryRepeaters?: string[];
+  onToggleTrackedTelemetry?: (publicKey: string) => Promise<void>;
+  trackedTelemetryContacts?: string[];
+  onToggleTrackedTelemetryContact?: (publicKey: string) => Promise<void>;
   className?: string;
 }) {
-  const [retentionDays, setRetentionDays] = useState('14');
-  const [cleaning, setCleaning] = useState(false);
-  const [purgingDecryptedRaw, setPurgingDecryptedRaw] = useState(false);
-  const [autoDecryptOnAdvert, setAutoDecryptOnAdvert] = useState(false);
-  const [autoDeleteRawEnabled, setAutoDeleteRawEnabled] = useState(false);
-  const [autoDeleteRawDays, setAutoDeleteRawDays] = useState('14');
+  const { distanceUnit } = useDistanceUnit();
   const [discoveryBlockedTypes, setDiscoveryBlockedTypes] = useState<number[]>([]);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+
+  const [latestTelemetry, setLatestTelemetry] = useState<
+    Record<string, TelemetryHistoryEntry | null>
+  >({});
+  const telemetryFetchedRef = useRef(false);
+
+  const [latestContactTelemetry, setLatestContactTelemetry] = useState<
+    Record<string, TelemetryHistoryEntry | null>
+  >({});
+  const contactTelemetryFetchedRef = useRef(false);
+
+  const [schedule, setSchedule] = useState<TelemetrySchedule | null>(null);
+  const [intervalDraft, setIntervalDraft] = useState<number>(appSettings.telemetry_interval_hours);
 
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
-    setAutoDecryptOnAdvert(appSettings.auto_decrypt_dm_on_advert);
-    setAutoDeleteRawEnabled(appSettings.auto_delete_raw_enabled ?? false);
-    setAutoDeleteRawDays(String(appSettings.auto_delete_raw_days ?? 14));
     setDiscoveryBlockedTypes(appSettings.discovery_blocked_types ?? []);
     setIntervalDraft(appSettings.telemetry_interval_hours);
   }, [appSettings]);
 
-  const handleCleanup = async () => {
-    const days = parseInt(retentionDays, 10);
-    if (isNaN(days) || days < 1) {
-      toast.error('Invalid retention days', {
-        description: 'Retention days must be at least 1',
-      });
-      return;
-    }
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getTelemetrySchedule()
+      .then((s) => {
+        if (!cancelled) setSchedule(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    trackedTelemetryRepeaters.length,
+    trackedTelemetryContacts.length,
+    appSettings.telemetry_interval_hours,
+    appSettings.telemetry_routed_hourly,
+  ]);
 
-    setCleaning(true);
+  useEffect(() => {
+    if (trackedTelemetryRepeaters.length === 0 || telemetryFetchedRef.current) return;
+    telemetryFetchedRef.current = true;
+    let cancelled = false;
+    const fetches = trackedTelemetryRepeaters.map((key) =>
+      api.repeaterTelemetryHistory(key).then(
+        (history) => [key, history.length > 0 ? history[history.length - 1] : null] as const,
+        () => [key, null] as const
+      )
+    );
+    Promise.all(fetches).then((entries) => {
+      if (cancelled) return;
+      setLatestTelemetry(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trackedTelemetryRepeaters]);
 
-    try {
-      const result = await api.runMaintenance({ pruneUndecryptedDays: days });
-      toast.success('Database cleanup complete', {
-        description: `Deleted ${result.packets_deleted} old packet${result.packets_deleted === 1 ? '' : 's'}`,
-      });
-      await onHealthRefresh();
-    } catch (err) {
-      console.error('Failed to run maintenance:', err);
-      toast.error('Database cleanup failed', {
-        description: err instanceof Error ? err.message : 'Unknown error',
-      });
-    } finally {
-      setCleaning(false);
-    }
-  };
-
-  const handlePurgeDecryptedRawPackets = async () => {
-    setPurgingDecryptedRaw(true);
-
-    try {
-      const result = await api.runMaintenance({ purgeLinkedRawPackets: true });
-      toast.success('Decrypted raw packets purged', {
-        description: `Deleted ${result.packets_deleted} raw packet${result.packets_deleted === 1 ? '' : 's'}`,
-      });
-      await onHealthRefresh();
-    } catch (err) {
-      console.error('Failed to purge decrypted raw packets:', err);
-      toast.error('Failed to purge decrypted raw packets', {
-        description: err instanceof Error ? err.message : 'Unknown error',
-      });
-    } finally {
-      setPurgingDecryptedRaw(false);
-    }
-  };
+  useEffect(() => {
+    if (trackedTelemetryContacts.length === 0 || contactTelemetryFetchedRef.current) return;
+    contactTelemetryFetchedRef.current = true;
+    let cancelled = false;
+    const fetches = trackedTelemetryContacts.map((key) =>
+      api.contactTelemetryHistory(key).then(
+        (history) => [key, history.length > 0 ? history[history.length - 1] : null] as const,
+        () => [key, null] as const
+      )
+    );
+    Promise.all(fetches).then((entries) => {
+      if (cancelled) return;
+      setLatestContactTelemetry(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trackedTelemetryContacts]);
 
   const persistAppSettings = (update: AppSettingsUpdate, revert: () => void): Promise<void> => {
     const chained = saveChainRef.current.then(async () => {
       try {
         await onSaveAppSettings(update);
       } catch (err) {
-        console.error('Failed to save database settings:', err);
+        console.error('Failed to save radio-app settings:', err);
         revert();
         toast.error('Failed to save setting', {
           description: err instanceof Error ? err.message : 'Unknown error',
@@ -104,117 +143,6 @@ export function SettingsDatabaseSection({
 
   return (
     <div className={className}>
-      {/* ── Database Overview ── */}
-      <div className="space-y-3">
-        <h3 className="text-base font-semibold tracking-tight">Database Overview</h3>
-        <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm">Database size</span>
-            <span className="text-sm font-semibold">{health?.database_size_mb ?? '?'} MB</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm">Oldest undecrypted packet</span>
-            {health?.oldest_undecrypted_timestamp ? (
-              <span className="text-sm font-semibold">
-                {formatTime(health.oldest_undecrypted_timestamp)}
-                <span className="font-normal text-muted-foreground ml-1">
-                  ({Math.floor((Date.now() / 1000 - health.oldest_undecrypted_timestamp) / 86400)}{' '}
-                  days)
-                </span>
-              </span>
-            ) : (
-              <span className="text-sm text-muted-foreground">None</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* ── Storage Cleanup ── */}
-      <div className="space-y-4">
-        <h3 className="text-base font-semibold tracking-tight">Storage Cleanup</h3>
-
-        <div className="rounded-md border border-border p-3 space-y-2">
-          <h3 className="text-sm font-semibold">Delete Undecrypted Packets</h3>
-          <p className="text-[0.8125rem] text-muted-foreground">
-            Permanently deletes stored raw packets that have not yet been decrypted. These are
-            retained in case you later obtain the correct key — once deleted, these messages can
-            never be recovered.
-          </p>
-          <div className="flex gap-2 items-end">
-            <div className="space-y-1">
-              <Label htmlFor="retention-days" className="text-xs text-muted-foreground">
-                Older than (days)
-              </Label>
-              <Input
-                id="retention-days"
-                type="number"
-                min="1"
-                max="365"
-                value={retentionDays}
-                onChange={(e) => setRetentionDays(e.target.value)}
-                className="w-24"
-              />
-            </div>
-            <Button
-              variant="outline"
-              onClick={handleCleanup}
-              disabled={cleaning}
-              className="border-destructive/50 text-destructive hover:bg-destructive/10"
-            >
-              {cleaning ? 'Deleting...' : 'Delete'}
-            </Button>
-          </div>
-        </div>
-
-        <div className="rounded-md border border-border p-3 space-y-2">
-          <h3 className="text-sm font-semibold">Purge Archival Raw Packets</h3>
-          <p className="text-[0.8125rem] text-muted-foreground">
-            Deletes the raw packet bytes behind messages that are already decrypted and visible in
-            chat. This frees space but removes packet-analysis availability for those messages. It
-            does not affect displayed messages or future decryption.
-          </p>
-          <Button
-            variant="outline"
-            onClick={handlePurgeDecryptedRawPackets}
-            disabled={purgingDecryptedRaw}
-            className="w-full border-warning/50 text-warning hover:bg-warning/10"
-          >
-            {purgingDecryptedRaw ? 'Purging...' : 'Purge Archival Packets'}
-          </Button>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* ── DM Decryption ── */}
-      <div className="space-y-3">
-        <h3 className="text-base font-semibold tracking-tight">DM Decryption</h3>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={autoDecryptOnAdvert}
-            onChange={(e) => {
-              const next = e.target.checked;
-              const prev = autoDecryptOnAdvert;
-              setAutoDecryptOnAdvert(next);
-              void persistAppSettings({ auto_decrypt_dm_on_advert: next }, () =>
-                setAutoDecryptOnAdvert(prev)
-              );
-            }}
-            className="w-4 h-4 rounded border-input accent-primary"
-          />
-          <span className="text-sm">Auto-decrypt historical DMs when new contact advertises</span>
-        </label>
-        <p className="text-[0.8125rem] text-muted-foreground">
-          When enabled, the server will automatically try to decrypt stored DM packets when a new
-          contact sends an advertisement. This may cause brief delays on large packet backlogs.
-        </p>
-      </div>
-
-      <Separator />
-
       {/* ── Tracked Repeater Telemetry ── */}
       <div className="space-y-3">
         <h3 className="text-base font-semibold tracking-tight">Tracked Repeater Telemetry</h3>
@@ -226,10 +154,6 @@ export function SettingsDatabaseSection({
           at once ({trackedTelemetryRepeaters.length} / {schedule?.max_tracked ?? 8} slots used).
         </p>
 
-        {/* Interval picker. Legal options depend on current tracked count;
-            we list only those. If the saved preference is no longer legal,
-            the effective interval is shown below so the user knows what the
-            scheduler is actually using. */}
         <div className="space-y-1.5">
           <Label htmlFor="telemetry-interval" className="text-sm">
             Collection interval
@@ -269,7 +193,6 @@ export function SettingsDatabaseSection({
           )}
         </div>
 
-        {/* Routed hourly toggle */}
         <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -312,8 +235,6 @@ export function SettingsDatabaseSection({
               const contact = contacts.find((c) => c.public_key === key);
               const displayName = contact?.name ?? key.slice(0, 12);
               const routeSource = contact?.effective_route_source ?? 'flood';
-              // A forced-flood override (path_len < 0) still reports source
-              // "override", but the actual route is flood. Check the real path.
               const hasRealPath =
                 contact?.effective_route != null && contact.effective_route.path_len >= 0;
               const routeLabel = !hasRealPath
@@ -397,11 +318,106 @@ export function SettingsDatabaseSection({
 
       <Separator />
 
+      {/* ── Tracked Contact Telemetry ── */}
+      <div className="space-y-3">
+        <h3 className="text-base font-semibold tracking-tight">Tracked Contact Telemetry</h3>
+        <p className="text-[0.8125rem] text-muted-foreground">
+          Non-repeater contacts (companions, rooms, sensors) can also be tracked for periodic LPP
+          telemetry collection (battery, sensors, GPS). Up to 8 contacts may be tracked. The daily
+          check ceiling is shared with tracked repeaters — adding contacts may clamp the interval
+          upward.
+        </p>
+
+        {trackedTelemetryContacts.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            No contacts are being tracked. Enable tracking from a contact&apos;s info pane.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {trackedTelemetryContacts.map((key) => {
+              const contact = contacts.find((c) => c.public_key === key);
+              const displayName = contact?.name ?? key.slice(0, 12);
+              const routeSource = contact?.effective_route_source ?? 'flood';
+              const hasRealPath =
+                contact?.effective_route != null && contact.effective_route.path_len >= 0;
+              const routeLabel = !hasRealPath
+                ? 'flood'
+                : routeSource === 'override'
+                  ? 'routed'
+                  : routeSource === 'direct'
+                    ? 'direct'
+                    : 'flood';
+              const routeColor = hasRealPath
+                ? 'text-primary bg-primary/10'
+                : 'text-muted-foreground bg-muted';
+              const snap = latestContactTelemetry[key];
+              const d = snap?.data;
+              return (
+                <div key={key} className="rounded-md border border-border px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm truncate block">{displayName}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[0.625rem] text-muted-foreground font-mono">
+                          {key.slice(0, 12)}
+                        </span>
+                        <span
+                          className={`text-[0.625rem] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium ${routeColor}`}
+                        >
+                          {routeLabel}
+                        </span>
+                      </div>
+                    </div>
+                    {onToggleTrackedTelemetryContact && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onToggleTrackedTelemetryContact(key)}
+                        className="h-7 text-xs flex-shrink-0 text-destructive hover:text-destructive"
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  {d ? (
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.625rem] text-muted-foreground">
+                      {d.lpp_sensors?.map((s) => {
+                        if (typeof s.value !== 'number') return null;
+                        const display = lppDisplayUnit(s.type_name, s.value, distanceUnit);
+                        const val =
+                          typeof display.value === 'number'
+                            ? display.value % 1 === 0
+                              ? display.value
+                              : display.value.toFixed(1)
+                            : display.value;
+                        const label = s.type_name.charAt(0).toUpperCase() + s.type_name.slice(1);
+                        return (
+                          <span key={`${s.type_name}-${s.channel}`}>
+                            {label} {val}
+                            {display.unit ? ` ${display.unit}` : ''}
+                          </span>
+                        );
+                      })}
+                      <span className="ml-auto">checked {formatTime(snap.timestamp)}</span>
+                    </div>
+                  ) : snap === null ? (
+                    <div className="mt-1 text-[0.625rem] text-muted-foreground italic">
+                      No telemetry recorded yet
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <Separator />
+
       {/* ── Contact Management ── */}
       <div className="space-y-5">
         <h3 className="text-base font-semibold tracking-tight">Contact Management</h3>
 
-        {/* Block discovery of new node types */}
         <div className="space-y-3">
           <h4 className="text-sm font-semibold">Block Discovery of New Node Types</h4>
           <p className="text-[0.8125rem] text-muted-foreground">
@@ -453,57 +469,6 @@ export function SettingsDatabaseSection({
           )}
         </div>
 
-        {/* Auto-delete raw packets */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-semibold">Auto-Delete Raw Packets</h4>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoDeleteRawEnabled}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setAutoDeleteRawEnabled(next);
-                void persistAppSettings({ auto_delete_raw_enabled: next }, () =>
-                  setAutoDeleteRawEnabled(!next)
-                );
-              }}
-              className="w-4 h-4 rounded border-input accent-primary"
-            />
-            <span className="text-sm">Automatically delete old undecrypted packets daily</span>
-          </label>
-          {autoDeleteRawEnabled && (
-            <div className="flex gap-2 items-end pl-7">
-              <div className="space-y-1">
-                <label htmlFor="auto-delete-days" className="text-xs font-medium">
-                  Older than (days)
-                </label>
-                <input
-                  id="auto-delete-days"
-                  type="number"
-                  min="1"
-                  max="365"
-                  value={autoDeleteRawDays}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setAutoDeleteRawDays(val);
-                    const days = Math.max(1, parseInt(val, 10) || 14);
-                    void persistAppSettings({ auto_delete_raw_days: days }, () =>
-                      setAutoDeleteRawDays(String(appSettings.auto_delete_raw_days ?? 14))
-                    );
-                  }}
-                  className="w-24 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                />
-              </div>
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground">
-            When enabled, the server runs a daily background job that removes undecrypted raw
-            packets older than the configured threshold. Does not affect already-decrypted messages
-            or your chat history.
-          </p>
-        </div>
-
-        {/* Blocked contacts list */}
         <div className="space-y-3">
           <h4 className="text-sm font-semibold">Blocked Contacts</h4>
           <p className="text-[0.8125rem] text-muted-foreground">
@@ -568,7 +533,6 @@ export function SettingsDatabaseSection({
           )}
         </div>
 
-        {/* Bulk delete */}
         <div className="space-y-3">
           <h4 className="text-sm font-semibold">Bulk Delete Contacts</h4>
           <p className="text-[0.8125rem] text-muted-foreground">
@@ -585,6 +549,7 @@ export function SettingsDatabaseSection({
             onDeleted={(keys) => onBulkDeleteContacts?.(keys)}
           />
         </div>
-      </div>    </div>
+      </div>
+    </div>
   );
 }

@@ -70,6 +70,7 @@ def _make_community_settings(**overrides) -> SimpleNamespace:
         "community_mqtt_iata": "",
         "community_mqtt_email": "",
         "community_mqtt_token_audience": "mqtt-us-v1.letsmesh.net",
+        "community_mqtt_websocket_path": "/",
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -121,7 +122,7 @@ class TestJwtGeneration:
             assert payload["publicKey"] == public_key.hex().upper()
             assert "iat" in payload
             assert "exp" in payload
-            assert payload["exp"] - payload["iat"] == 86400
+            assert payload["exp"] - payload["iat"] == 3300
             assert payload["aud"] == _DEFAULT_BROKER
             assert payload["owner"] == public_key.hex().upper()
             assert payload["client"] == f"{_CLIENT_ID}/1.2.3-abcdef"
@@ -194,11 +195,12 @@ class TestEddsaSignExpanded:
 
 class TestPacketFormatConversion:
     def test_basic_field_mapping(self):
+        # FLOOD packet: header 0x01, path_len 0x00, payload 0xAA
         data = {
             "id": 1,
             "observation_id": 100,
             "timestamp": 1700000000,
-            "data": "0a1b2c3d",
+            "data": "0100AA",
             "payload_type": "ADVERT",
             "snr": 5.5,
             "rssi": -90,
@@ -207,24 +209,27 @@ class TestPacketFormatConversion:
         }
         result = _format_raw_packet(data, "TestNode", "AABBCCDD" * 8)
 
+        assert result is not None
         assert result["origin"] == "TestNode"
         assert result["origin_id"] == "AABBCCDD" * 8
-        assert result["raw"] == "0A1B2C3D"
+        assert result["raw"] == "0100AA"
         assert result["SNR"] == 5.5
         assert result["RSSI"] == -90
         assert result["type"] == "PACKET"
         assert result["direction"] == "rx"
-        assert result["len"] == "4"
+        assert result["len"] == "3"
 
     def test_timestamp_is_iso8601(self):
-        data = {"timestamp": 1700000000, "data": "00", "snr": None, "rssi": None}
+        data = {"timestamp": 1700000000, "data": "0100AA", "snr": None, "rssi": None}
         result = _format_raw_packet(data, "Node", "AA" * 32)
+        assert result is not None
         assert result["timestamp"]
         assert "T" in result["timestamp"]
 
     def test_snr_rssi_unknown_when_none(self):
-        data = {"timestamp": 0, "data": "00", "snr": None, "rssi": None}
+        data = {"timestamp": 0, "data": "0100AA", "snr": None, "rssi": None}
         result = _format_raw_packet(data, "Node", "AA" * 32)
+        assert result is not None
         assert result["SNR"] == "Unknown"
         assert result["RSSI"] == "Unknown"
 
@@ -250,18 +255,18 @@ class TestPacketFormatConversion:
             assert result["route"] == expected
 
     def test_hash_is_16_uppercase_hex_chars(self):
-        data = {"timestamp": 0, "data": "aabb", "snr": None, "rssi": None}
+        # FLOOD packet: header 0x01, path_len 0x00, payload AA
+        data = {"timestamp": 0, "data": "0100AA", "snr": None, "rssi": None}
         result = _format_raw_packet(data, "Node", "AA" * 32)
+        assert result is not None
         assert len(result["hash"]) == 16
         assert result["hash"] == result["hash"].upper()
 
-    def test_empty_data_handled(self):
-        data = {"timestamp": 0, "data": "", "snr": None, "rssi": None}
-        result = _format_raw_packet(data, "Node", "AA" * 32)
-        assert result["raw"] == ""
-        assert result["len"] == "0"
-        assert result["packet_type"] == "0"
-        assert result["route"] == "U"
+    def test_unparseable_packet_returns_none(self):
+        for raw_hex in ("", "aabb"):
+            data = {"timestamp": 0, "data": raw_hex, "snr": None, "rssi": None}
+            result = _format_raw_packet(data, "Node", "AA" * 32)
+            assert result is None, f"Expected None for {raw_hex!r}"
 
     def test_includes_reference_time_fields(self):
         data = {"timestamp": 0, "data": "0100aabb", "snr": 1.0, "rssi": -70}
@@ -299,14 +304,12 @@ class TestPacketFormatConversion:
         assert result["route"] == "F"
         assert "path" not in result
 
-    def test_unknown_version_uses_defaults(self):
+    def test_unknown_version_returns_none(self):
         # version=1 in high bits, type=5, route=1
         header = (1 << 6) | (5 << 2) | 1
         data = {"timestamp": 0, "data": f"{header:02x}00", "snr": 1.0, "rssi": -70}
         result = _format_raw_packet(data, "Node", "AA" * 32)
-        assert result["packet_type"] == "0"
-        assert result["route"] == "U"
-        assert result["payload_len"] == "0"
+        assert result is None
 
 
 class TestCalculatePacketHash:
@@ -738,6 +741,44 @@ class TestLwtAndStatusPublish:
         assert kwargs["tls_context"] is not None
         assert kwargs["username"] == f"v1_{pubkey_hex}"
 
+    def test_build_client_kwargs_custom_websocket_path(self):
+        pub = CommunityMqttPublisher()
+        private_key, public_key = _make_test_keys()
+        settings = _make_community_settings(
+            community_mqtt_iata="MTL",
+            community_mqtt_websocket_path="/mqtt",
+        )
+
+        with (
+            patch("app.keystore.get_private_key", return_value=private_key),
+            patch("app.keystore.get_public_key", return_value=public_key),
+            patch("app.radio.radio_manager") as mock_radio,
+        ):
+            mock_radio.meshcore = None
+            kwargs = pub._build_client_kwargs(settings)
+
+        assert kwargs["websocket_path"] == "/mqtt"
+
+    def test_build_client_kwargs_empty_websocket_path_defaults_to_root(self):
+        pub = CommunityMqttPublisher()
+        private_key, public_key = _make_test_keys()
+
+        for empty_value in ("", "   ", None):
+            settings = _make_community_settings(
+                community_mqtt_iata="MTL",
+                community_mqtt_websocket_path=empty_value,
+            )
+
+            with (
+                patch("app.keystore.get_private_key", return_value=private_key),
+                patch("app.keystore.get_public_key", return_value=public_key),
+                patch("app.radio.radio_manager") as mock_radio,
+            ):
+                mock_radio.meshcore = None
+                kwargs = pub._build_client_kwargs(settings)
+
+            assert kwargs["websocket_path"] == "/", f"Failed for {empty_value!r}"
+
     def test_build_client_kwargs_supports_tcp_transport_and_custom_audience(self):
         pub = CommunityMqttPublisher()
         private_key, public_key = _make_test_keys()
@@ -1007,7 +1048,7 @@ class TestCommunityPacketPublishTopic:
             "id": 1,
             "observation_id": 1,
             "timestamp": 1700000000,
-            "data": "0100",
+            "data": "0100AA",
             "payload_type": "GROUP_TEXT",
             "snr": None,
             "rssi": None,

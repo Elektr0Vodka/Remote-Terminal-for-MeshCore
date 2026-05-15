@@ -32,9 +32,11 @@ _DEFAULT_BROKER = "mqtt-us-v1.letsmesh.net"
 _DEFAULT_PORT = 443  # Community protocol uses WSS on port 443 by default
 _CLIENT_ID = "RemoteTerm"
 
-# Proactive JWT renewal: reconnect 1 hour before the 24h token expires
-_TOKEN_LIFETIME = 86400  # 24 hours (must match _generate_jwt_token exp)
-_TOKEN_RENEWAL_THRESHOLD = _TOKEN_LIFETIME - 3600  # 23 hours
+# JWT lifetime kept under 1 hour for compatibility with services that reject
+# tokens with exp > 3600s from iat (e.g. Waev.app).  Proactive renewal
+# reconnects 5 minutes before expiry.
+_TOKEN_LIFETIME = 3300  # 55 minutes
+_TOKEN_RENEWAL_THRESHOLD = _TOKEN_LIFETIME - 300  # 50 minutes
 
 # Periodic status republish interval (matches meshcore-packet-capture reference)
 _STATS_REFRESH_INTERVAL = 300  # 5 minutes
@@ -59,6 +61,7 @@ class CommunityMqttSettings(Protocol):
     community_mqtt_iata: str
     community_mqtt_email: str
     community_mqtt_token_audience: str
+    community_mqtt_websocket_path: str
 
 
 def _base64url_encode(data: bytes) -> str:
@@ -164,12 +167,19 @@ def _decode_packet_fields(raw_bytes: bytes) -> tuple[str, str, str, list[str], i
         return route, packet_type, payload_len, path_values, payload_type
 
 
-def _format_raw_packet(data: dict[str, Any], device_name: str, public_key_hex: str) -> dict:
-    """Convert a RawPacketBroadcast dict to meshcore-packet-capture format."""
+def _format_raw_packet(data: dict[str, Any], device_name: str, public_key_hex: str) -> dict | None:
+    """Convert a RawPacketBroadcast dict to meshcore-packet-capture format.
+
+    Returns ``None`` when the packet cannot be decoded — callers should skip
+    publishing rather than forwarding malformed data.
+    """
     raw_hex = data.get("data", "")
     raw_bytes = bytes.fromhex(raw_hex) if raw_hex else b""
 
     route, packet_type, payload_len, path_values, _payload_type = _decode_packet_fields(raw_bytes)
+
+    if route == "U":
+        return None
 
     # Reference format uses local "now" timestamp and derived time/date fields.
     current_time = datetime.now()
@@ -361,7 +371,7 @@ class CommunityMqttPublisher(BaseMqttPublisher):
             kwargs["username"] = s.community_mqtt_username or None
             kwargs["password"] = s.community_mqtt_password or None
         if transport == "websockets":
-            kwargs["websocket_path"] = "/"
+            kwargs["websocket_path"] = (s.community_mqtt_websocket_path or "").strip() or "/"
         return kwargs
 
     def _on_connected(self, settings: object) -> tuple[str, str]:
