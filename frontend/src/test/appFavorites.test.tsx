@@ -193,7 +193,9 @@ vi.mock('../utils/urlHash', () => ({
   parseHashConversation: () => null,
   parseHashSettingsSection: () => null,
   updateUrlHash: vi.fn(),
+  pushUrlHash: vi.fn(),
   updateSettingsHash: vi.fn(),
+  pushSettingsHash: vi.fn(),
   getSettingsHash: (section: string) => `#settings/${section}`,
   getMapFocusHash: () => '#map',
 }));
